@@ -289,6 +289,7 @@
   </div>
   <div style="width:100%; display:flex; gap:10px;">
     <button class="btn-secondary" id="downloadBtn" style="flex:1;" onclick="downloadSheet()">⬇ JPEG</button>
+    <button class="btn-secondary" id="downloadPngBtn" style="flex:1;" onclick="downloadSheetPng()">⬇ PNG</button>
     <button class="btn-secondary" id="excelExportBtn" style="flex:1;" onclick="exportExcel()">⬇ Excel</button>
     <label class="btn-secondary" style="flex:1; text-align:center; cursor:pointer; padding:11px 16px; border-radius:6px; font-family:'Space Mono',monospace; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; border:1px solid var(--border); color:var(--muted);">
       ⬆ Load Excel<input type="file" id="excelUpload" accept=".xlsx" style="display:none;" onchange="importExcel(event)">
@@ -321,7 +322,10 @@
       <button class="btn-primary" onclick="generateFace()">Generate</button>
       <button class="btn-secondary" onclick="resetFaceDefaults()">Reset Defaults</button>
       <button class="btn-secondary" onclick="resetChin()">Reset Chin</button>
-      <button class="btn-secondary" onclick="downloadFace()">⬇ JPEG</button>
+    </div>
+    <div class="btn-row" style="margin-top:8px;">
+      <button class="btn-secondary" style="flex:1;" onclick="downloadFace()">⬇ JPEG</button>
+      <button class="btn-secondary" style="flex:1;" onclick="downloadFacePng()">⬇ PNG</button>
     </div>
   </div>
 
@@ -563,6 +567,28 @@ function downloadSheet() {
     link.href=canvas.toDataURL("image/jpeg", 0.95); link.click();
     btn.textContent="⬇ Download as JPEG"; btn.disabled=false;
   }).catch(() => { btn.textContent="⬇ Download as JPEG"; btn.disabled=false; alert("Download failed"); });
+}
+function downloadSheetPng() {
+  const btn = document.getElementById("downloadPngBtn");
+  btn.textContent="Generating…"; btn.disabled=true;
+  // Temporarily strip dark backgrounds so they render transparent
+  const bgEls=[preview, ...preview.querySelectorAll('.grid-label,.line-label')];
+  const savedBg=bgEls.map(el=>el.style.background);
+  bgEls.forEach(el=>{el.style.background='transparent';});
+  preview.querySelectorAll('.line-tooltip').forEach(el=>el.style.opacity='0');
+  html2canvas(preview, {backgroundColor:null, scale:2, useCORS:true, logging:false}).then(canvas=>{
+    bgEls.forEach((el,i)=>{el.style.background=savedBg[i];});
+    preview.querySelectorAll('.line-tooltip').forEach(el=>el.style.opacity='');
+    const link=document.createElement("a");
+    link.download=`height-sheet-${document.getElementById("heightInput").value||"character"}cm-${document.getElementById("genderSelect").value}.png`;
+    link.href=canvas.toDataURL("image/png"); link.click();
+    btn.textContent="⬇ PNG"; btn.disabled=false;
+  }).catch(err=>{
+    bgEls.forEach((el,i)=>{el.style.background=savedBg[i];});
+    preview.querySelectorAll('.line-tooltip').forEach(el=>el.style.opacity='');
+    btn.textContent="⬇ PNG"; btn.disabled=false;
+    alert("PNG download failed: "+err.message);
+  });
 }
 function toggleGroup(group) {
   const show = document.getElementById('vis-'+group).checked;
@@ -1756,6 +1782,27 @@ function downloadFace() {
   const off=document.createElement('canvas'); off.width=faceCanvas.width; off.height=faceCanvas.height;
   off.getContext('2d').drawImage(faceCanvas,0,0);
   link.href=off.toDataURL('image/jpeg',0.95); link.click();
+}
+function downloadFacePng() {
+  if (!faceCanvas) return;
+  const off=document.createElement('canvas');
+  off.width=faceCanvas.width; off.height=faceCanvas.height;
+  const octx=off.getContext('2d');
+  octx.scale(DPR,DPR);
+  // Skip the solid background fillRect by patching it once
+  let bgSkipped=false;
+  const origFillRect=CanvasRenderingContext2D.prototype.fillRect;
+  CanvasRenderingContext2D.prototype.fillRect=function(x,y,w,h){
+    if(!bgSkipped&&this===octx){bgSkipped=true;return;}
+    origFillRect.call(this,x,y,w,h);
+  };
+  const savedCtx=faceCtx; faceCtx=octx;
+  drawFace();
+  faceCtx=savedCtx;
+  CanvasRenderingContext2D.prototype.fillRect=origFillRect;
+  const link=document.createElement('a');
+  link.download='face-proportion.png';
+  link.href=off.toDataURL('image/png'); link.click();
 }
 
 // ═══════════════════════════════════════
