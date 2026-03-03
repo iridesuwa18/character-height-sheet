@@ -47,6 +47,2216 @@
     transform: translate(-50%, -50%); cursor: grab; z-index: 100; touch-action: none;
   }
   .chin-handle:active { cursor: grabbing; }
+  .eye-point {
+    position: absolute; width: 11px; height: 11px; border-radius: 50%;
+    background: rgba(80,220,120,0.95); border: 2px solid #000;
+    transform: translate(-50%,-50%); cursor: grab; z-index: 110; touch-action: none;
+    box-shadow: 0 0 4px rgba(80,220,120,0.7);
+  }
+  .eye-point:active { cursor: grabbing; }
+  .eye-point.right-eye { background: rgba(80,180,255,0.95); box-shadow: 0 0 4px rgba(80,180,255,0.7); }
+
+  /* ── Floating Generate Button ── */
+  #floatingGenerate {
+    display: none;
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 9999;
+    padding: 14px 22px;
+    background: var(--accent-gold);
+    color: #0d0d0f;
+    border: none;
+    border-radius: 50px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(240,192,64,0.4);
+    transition: transform 0.1s, box-shadow 0.15s;
+  }
+  #floatingGenerate:active { transform: scale(0.96); }
+  #floatingGenerate.visible { display: block; }
+
+  body {
+    font-family: 'Space Mono', monospace; background: var(--bg); color: var(--text);
+    min-height: 100vh; padding: 24px 16px 80px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header { text-align: center; margin-bottom: 32px; }
+  header h1 {
+    font-family: 'Syne', sans-serif; font-weight: 800;
+    font-size: clamp(22px, 5vw, 34px); letter-spacing: -0.02em; color: var(--text);
+  }
+  header p { font-size: 11px; color: var(--muted); margin-top: 6px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; width: 100%; max-width: 500px; margin-bottom: 24px;
+  }
+  .panel-title {
+    font-family: 'Syne', sans-serif; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.12em; color: var(--muted); margin-bottom: 16px;
+  }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  input, select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-family: 'Space Mono', monospace; font-size: 14px;
+    padding: 10px 12px; width: 100%; transition: border-color 0.15s; -webkit-appearance: none;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent-gold); }
+  select option { background: var(--surface); }
+  .btn-row { display: flex; gap: 10px; }
+  button {
+    flex: 1; padding: 11px 16px; border-radius: 6px;
+    font-family: 'Space Mono', monospace; font-size: 12px; font-weight: 700;
+    cursor: pointer; border: none; transition: opacity 0.15s, transform 0.1s;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-primary { background: var(--accent-gold); color: #0d0d0f; }
+  .btn-secondary { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  .btn-secondary:hover { border-color: var(--text); color: var(--text); }
+  .preview-wrapper {
+    position: relative; width: min(450px, calc(100vw - 32px)); height: 860px;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--surface); overflow: hidden;
+  }
+  .grid-line { position: absolute; width: 100%; border-top: 1px solid var(--grid); }
+  .grid-label {
+    position: absolute; right: 8px; font-size: 10px; color: var(--muted);
+    font-family: 'Space Mono', monospace; background: var(--surface); padding: 0 3px;
+  }
+  .height-line, .shoulder-line, .neck-line, .hip-line, .knee-line, .waist-line {
+    position: absolute; width: 100%; border-top: 1.5px solid; z-index: 100; cursor: pointer;
+  }
+  .height-line, .shoulder-line, .neck-line { border-color: var(--accent-red); }
+  .hip-line, .knee-line, .waist-line { border-color: var(--accent-blue); }
+  .has-tooltip::before { content:''; position:absolute; top:-10px; left:0; width:100%; height:21px; z-index:101; }
+  .line-tooltip {
+    position: absolute; left: 8px; top: -48px;
+    background: #1e1e22; border: 1px solid var(--accent-gold); border-radius: 6px;
+    padding: 6px 10px; font-family: 'Space Mono', monospace; font-size: 10px;
+    color: var(--accent-gold); white-space: nowrap; z-index: 9999;
+    pointer-events: none; opacity: 0; transition: opacity 0.15s;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .line-tooltip .tt-formula { color: var(--muted); margin-top: 2px; }
+  .has-tooltip:hover .line-tooltip { opacity: 1; }
+  .has-tooltip.tt-active .line-tooltip { opacity: 1; }
+  .head-box, .torso-box, .waist-box, .neck-box, .leg-box {
+    position: absolute; border: 1.5px solid rgba(255,255,255,0.25); box-sizing: border-box;
+  }
+  .head-box { display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, 1fr); }
+  .head-box div, .torso-box div, .waist-box div { border: 1px dashed rgba(255,255,255,0.12); box-sizing: border-box; }
+  .line-label {
+    position: absolute; right: 8px; font-size: 10px; color: #ff8888;
+    font-family: 'Space Mono', monospace; background: var(--surface); padding: 0 3px; z-index: 200;
+  }
+  .empty-state {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; color: var(--muted);
+    font-size: 12px; gap: 10px; pointer-events: none;
+  }
+  .empty-state svg { opacity: 0.3; }
+  .vis-panel { margin-bottom: 24px; }
+  .vis-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .vis-item {
+    display: flex; align-items: center; gap: 7px; cursor: pointer; user-select: none;
+    font-size: 11px; color: var(--text); text-transform: uppercase; letter-spacing: 0.07em;
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 6px;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .vis-item:hover { border-color: var(--muted); }
+  .vis-item input[type=checkbox] { display: none; }
+  .vis-check {
+    width: 14px; height: 14px; border: 1.5px solid var(--muted); border-radius: 3px;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .vis-item input:checked ~ .vis-check { background: var(--accent-gold); border-color: var(--accent-gold); }
+  .vis-item input:checked ~ .vis-check::after {
+    content: ''; width: 8px; height: 5px;
+    border-left: 2px solid #000; border-bottom: 2px solid #000;
+    transform: rotate(-45deg) translateY(-1px); display: block;
+  }
+  .vis-item input:checked ~ .vis-label { color: var(--text); }
+  .vis-label { color: var(--muted); transition: color 0.15s; }
+  .legend { display: flex; gap: 20px; margin-top: 14px; justify-content: center; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .shape-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; margin-bottom: 4px; }
+  .shape-tile {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px 4px 5px; border: 1.5px solid var(--border); border-radius: 7px;
+    cursor: pointer; background: var(--bg);
+    transition: border-color 0.12s, background 0.12s; user-select: none;
+  }
+  .shape-tile:hover { border-color: var(--muted); background: rgba(255,255,255,0.03); }
+  .shape-tile.selected { border-color: var(--accent-gold); background: rgba(240,192,64,0.08); }
+  .shape-tile canvas { display: block; }
+  .shape-tile span {
+    font-family: 'Space Mono', monospace; font-size: 8px; color: var(--muted);
+    text-align: center; line-height: 1.2; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .shape-tile.selected span { color: var(--accent-gold); }
+  .iris-layer {
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    margin-bottom: 10px; background: rgba(80,160,255,0.04);
+  }
+  .iris-layer-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+    font-size: 10px; font-family: 'Space Mono', monospace;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-blue);
+  }
+  .iris-layer-header button {
+    margin-left: auto; flex: none; padding: 3px 8px; font-size: 9px;
+    background: transparent; border: 1px solid #ff4444; color: #ff4444; border-radius: 4px;
+  }
+  .iris-layer .field-grid { margin-bottom: 8px; }
+  .iris-flags { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+  .iris-flag {
+    display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted);
+    font-family: 'Space Mono', monospace; text-transform: uppercase; letter-spacing: 0.05em;
+    cursor: pointer; user-select: none;
+  }
+  .iris-flag input[type="checkbox"] {
+    width:14px; height:14px; cursor:pointer; accent-color:var(--accent-gold);
+    flex-shrink: 0; appearance: checkbox; -webkit-appearance: checkbox;
+  }
+  .iris-layer .shape-picker { grid-template-columns: repeat(auto-fill, minmax(48px,1fr)); }
+  .add-iris-btn {
+    width: 100%; padding: 9px; background: transparent;
+    border: 1px dashed var(--border); color: var(--muted);
+    font-family: 'Space Mono', monospace; font-size: 11px; border-radius: 7px;
+    cursor: pointer; text-transform: uppercase; letter-spacing: 0.07em;
+    transition: border-color 0.12s, color 0.12s;
+  }
+  .add-iris-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Character Height Sheet</h1>
+  <p>Proportion reference generator for artists</p>
+</header>
+
+<!-- Floating Generate Button (shows when on Face tab) -->
+<button id="floatingGenerate" onclick="generateFace()">⟳ Generate</button>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('height')">Body</button>
+  <button class="tab-btn" onclick="switchTab('face')">Face</button>
+</div>
+
+<!-- ═══════════ BODY TAB ═══════════ -->
+<div class="tab-page active" id="tab-height">
+  <div class="panel" style="width:100%;">
+  <div class="panel-title">Character Parameters</div>
+  <div class="field-grid">
+    <div class="field"><label>Height (cm)</label><input type="number" id="heightInput" placeholder="e.g. 175" min="100" max="300"/></div>
+    <div class="field"><label>Gender</label><select id="genderSelect"><option value="male">Male</option><option value="female">Female</option></select></div>
+    <div class="field"><label>Shoulder width (cm)</label><input type="number" id="shoulderWidthInput" placeholder="auto"/></div>
+    <div class="field"><label>Waist width (cm)</label><input type="number" id="waistWidthInput" placeholder="auto"/></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn-primary" onclick="generateHeight()">Generate</button>
+    <button class="btn-secondary" onclick="resetDefaults()">Reset</button>
+  </div>
+  </div>
+  <div class="preview-wrapper" id="preview">
+    <div class="empty-state" id="emptyState">
+      <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="10" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M10 34 L10 20 L30 20 L30 34" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M20 20 L20 34" stroke="currentColor" stroke-width="1.5"/><path d="M4 20 L10 20" stroke="currentColor" stroke-width="1.5"/><path d="M30 20 L36 20" stroke="currentColor" stroke-width="1.5"/></svg>
+      Enter height and hit Generate
+    </div>
+  </div>
+  <div class="panel vis-panel" style="width:100%;">
+    <div class="panel-title">Visibility</div>
+    <div class="vis-grid">
+      <label class="vis-item"><input type="checkbox" id="vis-head" checked onchange="toggleGroup('head')"><span class="vis-check"></span><span class="vis-label">Head</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-neck" checked onchange="toggleGroup('neck')"><span class="vis-check"></span><span class="vis-label">Neck</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-torso" checked onchange="toggleGroup('torso')"><span class="vis-check"></span><span class="vis-label">Torso</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-waistbox" checked onchange="toggleGroup('waistbox')"><span class="vis-check"></span><span class="vis-label">Waist Box</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-arms" checked onchange="toggleGroup('arms')"><span class="vis-check"></span><span class="vis-label">Arms</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-hands" checked onchange="toggleGroup('hands')"><span class="vis-check"></span><span class="vis-label">Hands</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-legs" checked onchange="toggleGroup('legs')"><span class="vis-check"></span><span class="vis-label">Legs</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-feet" checked onchange="toggleGroup('feet')"><span class="vis-check"></span><span class="vis-label">Feet</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-lines" checked onchange="toggleGroup('lines')"><span class="vis-check"></span><span class="vis-label">Lines</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-labels" checked onchange="toggleGroup('labels')"><span class="vis-check"></span><span class="vis-label">Labels</span></label>
+      <label class="vis-item"><input type="checkbox" id="vis-grid" checked onchange="toggleGrid()"><span class="vis-check"></span><span class="vis-label">Grid</span></label>
+      <label class="vis-item" style="grid-column: 1 / -1;"><input type="checkbox" id="opt-armrotate" onchange="applyArmRotation()"><span class="vis-check"></span><span class="vis-label">Rotate Arms Out 15°</span></label>
+    </div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div style="width:10px;height:10px;border-radius:50%;background:var(--accent-red)"></div> Skeletal (red)</div>
+    <div class="legend-item"><div style="width:10px;height:10px;border-radius:50%;background:var(--accent-blue)"></div> Body mass (blue)</div>
+    <div class="legend-item"><div style="width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,0.3)"></div> Body sections</div>
+  </div>
+  <div style="width:100%; display:flex; gap:10px;">
+    <button class="btn-secondary" id="downloadBtn" style="flex:1;" onclick="downloadSheet()">⬇ JPEG</button>
+    <button class="btn-secondary" id="excelExportBtn" style="flex:1;" onclick="exportExcel()">⬇ Excel</button>
+    <label class="btn-secondary" style="flex:1; text-align:center; cursor:pointer; padding:11px 16px; border-radius:6px; font-family:'Space Mono',monospace; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; border:1px solid var(--border); color:var(--muted);">
+      ⬆ Load Excel<input type="file" id="excelUpload" accept=".xlsx" style="display:none;" onchange="importExcel(event)">
+    </label>
+  </div>
+</div>
+
+<!-- ═══════════ FACE TAB ═══════════ -->
+<div class="tab-page" id="tab-face">
+  <div class="panel" style="width:100%;">
+    <div class="panel-title">Face Settings</div>
+    <div class="field-grid" style="margin-bottom:8px;">
+      <div class="field" style="grid-column: 1 / -1;">
+        <label>Preset</label>
+        <select id="facePreset" onchange="applyFacePreset()">
+          <option value="">— Custom —</option>
+          <option value="adult-male">Adult Male</option>
+          <option value="adult-female">Adult Female</option>
+        </select>
+      </div>
+    </div>
+    <div class="panel-title">Head &amp; Chin</div>
+    <div class="field-grid">
+      <div class="field"><label>Prominent Face %</label><input type="number" id="prominentFace" value="50" min="0" max="100"/></div>
+      <div class="field"><label>Chin Points (1–4)</label><input type="number" id="chinPoints" value="2" min="1" max="4"/></div>
+      <div class="field"><label>Eye margin % (inner slack)</label><input type="number" id="innerSlack" value="15" min="0" max="45" step="1"/></div>
+    </div>
+    <div id="chinShapeSelectors" style="display:flex; flex-direction:column; gap:6px; margin-top:8px;"></div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button class="btn-primary" onclick="generateFace()">Generate</button>
+      <button class="btn-secondary" onclick="resetFaceDefaults()">Reset Defaults</button>
+      <button class="btn-secondary" onclick="resetChin()">Reset Chin</button>
+      <button class="btn-secondary" onclick="downloadFace()">⬇ JPEG</button>
+    </div>
+  </div>
+
+  <div class="panel" style="width:100%;">
+    <div class="panel-title">Nose</div>
+    <div class="field-grid">
+      <div class="field"><label>Width ratio (1:N face)</label><input type="number" id="noseWidthRatio" value="3" min="2" max="10" step="0.5"/></div>
+      <div class="field"><label>Height ratio (W:N nose)</label><input type="number" id="noseHeightRatio" value="2" min="0.5" max="6" step="0.5"/></div>
+      <div class="field"><label>Shape width % of box</label><input type="number" id="noseShapeWidth" value="100" min="20" max="200" step="5"/></div>
+      <div class="field"><label>Shape height % of box</label><input type="number" id="noseShapeHeight" value="100" min="10" max="200" step="5"/></div>
+      <div class="field"><label>Offset X (px)</label><input type="number" id="noseOffsetX" value="0" min="-200" max="200" step="1" oninput="drawFace()"/></div>
+      <div class="field"><label>Offset Y (px)</label><input type="number" id="noseOffsetY" value="0" min="-200" max="200" step="1" oninput="drawFace()"/></div>
+    </div>
+    <label style="font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:8px; display:block;">Front Shape</label>
+    <div id="noseShapePicker" class="shape-picker"></div>
+    <input type="hidden" id="noseShape" value="teardrop"/>
+    <div class="field" style="margin-top:12px;"><label>Side width ratio (1:N nose W)</label><input type="number" id="noseSideWidthRatio" value="1" min="0.5" max="4" step="0.25"/></div>
+    <div class="field-grid" style="margin-top:8px;">
+      <div class="field"><label>Tip position % (back→front)</label><input type="number" id="noseSideTipX" value="100" min="0" max="100" step="5" oninput="drawFace()"/></div>
+      <div class="field"><label>Tip angle % (up→down)</label><input type="number" id="noseSideTipY" value="55" min="0" max="100" step="5" oninput="drawFace()"/></div>
+    </div>
+    <label style="font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin:12px 0 8px; display:block;">Side Shape</label>
+    <div id="noseSideShapePicker" class="shape-picker"></div>
+    <input type="hidden" id="noseSideShape" value="straight-bridge"/>
+  </div>
+
+  <div class="panel" style="width:100%;">
+    <div class="panel-title">Eyebrows</div>
+    <div class="field-grid">
+      <!-- PATCH 4: removed "Rounded (arch)", renamed circle-anime → flat-oval -->
+      <div class="field">
+        <label>Line shape</label>
+        <select id="browShape">
+          <option value="straight">Straight</option>
+          <option value="curved">Curved</option>
+          <option value="flat-oval">Flat Oval (anime)</option>
+        </select>
+      </div>
+      <div class="field"><label>Rotation (°)</label><input type="number" id="browRotation" value="0" min="-30" max="30"/></div>
+      <div class="field"><label>Thickness ratio (H×)</label><input type="number" id="browThickness" value="1" min="0.1" max="3" step="0.1"/></div>
+    </div>
+  </div>
+
+  <div class="panel" style="width:100%;">
+    <div class="panel-title">Eyes</div>
+    <div class="field-grid">
+      <div class="field"><label>H ratio (W:H eye)</label><input type="number" id="eyeHeightRatio" value="1" min="0.3" max="4" step="0.1"/></div>
+    </div>
+    <div class="iris-flags" style="margin-bottom:12px;">
+      <label class="iris-flag"><input type="checkbox" id="eyeFlipRight"/> Flip right</label>
+      <label class="iris-flag"><input type="checkbox" id="eyeRotate180"/> Rotate 180°</label>
+    </div>
+    <label style="font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:8px; display:block;">Eye Shape</label>
+    <div id="eyeShapePicker" class="shape-picker"></div>
+    <input type="hidden" id="eyeShape" value="almond"/>
+    <!-- Eye point editor -->
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+      <div class="iris-flags" style="margin-bottom:10px;">
+        <label class="iris-flag"><input type="checkbox" id="eyePointsEnabled" onchange="onEyePointsToggle()"/> Edit Points (live)</label>
+      </div>
+      <div id="eyePointControls" style="display:none;">
+        <div class="field-grid" style="margin-bottom:8px;">
+          <div class="field">
+            <label>Point count</label>
+            <input type="number" id="eyePointCount" value="8" min="3" max="20" step="1" oninput="onEyePointCountChange()"/>
+          </div>
+          <div class="field">
+            <label>Curve mode</label>
+            <select id="eyeCurveMode" onchange="drawFace()">
+              <option value="smooth">Smooth</option>
+              <option value="straight">Straight</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn-secondary" style="width:100%; font-size:10px; padding:7px;" onclick="resetEyePoints()">↺ Reset Points to Shape</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" style="width:100%;">
+    <!-- PATCH 5: removed coverage dropdown — iris is now masked by eye shape path -->
+    <div class="panel-title">Iris <span style="font-size:9px;color:var(--muted);text-transform:none;letter-spacing:0;">— clipped to eye shape</span></div>
+    <div class="field-grid" style="margin-bottom:12px;">
+      <div class="field"><label>Base width ratio (1:N eye)</label><input type="number" id="irisWidthRatio" value="3" min="1" max="10" step="0.5"/></div>
+    </div>
+    <div id="irisLayersContainer"></div>
+    <button class="add-iris-btn" onclick="addIrisLayer()">+ Add Iris Layer</button>
+  </div>
+
+  <div class="panel" style="width:100%;">
+    <div class="panel-title">Mouth</div>
+    <div class="field-grid">
+      <div class="field"><label>Vertical offset (px)</label><input type="number" id="mouthOffsetY" value="0" min="-200" max="200" step="1" oninput="drawFace()"/></div>
+      <div class="field"><label>Width % of default</label><input type="number" id="mouthWidthPct" value="100" min="20" max="200" step="5" oninput="drawFace()"/></div>
+    </div>
+    <label style="font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin:12px 0 8px; display:block;">Mouth Shape</label>
+    <div id="mouthShapePicker" class="shape-picker"></div>
+    <input type="hidden" id="mouthShape" value="smile"/>
+  </div>
+
+  <div style="width:100%; display:flex; gap:10px; margin-bottom: 8px;">
+    <button class="btn-secondary" style="flex:1;" onclick="exportFaceExcel()">⬇ Export Face Excel</button>
+    <label class="btn-secondary" style="flex:1; text-align:center; cursor:pointer; padding:11px 16px; border-radius:6px; font-family:'Space Mono',monospace; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; border:1px solid var(--border); color:var(--muted);">
+      ⬆ Import Face Excel<input type="file" id="faceExcelUpload" accept=".xlsx" style="display:none;" onchange="importFaceExcel(event)">
+    </label>
+  </div>
+
+  <div class="face-canvas-wrap" id="faceWrap" style="width:100%;">
+    <canvas id="faceCanvas"></canvas>
+  </div>
+  <div style="font-size:10px; color:var(--muted); text-align:center; font-family:'Space Mono',monospace; text-transform:uppercase; letter-spacing:0.08em; padding-bottom: 16px;">
+    Drag the gold handles to adjust chin points
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// BODY TAB
+// ═══════════════════════════════════════
+const preview = document.getElementById("preview");
+let leftArmWrap = null, rightArmWrap = null, lastGenerated = null;
+const REAL_CANVAS_HEIGHT = 3200, HEADS_TOTAL = 9;
+const SCALE_FACTOR = 800 / REAL_CANVAS_HEIGHT, PADDING_PX = 30;
+const characters = [{height:173,heads:8},{height:190,heads:9},{height:162,heads:5},{height:220,heads:8}];
+let totalCmPerHead = 0;
+characters.forEach(c => { totalCmPerHead += c.height / c.heads; });
+const CM_PER_HEAD = totalCmPerHead / characters.length;
+const PX_PER_CM = REAL_CANVAS_HEIGHT / (HEADS_TOTAL * CM_PER_HEAD);
+
+function createGrid() {
+  const headHeightPx = (REAL_CANVAS_HEIGHT / HEADS_TOTAL) * SCALE_FACTOR;
+  for (let i = 0; i <= HEADS_TOTAL; i++) {
+    const line = document.createElement("div"); line.className = "grid-line";
+    line.style.bottom = (i * headHeightPx + PADDING_PX) + "px"; preview.appendChild(line);
+    const label = document.createElement("div"); label.className = "grid-label";
+    label.style.bottom = (i * headHeightPx + PADDING_PX - 6) + "px";
+    label.innerText = i + "H (" + Math.round(i * CM_PER_HEAD) + "cm)"; preview.appendChild(label);
+  }
+}
+function getHeadBoxWidth() { return (REAL_CANVAS_HEIGHT / HEADS_TOTAL) * SCALE_FACTOR * 5/6; }
+function setDefaultWidths() {
+  const w = getHeadBoxWidth() / (PX_PER_CM * SCALE_FACTOR);
+  document.getElementById("shoulderWidthInput").value = w.toFixed(1);
+  document.getElementById("waistWidthInput").value = w.toFixed(1);
+}
+function resetDefaults() {
+  setDefaultWidths(); document.getElementById("heightInput").value = "";
+  document.querySelectorAll('.height-line,.head-box,.neck-box,.neck-line,.shoulder-line,.torso-box,.waist-box,.line-label,.hip-line,.knee-line,.leg-box,.waist-line').forEach(el => el.remove());
+  document.getElementById("emptyState").style.display = "flex";
+}
+function generateHeight() {
+  document.querySelectorAll('.height-line,.head-box,.neck-box,.neck-line,.shoulder-line,.torso-box,.waist-box,.line-label,.hip-line,.knee-line,.leg-box,.waist-line').forEach(el => el.remove());
+  document.getElementById("emptyState").style.display = "none";
+  const cm = parseFloat(document.getElementById("heightInput").value);
+  if (!cm) { document.getElementById("emptyState").style.display = "flex"; return; }
+  const gender = document.getElementById("genderSelect").value;
+  const displayPx = cm * PX_PER_CM * SCALE_FACTOR + PADDING_PX;
+  const headSpacing = (REAL_CANVAS_HEIGHT / HEADS_TOTAL) * SCALE_FACTOR;
+  const headBoxHeight = headSpacing, headBoxWidth = headBoxHeight * 5/6;
+  const headBoxWidthCm = headBoxWidth / (PX_PER_CM * SCALE_FACTOR);
+  const shoulderInput = document.getElementById("shoulderWidthInput");
+  const waistInput = document.getElementById("waistWidthInput");
+  if (!shoulderInput.value) shoulderInput.value = headBoxWidthCm.toFixed(1);
+  if (!waistInput.value) waistInput.value = headBoxWidthCm.toFixed(1);
+  const shoulderWidthPx = parseFloat(shoulderInput.value) * PX_PER_CM * SCALE_FACTOR;
+  const waistWidthPx = parseFloat(waistInput.value) * PX_PER_CM * SCALE_FACTOR;
+  const extra5px = 5 * PX_PER_CM * SCALE_FACTOR;
+  function addLine(cls, bottom, group, tooltip) {
+    const el = document.createElement("div"); el.className = cls; el.style.bottom = bottom + "px";
+    if (group) el.dataset.group = group;
+    if (tooltip) {
+      el.classList.add("has-tooltip");
+      const tt = document.createElement("div"); tt.className = "line-tooltip";
+      tt.innerHTML = `<div>${tooltip.label}</div><div class="tt-formula">${tooltip.formula}</div>`;
+      el.appendChild(tt);
+      el.addEventListener('click', e => { e.stopPropagation(); document.querySelectorAll('.has-tooltip.tt-active').forEach(x => { if (x !== el) x.classList.remove('tt-active'); }); el.classList.toggle('tt-active'); });
+    }
+    preview.appendChild(el); return el;
+  }
+  function addLabel(bottom, text, color, group) {
+    const el = document.createElement("div"); el.className = "line-label";
+    el.style.bottom = (bottom - 6) + "px"; el.innerText = text;
+    if (color) el.style.color = color;
+    el.dataset.group = group || "labels"; preview.appendChild(el);
+  }
+  function addBox(cls, left, bottom, width, height, group) {
+    const el = document.createElement("div"); el.className = cls;
+    el.style.left = left; el.style.bottom = bottom + "px";
+    el.style.width = width + "px"; el.style.height = height + "px";
+    if (group) el.dataset.group = group; preview.appendChild(el); return el;
+  }
+  addLine("height-line", displayPx, "lines", {label:"Top of head", formula:"Character height input"});
+  const headBox = addBox("head-box", `calc(50% - ${headBoxWidth/2}px)`, displayPx - headBoxHeight, headBoxWidth, headBoxHeight, "head");
+  for (let i = 0; i < 6; i++) headBox.appendChild(document.createElement("div"));
+  const neckBottom = displayPx - headBoxHeight - headBoxHeight/3;
+  addBox("neck-box", `calc(50% - ${headBoxWidth/6}px)`, neckBottom, headBoxWidth/3, headBoxHeight/3, "neck");
+  addLine("neck-line", neckBottom, "lines", {label:"Neck / Shoulder line", formula:"Head top − 1 head − ⅓ head"});
+  addLabel(neckBottom, `Neck · ${Math.round((neckBottom - PADDING_PX)/(PX_PER_CM*SCALE_FACTOR))} cm`, null, "labels");
+  const shoulderBottom = neckBottom;
+  addLine("shoulder-line", shoulderBottom, "lines", {label:"Shoulder line", formula:"Same as neck line"});
+  const buttPosition = PADDING_PX + (shoulderBottom - PADDING_PX) / 2;
+  addLine("height-line", buttPosition, "lines", {label:"Butt line", formula:"Neck height ÷ 2"});
+  addLabel(buttPosition, `Butt · ${Math.round((buttPosition - PADDING_PX)/(PX_PER_CM*SCALE_FACTOR))} cm`, null, "labels");
+  const waistMid = PADDING_PX + ((neckBottom - PADDING_PX) + (buttPosition - PADDING_PX)) / 2;
+  addLine("waist-line", waistMid, "lines", {label:"Waist line", formula:"Midpoint of Neck & Butt"});
+  addLabel(waistMid, `Waist · ${Math.round((waistMid - PADDING_PX)/(PX_PER_CM*SCALE_FACTOR))} cm`, "#88aaff", "labels");
+  const totalTorso = shoulderBottom - buttPosition;
+  const torsoHeight = gender==='male' ? totalTorso*3/4 : totalTorso/2;
+  const waistHeight = gender==='male' ? totalTorso/4 : totalTorso/2;
+  const torsoBox = addBox("torso-box", `calc(50% - ${shoulderWidthPx/2}px)`, buttPosition+waistHeight, shoulderWidthPx, torsoHeight, "torso");
+  torsoBox.style.display='grid'; torsoBox.style.gridTemplateRows='1fr 1fr'; torsoBox.style.gridTemplateColumns='1fr 1fr';
+  torsoBox.style.background='rgba(255,255,160,0.12)';
+  for (let i=0;i<4;i++) torsoBox.appendChild(document.createElement('div'));
+  const waistBox = addBox("waist-box", `calc(50% - ${waistWidthPx/2}px)`, buttPosition, waistWidthPx, waistHeight, "waistbox");
+  waistBox.style.display='grid'; waistBox.style.gridTemplateRows='1fr 1fr 1fr'; waistBox.style.gridTemplateColumns='1fr 1fr';
+  waistBox.style.background='rgba(255,160,185,0.12)';
+  for (let i=0;i<6;i++) waistBox.appendChild(document.createElement('div'));
+  const hipBottom = buttPosition + waistHeight*2/3;
+  addLine("hip-line", hipBottom, "lines", {label:"Hip line", formula:"Butt + ⅔ of waist section height"});
+  addLabel(hipBottom, `Hip · ${Math.round((hipBottom-PADDING_PX)/(PX_PER_CM*SCALE_FACTOR))} cm`, "#88aaff", "labels");
+  const kneeBottom = PADDING_PX + (hipBottom - PADDING_PX)/2;
+  addLine("knee-line", kneeBottom, "lines", {label:"Knee line", formula:"Hip height ÷ 2"});
+  addLabel(kneeBottom, `Knee · ${Math.round((kneeBottom-PADDING_PX)/(PX_PER_CM*SCALE_FACTOR))} cm`, "#88aaff", "labels");
+  const legW = waistWidthPx/2 + extra5px;
+  addBox("leg-box", `calc(50% - ${legW}px)`, PADDING_PX, legW, hipBottom-PADDING_PX, "legs");
+  addBox("leg-box", `calc(50%)`, PADDING_PX, legW, hipBottom-PADDING_PX, "legs");
+  const armHeight = torsoHeight + waistHeight;
+  const handHeight = gender==='male' ? headBoxHeight*4/5 : headBoxHeight*2/3;
+  const handWidth = handHeight/2;
+  function makeArm(isLeft) {
+    const wrap = document.createElement("div");
+    if (isLeft) leftArmWrap = wrap; else rightArmWrap = wrap;
+    wrap.dataset.group="arms"; wrap.dataset.armwrap=isLeft?"left":"right";
+    wrap.style.cssText=`position:absolute;left:calc(50% ${isLeft?'-':'+' } ${shoulderWidthPx/2}px);bottom:${buttPosition+armHeight}px;width:0;height:0;overflow:visible;transform-origin:0 0;transform:rotate(0deg)`;
+    preview.appendChild(wrap);
+    const arm = document.createElement("div"); arm.className="leg-box"; arm.dataset.group="arms";
+    arm.style.cssText=`position:absolute;left:${isLeft?-extra5px:0}px;top:0;width:${extra5px}px;height:${armHeight}px`; wrap.appendChild(arm);
+    const hand = document.createElement("div"); hand.className="leg-box"; hand.dataset.group="hands";
+    hand.style.cssText=`position:absolute;left:${isLeft?(-extra5px/2-handWidth/2):(extra5px/2-handWidth/2)}px;top:${armHeight}px;width:${handWidth}px;height:${handHeight}px`; wrap.appendChild(hand);
+    const split = document.createElement("div"); split.className="leg-box"; split.dataset.group="hands";
+    split.style.cssText=`position:absolute;left:${isLeft?(-extra5px/2):(extra5px/2)}px;top:${armHeight}px;width:0;height:${handHeight}px;border:none;border-left:1px dashed rgba(255,255,255,0.25)`; wrap.appendChild(split);
+  }
+  makeArm(true); makeArm(false);
+  const footHeight = PADDING_PX + (kneeBottom - PADDING_PX)/4;
+  addBox("leg-box", `calc(50% - ${legW}px)`, PADDING_PX, legW, footHeight-PADDING_PX, "feet");
+  addBox("leg-box", `calc(50%)`, PADDING_PX, legW, footHeight-PADDING_PX, "feet");
+  addLine("knee-line", footHeight, "lines", {label:"Ankle line", formula:"Knee height ÷ 4"});
+  addLabel(footHeight, `Ankle · ${Math.round((footHeight-PADDING_PX)/(PX_PER_CM*SCALE_FACTOR))} cm`, "#88aaff", "labels");
+  lastGenerated = {cm, gender, shoulderWidthCm:parseFloat(shoulderInput.value), waistWidthCm:parseFloat(waistInput.value), neckBottom, shoulderBottom, buttPosition, waistMid, hipBottom, kneeBottom, footHeight};
+  document.querySelectorAll('[data-group]').forEach(el => {
+    const g = el.dataset.group, cb = document.getElementById('vis-'+g);
+    if (cb && !cb.checked) el.style.display='none';
+  });
+  applyArmRotation();
+}
+function downloadSheet() {
+  const btn = document.getElementById("downloadBtn"); btn.textContent="Generating…"; btn.disabled=true;
+  html2canvas(preview, {backgroundColor:"#161618", scale:2, useCORS:true, logging:false}).then(canvas => {
+    const link = document.createElement("a");
+    link.download=`height-sheet-${document.getElementById("heightInput").value||"character"}cm-${document.getElementById("genderSelect").value}.jpg`;
+    link.href=canvas.toDataURL("image/jpeg", 0.95); link.click();
+    btn.textContent="⬇ Download as JPEG"; btn.disabled=false;
+  }).catch(() => { btn.textContent="⬇ Download as JPEG"; btn.disabled=false; alert("Download failed"); });
+}
+function toggleGroup(group) {
+  const show = document.getElementById('vis-'+group).checked;
+  document.querySelectorAll(`[data-group="${group}"]`).forEach(el => el.style.display=show?'':'none');
+}
+function toggleGrid() {
+  const show = document.getElementById('vis-grid').checked;
+  document.querySelectorAll('.grid-line,.grid-label').forEach(el => el.style.display=show?'':'none');
+}
+function applyArmRotation() {
+  const r = document.getElementById('opt-armrotate').checked;
+  if (leftArmWrap) leftArmWrap.style.transform=r?"rotate(15deg)":"rotate(0deg)";
+  if (rightArmWrap) rightArmWrap.style.transform=r?"rotate(-15deg)":"rotate(0deg)";
+}
+document.addEventListener('click', () => document.querySelectorAll('.has-tooltip.tt-active').forEach(x => x.classList.remove('tt-active')));
+function exportExcel() {
+  if (!lastGenerated) { alert('Generate a character first!'); return; }
+  const d=lastGenerated, S=PX_PER_CM*SCALE_FACTOR;
+  const headers=['Total Height (cm)','Gender','Shoulder Width (cm)','Waist Width (cm)','Neck Height (cm)','Shoulder Height (cm)','Waist Height (cm)','Butt Height (cm)','Hip Height (cm)','Knee Height (cm)','Ankle Height (cm)'];
+  const row=[d.cm,d.gender,d.shoulderWidthCm,d.waistWidthCm,+((d.neckBottom-PADDING_PX)/S).toFixed(1),+((d.shoulderBottom-PADDING_PX)/S).toFixed(1),+((d.waistMid-PADDING_PX)/S).toFixed(1),+((d.buttPosition-PADDING_PX)/S).toFixed(1),+((d.hipBottom-PADDING_PX)/S).toFixed(1),+((d.kneeBottom-PADDING_PX)/S).toFixed(1),+((d.footHeight-PADDING_PX)/S).toFixed(1)];
+  const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet([headers,row]);
+  ws['!cols']=headers.map(()=>({wch:22}));
+  XLSX.utils.book_append_sheet(wb,ws,'Character Data');
+  XLSX.writeFile(wb,`character-${d.cm}cm-${d.gender}.xlsx`);
+}
+function importExcel(event) {
+  const file=event.target.files[0]; if (!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try {
+      const wb=XLSX.read(e.target.result,{type:'array'}), ws=wb.Sheets['Character Data'];
+      if (!ws) { alert('Could not find "Character Data" sheet.'); return; }
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      if (rows.length<2) { alert('No data found.'); return; }
+      const headers=rows[0], data=rows[1];
+      const get=n=>{const i=headers.indexOf(n); return i>=0?data[i]:null;};
+      const cm=parseFloat(get('Total Height (cm)')), gender=(get('Gender')||'male').toString().toLowerCase();
+      const sW=parseFloat(get('Shoulder Width (cm)')), wW=parseFloat(get('Waist Width (cm)'));
+      if (!cm||isNaN(cm)) { alert('Could not read Total Height.'); return; }
+      document.getElementById('heightInput').value=cm;
+      document.getElementById('genderSelect').value=gender==='female'?'female':'male';
+      if (!isNaN(sW)) document.getElementById('shoulderWidthInput').value=sW;
+      if (!isNaN(wW)) document.getElementById('waistWidthInput').value=wW;
+      generateHeight();
+    } catch(err) { alert('Failed: '+err.message); }
+    event.target.value='';
+  };
+  reader.readAsArrayBuffer(file);
+}
+createGrid();
+
+// ═══════════════════════════════════════
+// TAB SWITCHING
+// ═══════════════════════════════════════
+function switchTab(tab) {
+  document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => { if (b.getAttribute('onclick')===`switchTab('${tab}')`) b.classList.add('active'); });
+  // Show/hide floating generate button
+  const floatBtn = document.getElementById('floatingGenerate');
+  if (tab === 'face') { floatBtn.classList.add('visible'); initFace(); }
+  else floatBtn.classList.remove('visible');
+}
+
+// ═══════════════════════════════════════
+// FACE GENERATOR
+// ═══════════════════════════════════════
+let faceInited=false, faceCanvas, faceCtx, faceWrap;
+const DPR=window.devicePixelRatio||1, PAD=40;
+let fW, fH, headW, headH, headX, headY, neckW, neckH, neckX, neckY, fringeY;
+let chinHandles=[];
+
+function initFace() {
+  if (faceInited) return; faceInited=true;
+  faceCanvas=document.getElementById('faceCanvas');
+  faceWrap=document.getElementById('faceWrap');
+  fW=faceWrap.clientWidth||360;
+  fH=Math.round(fW*6/5)+PAD*2+Math.round(fW*0.28);
+  faceWrap.style.height=fH+'px';
+  faceCanvas.style.width=fW+'px'; faceCanvas.style.height=fH+'px';
+  faceCanvas.width=fW*DPR; faceCanvas.height=fH*DPR;
+  faceCtx=faceCanvas.getContext('2d'); faceCtx.scale(DPR,DPR);
+  computeFaceGeometry();
+  initShapePickers();
+  initIrisLayers();
+  resetChin();
+  drawFace();
+  setupChinDrag();
+  setupEyePointDrag();
+}
+function computeFaceGeometry() {
+  headW=fW-PAD*2; headH=headW*6/5; headX=PAD; headY=PAD;
+  neckW=headW/3; neckH=headH/4; neckX=headX+headW/2-neckW/2; neckY=headY+headH;
+  fringeY=headY+headH*1/5;
+}
+const FACE_PRESETS = {
+  'adult-male': { prominentFace:60, chinPoints:3, segments:['curved','curved','curved'], noseWidthRatio:3, noseHeightRatio:1.25, eyeHeightRatio:0.5, irisWidthRatio:3 },
+  'adult-female': { prominentFace:55, chinPoints:2, segments:['curved','curved'], noseWidthRatio:3, noseHeightRatio:1.25, eyeHeightRatio:1, irisWidthRatio:1.5 }
+};
+function resetFaceDefaults() {
+  document.getElementById('facePreset').value='';
+  document.getElementById('prominentFace').value=50;
+  document.getElementById('chinPoints').value=2;
+  document.getElementById('innerSlack').value=15;
+  document.getElementById('noseWidthRatio').value=3;
+  document.getElementById('noseHeightRatio').value=2;
+  document.getElementById('noseShapeWidth').value=100;
+  document.getElementById('noseShapeHeight').value=100;
+  document.getElementById('noseSideWidthRatio').value=1;
+  document.getElementById('eyeHeightRatio').value=1;
+  document.getElementById('irisWidthRatio').value=3;
+  document.getElementById('mouthOffsetY').value=0;
+  document.getElementById('noseSideTipX').value=100;
+  document.getElementById('noseSideTipY').value=55;
+  document.getElementById('noseOffsetX').value=0;
+  document.getElementById('noseOffsetY').value=0;
+  document.getElementById('mouthShape').value='smile';
+  document.getElementById('mouthWidthPct').value=100;
+  initIrisLayers();
+  chinHandles=buildDefaultChinHandles(2);
+  buildSegmentSelectors(2);
+  drawFace(); renderChinHandles();
+}
+function applyFacePreset() {
+  const key=document.getElementById('facePreset').value;
+  if (!key||!FACE_PRESETS[key]) return;
+  const p=FACE_PRESETS[key];
+  document.getElementById('prominentFace').value=p.prominentFace;
+  document.getElementById('chinPoints').value=p.chinPoints;
+  document.getElementById('noseWidthRatio').value=p.noseWidthRatio;
+  document.getElementById('noseHeightRatio').value=p.noseHeightRatio;
+  document.getElementById('eyeHeightRatio').value=p.eyeHeightRatio;
+  document.getElementById('irisWidthRatio').value=p.irisWidthRatio;
+  chinHandles=buildDefaultChinHandles(p.chinPoints);
+  buildSegmentSelectors(p.chinPoints);
+  p.segments.forEach((shape,i) => { const sel=document.getElementById(`segShape-${i}`); if (sel) sel.value=shape; });
+  drawFace(); renderChinHandles();
+}
+function buildSegmentSelectors(segCount) {
+  const container=document.getElementById('chinShapeSelectors');
+  const existing=[]; container.querySelectorAll('select').forEach(s=>existing.push(s.value));
+  container.innerHTML='';
+  const labels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
+  for (let i=0;i<segCount;i++) {
+    const label=labels[i]||`Seg ${i+1}`, val=existing[i]||'curved';
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:10px;font-size:10px;color:var(--muted);font-family:"Space Mono",monospace;text-transform:uppercase;letter-spacing:0.06em;';
+    const sel=document.createElement('select');
+    sel.id=`segShape-${i}`; sel.style.cssText="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:'Space Mono',monospace;font-size:10px;";
+    ['curved','straight'].forEach(v=>{const opt=document.createElement('option');opt.value=v;opt.textContent=v.charAt(0).toUpperCase()+v.slice(1);if(v===val)opt.selected=true;sel.appendChild(opt);});
+    const span=document.createElement('span'); span.style.flex='1'; span.textContent=label;
+    row.appendChild(span); row.appendChild(sel); container.appendChild(row);
+  }
+}
+function generateFace() {
+  if (!faceCtx) return;
+  const newPts=parseInt(document.getElementById('chinPoints').value)||2;
+  const pct=Math.max(0,Math.min(100,parseFloat(document.getElementById('prominentFace').value)||50))/100;
+  const p1Y=headY+headH*(1-pct);
+  const p1L=chinHandles.find(h=>h.id==='p1-left'), p1R=chinHandles.find(h=>h.id==='p1-right');
+  if (p1L){p1L.x=headX;p1L.y=p1Y;} if (p1R){p1R.x=headX+headW;p1R.y=p1Y;}
+  const currentDraggable=chinHandles.filter(h=>!h.anchor&&h.id!=='p1-left'&&h.id!=='p1-right');
+  const currentPairs=currentDraggable.length/2;
+  if (newPts-1>currentPairs) {
+    const bottomY=headY+headH;
+    for (let i=currentPairs+1;i<newPts;i++){
+      const t=i/newPts, y=p1Y+(bottomY-p1Y)*t, inset=headW*(0.05+i*0.08), pid=`p${i+1}`;
+      chinHandles.push({x:headX+inset,y,anchor:false,id:`${pid}-left`});
+      chinHandles.push({x:headX+headW-inset,y,anchor:false,id:`${pid}-right`,mirrorOf:`${pid}-left`});
+    }
+  } else if (newPts-1<currentPairs) {
+    const keepIds=new Set(['bottom','p1-left','p1-right']);
+    for (let i=1;i<newPts;i++){keepIds.add(`p${i+1}-left`);keepIds.add(`p${i+1}-right`);}
+    chinHandles=chinHandles.filter(h=>keepIds.has(h.id));
+  }
+  buildSegmentSelectors(newPts); drawFace(); renderChinHandles();
+}
+function resetChin() {
+  const pts=parseInt(document.getElementById('chinPoints').value)||2;
+  chinHandles=buildDefaultChinHandles(pts); buildSegmentSelectors(pts); drawFace(); renderChinHandles();
+}
+function buildDefaultChinHandles(pts) {
+  const cx=headX+headW/2, bottomY=headY+headH;
+  const pct=Math.max(0,Math.min(100,parseFloat(document.getElementById('prominentFace').value)||50))/100;
+  const p1Y=headY+headH*(1-pct), p1LeftX=headX, p1RightX=headX+headW;
+  const handles=[];
+  handles.push({x:cx,y:bottomY,anchor:true,id:'bottom'});
+  handles.push({x:p1LeftX,y:p1Y,anchor:true,id:'p1-left'});
+  handles.push({x:p1RightX,y:p1Y,anchor:true,id:'p1-right'});
+  if (pts>=2){const y=p1Y+(bottomY-p1Y)*0.5;handles.push({x:p1LeftX+headW*0.15,y,anchor:false,id:'p2-left'});handles.push({x:p1RightX-headW*0.15,y,anchor:false,id:'p2-right',mirrorOf:'p2-left'});}
+  if (pts>=3){const y=p1Y+(bottomY-p1Y)*0.25;handles.push({x:p1LeftX+headW*0.07,y,anchor:false,id:'p3-left'});handles.push({x:p1RightX-headW*0.07,y,anchor:false,id:'p3-right',mirrorOf:'p3-left'});}
+  if (pts>=4){const y=p1Y+(bottomY-p1Y)*0.75;handles.push({x:p1LeftX+headW*0.22,y,anchor:false,id:'p4-left'});handles.push({x:p1RightX-headW*0.22,y,anchor:false,id:'p4-right',mirrorOf:'p4-left'});}
+  return handles;
+}
+
+// ═══════════════════════════════════════
+// SHAPE PICKER SYSTEM
+// ═══════════════════════════════════════
+const EYE_SHAPES = [
+  // ── Realistic ──
+  {v:'almond',l:'Almond'},       // classic tapered ends, slightly lifted
+  {v:'round',l:'Round'},         // large open circle-ish
+  {v:'hooded',l:'Hooded'},       // heavy top lid drapes over
+  {v:'monolid',l:'Monolid'},     // flat top crease, curved bottom
+  {v:'droopy',l:'Droopy'},       // outer corner falls lower
+  {v:'upturned',l:'Upturned'},   // outer corner lifts up
+  {v:'deep-set',l:'Deep Set'},   // small visible area, strong top lid shadow line
+  {v:'wide-set',l:'Wide Set'},   // wide elongated almond
+  // ── Stylised / anime ──
+  {v:'cat',l:'Cat'},             // sharp outer point, flat inner
+  {v:'manga-round',l:'Manga Rnd'}, // very large round anime eye
+  {v:'manga-sharp',l:'Manga Sharp'}, // wide with sharp outer spike
+  {v:'tareme',l:'Tareme'},       // soft droopy anime (gentle character)
+  {v:'tsurime',l:'Tsurime'},     // sharp upswept anime (fierce character)
+  {v:'crescent',l:'Crescent'},   // thin curved sliver
+  {v:'leaf',l:'Leaf'},           // pointed both ends, fully curved sides
+  {v:'gothic',l:'Gothic'},       // tall narrow almond
+];
+const NOSE_FRONT_SHAPES = [
+  // ── Realistic ──
+  {v:'nostrils',l:'Nostrils'},       // just two oval nostrils, realistic base
+  {v:'button',l:'Button'},           // small round tip + slight nostrils
+  {v:'wide',l:'Wide'},               // wide low triangle with curved base
+  {v:'slim',l:'Slim'},               // narrow tall shape
+  {v:'bulb',l:'Bulb'},               // wide round bulbous tip
+  {v:'hawk',l:'Hawk'},               // narrow ridge, pointed tip, aquiline
+  {v:'snub-front',l:'Snub'},         // low and wide, turned-up feel
+  // ── Stylised ──
+  {v:'dot',l:'Dot'},                 // single small circle (anime minimal)
+  {v:'triangle',l:'Triangle'},       // clean triangle
+  {v:'heart',l:'Heart'},             // cute heart shape
+  {v:'water-droplet',l:'Droplet'},   // thin top, very round bottom
+];
+const NOSE_SIDE_SHAPES = [
+  // All shapes use noseSideTipX (0–100) to control tip horizontal position
+  {v:'straight-bridge',l:'Straight'},   // straight bridge, angled tip
+  {v:'curved-bridge',l:'Curved'},       // gently curved bridge
+  {v:'concave',l:'Concave'},            // scooped / ski-jump bridge
+  {v:'convex',l:'Convex'},              // roman/hawk bump on bridge
+  {v:'round-tip',l:'Round Tip'},        // soft round bottom
+  {v:'upturned',l:'Upturned'},          // tip points upward
+  {v:'hooked',l:'Hooked'},              // tip hooks downward
+];
+const IRIS_SHAPES = [
+  // ── Realistic ──
+  {v:'circle',l:'Circle'},           // standard round iris
+  {v:'oval-tall',l:'Oval Tall'},     // slightly taller than wide
+  {v:'cat-slit',l:'Cat Slit'},       // vertical slit pupil inside oval
+  {v:'dilated',l:'Dilated'},         // large circle with tiny ring
+  // ── Stylised geometric ──
+  {v:'diamond',l:'Diamond'},
+  {v:'triangle-down',l:'Tri Down'},
+  {v:'triangle-up',l:'Tri Up'},
+  {v:'teardrop-down',l:'Drop Down'},
+  {v:'teardrop-up',l:'Drop Up'},
+  {v:'leaf',l:'Leaf'},
+  {v:'crescent',l:'Crescent'},
+  {v:'star4',l:'Star 4'},
+  {v:'star3',l:'Star 3'},
+  {v:'cross',l:'Cross'},
+  {v:'hex',l:'Hex'},
+  // ── Decorative / anime ──
+  {v:'heart',l:'Heart'},
+  {v:'flower',l:'Flower'},
+  {v:'swirl',l:'Swirl'},
+  {v:'target',l:'Target'},
+  {v:'sun',l:'Sun'},
+];
+
+function renderShapePreview(canvas, type, value) {
+  const dpr=window.devicePixelRatio||1;
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width/dpr, H=canvas.height/dpr;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='rgba(200,200,220,0.85)'; ctx.lineWidth=1.5*dpr;
+  ctx.scale(dpr,dpr);
+  const pad=5;
+  if (type==='eye') drawEyeShape(ctx,value,pad,pad,W-pad*2,H-pad*2,false,false);
+  else if (type==='nose-front') drawNoseFront(ctx,value,pad,pad,W-pad*2,H-pad*2);
+  else if (type==='nose-side') drawNoseSide(ctx,value,pad,pad,W-pad*2,H-pad*2,0.75,0.55);
+  else if (type==='iris') { ctx.save(); ctx.beginPath(); ctx.rect(pad,pad,W-pad*2,H-pad*2); ctx.clip(); drawIrisShapeRaw(ctx,value,pad,pad,W-pad*2,H-pad*2); ctx.restore(); }
+  else if (type==='mouth') drawMouthShape(ctx,value,pad,pad+H*0.1,W-pad*2,H-pad*2);
+  ctx.setTransform(1,0,0,1,0,0);
+}
+function buildShapePicker(containerId, hiddenId, shapes, type, tileW, tileH) {
+  const container=document.getElementById(containerId), hidden=document.getElementById(hiddenId);
+  if (!container||!hidden) return;
+  container.innerHTML='';
+  const dpr=window.devicePixelRatio||1;
+  function select(value) {
+    hidden.value=value;
+    container.querySelectorAll('.shape-tile').forEach(t=>t.classList.toggle('selected',t.dataset.value===value));
+    drawFace();
+  }
+  shapes.forEach(({v,l})=>{
+    const tile=document.createElement('div');
+    tile.className='shape-tile'+(hidden.value===v?' selected':''); tile.dataset.value=v;
+    const cnv=document.createElement('canvas');
+    cnv.width=tileW*dpr; cnv.height=tileH*dpr; cnv.style.width=tileW+'px'; cnv.style.height=tileH+'px';
+    const lbl=document.createElement('span'); lbl.textContent=l;
+    tile.appendChild(cnv); tile.appendChild(lbl);
+    tile.addEventListener('click',()=>select(v)); container.appendChild(tile);
+    requestAnimationFrame(()=>renderShapePreview(cnv,type,v));
+  });
+}
+
+// ═══════════════════════════════════════
+// IRIS LAYER SYSTEM
+// PATCH 5: removed coverage, iris masked by eye shape path
+// ═══════════════════════════════════════
+let irisLayers=[], irisLayerCounter=0;
+function defaultIrisLayer() {
+  return { id:++irisLayerCounter, shape:'circle', sizeW:100, sizeH:100, posY:50, posX:50, rotate180:false, flipRight:false };
+}
+function addIrisLayer(existingLayer) {
+  if (irisLayers.length>=5) return;
+  const layer=existingLayer||defaultIrisLayer();
+  irisLayers.push(layer); renderIrisLayerUI(layer); drawFace();
+}
+function removeIrisLayer(id) {
+  irisLayers=irisLayers.filter(l=>l.id!==id);
+  const el=document.getElementById('iris-layer-'+id); if (el) el.remove(); drawFace();
+}
+function irisLayerChanged(id, field, value) {
+  const layer=irisLayers.find(l=>l.id===id); if (!layer) return; layer[field]=value; drawFace();
+}
+function irisLayerShapeSelected(id, shape) {
+  const layer=irisLayers.find(l=>l.id===id); if (!layer) return; layer.shape=shape;
+  const container=document.querySelector(`#iris-layer-${id} .shape-picker`);
+  if (container) container.querySelectorAll('.shape-tile').forEach(t=>t.classList.toggle('selected',t.dataset.value===shape));
+  drawFace();
+}
+function renderIrisLayerUI(layer) {
+  const container=document.getElementById('irisLayersContainer');
+  const dpr=window.devicePixelRatio||1;
+  const div=document.createElement('div'); div.className='iris-layer'; div.id='iris-layer-'+layer.id;
+  div.innerHTML=`
+    <div class="iris-layer-header"><span>Layer ${layer.id}</span><button onclick="removeIrisLayer(${layer.id})">✕ Remove</button></div>
+    <div class="field-grid iris-layer-fields">
+      <div class="field"><label>Width %</label><input type="number" value="${layer.sizeW}" min="10" max="200" step="5" oninput="irisLayerChanged(${layer.id},'sizeW',parseFloat(this.value)||100)"/></div>
+      <div class="field"><label>Height %</label><input type="number" value="${layer.sizeH}" min="10" max="200" step="5" oninput="irisLayerChanged(${layer.id},'sizeH',parseFloat(this.value)||100)"/></div>
+      <div class="field"><label>H-Pos % (in→out)</label><input type="number" value="${layer.posX}" min="0" max="100" oninput="irisLayerChanged(${layer.id},'posX',parseFloat(this.value)||50)"/></div>
+      <div class="field"><label>V-Pos % (top→bot)</label><input type="number" value="${layer.posY}" min="0" max="100" oninput="irisLayerChanged(${layer.id},'posY',parseFloat(this.value)||50)"/></div>
+    </div>
+    <div class="iris-flags">
+      <label class="iris-flag"><input type="checkbox" ${layer.rotate180?'checked':''} onchange="irisLayerChanged(${layer.id},'rotate180',this.checked)"/> Rotate 180°</label>
+      <label class="iris-flag"><input type="checkbox" ${layer.flipRight?'checked':''} onchange="irisLayerChanged(${layer.id},'flipRight',this.checked)"/> Flip right eye</label>
+    </div>
+    <label style="font-size:9px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:6px;display:block;">Shape</label>
+    <div class="shape-picker" id="iris-picker-${layer.id}"></div>
+  `;
+  container.appendChild(div);
+  const pickerEl=div.querySelector('.shape-picker');
+  IRIS_SHAPES.forEach(({v,l})=>{
+    const tile=document.createElement('div');
+    tile.className='shape-tile'+(layer.shape===v?' selected':''); tile.dataset.value=v;
+    const cnv=document.createElement('canvas'); cnv.width=42*dpr; cnv.height=42*dpr; cnv.style.width='42px'; cnv.style.height='42px';
+    const lbl=document.createElement('span'); lbl.textContent=l;
+    tile.appendChild(cnv); tile.appendChild(lbl);
+    tile.addEventListener('click',()=>irisLayerShapeSelected(layer.id,v)); pickerEl.appendChild(tile);
+    requestAnimationFrame(()=>renderShapePreview(cnv,'iris',v));
+  });
+}
+
+// ─── PATCH 5: Eye-shape-masked iris drawing ───────────────────────────────
+// Creates a clip path matching the eye shape, then draws iris inside it
+function drawIrisLayers(ctx, eyeX, eyeY, eyeW, eyeH, baseIrisW, eyeShape, isRight, eyeFlip, eyeRot180, customPts) {
+  if (irisLayers.length===0) return;
+  ctx.save();
+  // Clip to the eye shape — use custom points if available, else built-in shape
+  if (customPts && customPts.length >= 3) {
+    clipToEyeFromPoints(ctx, customPts, eyeX, eyeY, eyeW, eyeH, isRight, eyeFlip, eyeRot180);
+  } else {
+    clipToEyeShape(ctx, eyeShape, eyeX, eyeY, eyeW, eyeH, eyeFlip, eyeRot180);
+  }
+
+  irisLayers.forEach(layer=>{
+    const lW=baseIrisW*(layer.sizeW/100);
+    const lH=eyeH*(layer.sizeH/100);
+    const irisTravel=eyeW-lW;
+    let lX;
+    if (isRight) lX=eyeX+irisTravel*(layer.posX/100);
+    else         lX=eyeX+irisTravel*(1-layer.posX/100);
+    const lY=eyeY+eyeH*(layer.posY/100)-lH/2;
+
+    ctx.save();
+    const lcx=lX+lW/2, lcy=lY+lH/2;
+    ctx.translate(lcx,lcy);
+    if (layer.rotate180) ctx.rotate(Math.PI);
+    if (isRight&&layer.flipRight) ctx.scale(-1,1);
+    ctx.translate(-lcx,-lcy);
+    ctx.strokeStyle='rgba(80,160,255,0.9)'; ctx.lineWidth=1.5;
+    drawIrisShapeRaw(ctx,layer.shape,lX,lY,lW,lH);
+    ctx.restore();
+  });
+  ctx.restore();
+}
+
+// Generates a clip path that matches the eye shape drawn by drawEyeShape
+function clipToEyeShape(ctx, shape, x, y, w, h, flipped, rotate180) {
+  // Exact mirror of drawEyeShape — same transforms, same paths, used as a clip mask
+  const cx=x+w/2, cy=y+h/2, rx=w/2, ry=h/2;
+  ctx.save();
+  ctx.translate(cx,cy);
+  if (rotate180) ctx.rotate(Math.PI);
+  if (flipped) ctx.scale(-1,1);
+  ctx.translate(-cx,-cy);
+  ctx.beginPath();
+  switch(shape) {
+    case 'almond':
+      ctx.moveTo(x,cy);
+      ctx.bezierCurveTo(x+w*0.12,y+h*0.05,x+w*0.4,y,x+w*0.65,y+h*0.05);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.1,x+w,cy-ry*0.15,x+w,cy);
+      ctx.bezierCurveTo(x+w,cy+ry*0.5,x+w*0.85,y+h,x+w*0.6,y+h);
+      ctx.bezierCurveTo(x+w*0.3,y+h,x+w*0.1,y+h*0.75,x,cy); break;
+    case 'round': ctx.ellipse(cx,cy-ry*0.05,rx,ry*0.95,0,0,Math.PI*2); break;
+    case 'hooded':
+      ctx.moveTo(x,cy+ry*0.1);
+      ctx.bezierCurveTo(x+w*0.1,cy-ry*0.3,x+w*0.45,y+h*0.15,x+w*0.65,y+h*0.2);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.25,x+w,cy,x+w,cy+ry*0.1);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.85,x+w*0.15,y+h*0.85,x,cy+ry*0.1); break;
+    case 'monolid':
+      ctx.moveTo(x,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w*0.3,cy-ry*0.5,x+w*0.7,cy-ry*0.5,x+w,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w,cy+ry*0.6,x,cy+ry*0.6,x,cy-ry*0.1); break;
+    case 'droopy':
+      ctx.moveTo(x,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w*0.1,y+h*0.05,x+w*0.7,y+h*0.05,x+w,cy+ry*0.55);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.9,x+w*0.1,y+h*0.9,x,cy-ry*0.1); break;
+    case 'upturned':
+      ctx.moveTo(x,cy+ry*0.2);
+      ctx.bezierCurveTo(x+w*0.1,cy-ry*0.3,x+w*0.5,y+h*0.05,x+w,y+h*0.05);
+      ctx.bezierCurveTo(x+w,y+h*0.05,x+w,cy,x+w,cy-ry*0.35);
+      ctx.bezierCurveTo(x+w*0.8,cy+ry*0.6,x+w*0.2,cy+ry*0.7,x,cy+ry*0.2); break;
+    case 'deep-set':
+      ctx.moveTo(x+w*0.05,cy+ry*0.05);
+      ctx.bezierCurveTo(x+w*0.15,cy-ry*0.6,x+w*0.85,cy-ry*0.6,x+w*0.95,cy+ry*0.05);
+      ctx.bezierCurveTo(x+w*0.85,cy+ry*0.6,x+w*0.15,cy+ry*0.6,x+w*0.05,cy+ry*0.05); break;
+    case 'wide-set':
+      ctx.moveTo(x,cy);
+      ctx.bezierCurveTo(x+w*0.05,y+h*0.05,x+w*0.4,y,x+w*0.7,y+h*0.08);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.15,x+w,cy,x+w,cy);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.82,x+w*0.5,y+h,x+w*0.2,y+h);
+      ctx.bezierCurveTo(x+w*0.05,y+h,x,cy,x,cy); break;
+    case 'cat':
+      ctx.moveTo(x,cy+ry*0.1);
+      ctx.bezierCurveTo(x+w*0.05,y+h*0.1,x+w*0.4,y,x+w*0.7,y+h*0.05);
+      ctx.bezierCurveTo(x+w*0.88,y+h*0.1,x+w,y+h*0.1,x+w,cy-ry*0.2);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.75,x+w*0.15,y+h*0.85,x,cy+ry*0.1); break;
+    case 'manga-round': ctx.ellipse(cx,cy+ry*0.08,rx*0.92,ry*0.92,0,0,Math.PI*2); break;
+    case 'manga-sharp':
+      ctx.moveTo(x+w*0.05,cy);
+      ctx.bezierCurveTo(x+w*0.1,y+h*0.05,x+w*0.5,y,x+w*0.82,y+h*0.08);
+      ctx.bezierCurveTo(x+w*0.92,y+h*0.12,x+w*1.05,cy*0.3+y*0.7,x+w,cy);
+      ctx.bezierCurveTo(x+w*0.88,y+h*0.85,x+w*0.1,y+h,x+w*0.05,cy); break;
+    case 'tareme':
+      ctx.moveTo(x+w*0.05,cy-ry*0.2);
+      ctx.bezierCurveTo(x+w*0.1,y+h*0.08,x+w*0.55,y+h*0.05,x+w*0.85,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w*0.95,cy,x+w,cy+ry*0.3,x+w,cy+ry*0.45);
+      ctx.bezierCurveTo(x+w*0.8,y+h*0.92,x+w*0.1,y+h,x+w*0.05,cy-ry*0.2); break;
+    case 'tsurime':
+      ctx.moveTo(x+w*0.05,cy+ry*0.3);
+      ctx.bezierCurveTo(x+w*0.12,y+h*0.18,x+w*0.5,y+h*0.05,x+w*0.85,y+h*0.02);
+      ctx.bezierCurveTo(x+w*0.95,y,x+w,y-h*0.05,x+w,y);
+      ctx.bezierCurveTo(x+w,y+h*0.35,x+w*0.8,y+h*0.75,x+w*0.05,cy+ry*0.3); break;
+    case 'crescent':
+      ctx.moveTo(x,cy+ry*0.25);
+      ctx.bezierCurveTo(x+w*0.2,cy-ry*0.55,x+w*0.8,cy-ry*0.55,x+w,cy+ry*0.25);
+      ctx.bezierCurveTo(x+w*0.8,cy+ry*0.65,x+w*0.2,cy+ry*0.65,x,cy+ry*0.25);
+      ctx.closePath(); break;
+    case 'leaf':
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(x+w,y,x+w,y+h,cx,y+h);
+      ctx.bezierCurveTo(x,y+h,x,y,cx,y); break;
+    case 'gothic':
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.12,x+w,y+h*0.85,cx,y+h);
+      ctx.bezierCurveTo(x,y+h*0.85,x+w*0.1,y+h*0.12,cx,y); break;
+    default: ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+  }
+  ctx.restore();
+  ctx.clip();
+}
+
+function initIrisLayers() {
+  irisLayers=[]; irisLayerCounter=0;
+  document.getElementById('irisLayersContainer').innerHTML='';
+  addIrisLayer(defaultIrisLayer());
+}
+const MOUTH_SHAPES = [
+  // ── Realistic ──
+  {v:'smile',l:'Smile'},           // gentle upward curve, closed
+  {v:'neutral',l:'Neutral'},       // straight flat line
+  {v:'frown',l:'Frown'},           // downward curve
+  {v:'open-neutral',l:'Open Neut'}, // slightly open mouth, neutral
+  {v:'open-smile',l:'Open Smile'}, // open smiling mouth, teeth visible
+  {v:'lips-full',l:'Lips Full'},   // full cupid-bow lips, closed
+  {v:'lips-thin',l:'Lips Thin'},   // thin pressed lips
+  // ── Stylised ──
+  {v:'cat-mouth',l:'Cat Mouth'},   // anime w-shape / cat mouth
+  {v:'o-shape',l:'O Shape'},       // round surprised O
+  {v:'smirk',l:'Smirk'},           // one side raised
+  {v:'wide-grin',l:'Wide Grin'},   // exaggerated wide smile arc
+];
+// ═══════════════════════════════════════
+// EYE POINT EDITOR
+// ═══════════════════════════════════════
+let eyeCustomPoints = [];   // [{nx,ny}] normalised 0–1 within eye box (left eye)
+let eyePointsDragging = null; // {idx, side, offNx, offNy}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+// Sample N equally-spaced points along the current eye shape path
+function sampleEyeShapePath(shape, n, flipped, rotate180) {
+  const W = 200, H = 80; // offscreen resolution
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const oc = off.getContext('2d');
+  // Draw the shape path (stroke only, no transform complications)
+  // We sample from the LEFT eye always (flipped=false, rotate180=false)
+  // then mirror later in mirror logic
+  drawEyeShape(oc, shape, 0, 0, W, H, false, false);
+  // Walk the path using getImageData to find the outline pixels,
+  // but easier: re-trace analytically using a 2nd canvas with full path
+  const off2 = document.createElement('canvas');
+  off2.width = W; off2.height = H;
+  const oc2 = off2.getContext('2d');
+  oc2.strokeStyle = '#fff'; oc2.lineWidth = 1;
+  drawEyeShape(oc2, shape, 0, 0, W, H, false, false);
+  // Build points by sampling the outline at equal parametric steps
+  // We use a path-length approach: draw many tiny segments, accumulate length
+  const steps = 2000;
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    // Re-evaluate the eye shape as a polygon by sampling via the offscreen ctx
+    // We do this by drawing into an offscreen at each parametric position
+    // Simpler: use the analytical approach — just use the path directly
+    pts.push(sampleEyeAtT(shape, t, W, H));
+  }
+  // Compute cumulative arc length
+  const cumLen = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+    cumLen.push(cumLen[i-1] + Math.sqrt(dx*dx + dy*dy));
+  }
+  const totalLen = cumLen[cumLen.length-1];
+  // Pick N equally-spaced points
+  const result = [];
+  for (let k = 0; k < n; k++) {
+    const target = (k / n) * totalLen;
+    let lo = 0, hi = pts.length - 1;
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (cumLen[mid] < target) lo = mid; else hi = mid;
+    }
+    const seg = cumLen[hi] - cumLen[lo];
+    const frac = seg > 0 ? (target - cumLen[lo]) / seg : 0;
+    const x = pts[lo].x + (pts[hi].x - pts[lo].x) * frac;
+    const y = pts[lo].y + (pts[hi].y - pts[lo].y) * frac;
+    result.push({ nx: x / W, ny: y / H });
+  }
+  return result;
+}
+
+// Sample a single point at parameter t∈[0,1] around the eye shape outline
+function sampleEyeAtT(shape, t, W, H) {
+  const cx = W/2, cy = H/2, rx = W/2, ry = H/2;
+  const x = 0, y = 0, w = W, h = H;
+  // Each shape is a closed curve. We parameterise analytically.
+  switch(shape) {
+    case 'almond': {
+      // 4 bezier segments approximating almond — use the same control points
+      const segs = [
+        [x,cy,  x+w*0.12,y+h*0.05, x+w*0.4,y,    x+w*0.65,y+h*0.05],
+        [x+w*0.65,y+h*0.05, x+w*0.85,y+h*0.1, x+w,cy-ry*0.15, x+w,cy],
+        [x+w,cy, x+w,cy+ry*0.5, x+w*0.85,y+h, x+w*0.6,y+h],
+        [x+w*0.6,y+h, x+w*0.3,y+h, x+w*0.1,y+h*0.75, x,cy],
+      ];
+      return sampleBezierSegs(segs, t);
+    }
+    case 'cat': {
+      const segs = [
+        [x,cy+ry*0.1, x+w*0.05,y+h*0.1, x+w*0.4,y, x+w*0.7,y+h*0.05],
+        [x+w*0.7,y+h*0.05, x+w*0.88,y+h*0.1, x+w,y+h*0.1, x+w,cy-ry*0.2],
+        [x+w,cy-ry*0.2, x+w*0.9,y+h*0.75, x+w*0.15,y+h*0.85, x,cy+ry*0.1],
+      ];
+      return sampleBezierSegs(segs, t);
+    }
+    case 'upturned': {
+      const segs = [
+        [x,cy+ry*0.2, x+w*0.1,cy-ry*0.3, x+w*0.5,y+h*0.05, x+w,y+h*0.05],
+        [x+w,y+h*0.05, x+w,cy, x+w,cy-ry*0.35, x+w,cy-ry*0.35],
+        [x+w,cy-ry*0.35, x+w*0.8,cy+ry*0.6, x+w*0.2,cy+ry*0.7, x,cy+ry*0.2],
+      ];
+      return sampleBezierSegs(segs, t);
+    }
+    case 'droopy': {
+      const segs = [
+        [x,cy-ry*0.1, x+w*0.1,y+h*0.05, x+w*0.7,y+h*0.05, x+w,cy+ry*0.55],
+        [x+w,cy+ry*0.55, x+w*0.85,y+h*0.9, x+w*0.1,y+h*0.9, x,cy-ry*0.1],
+      ];
+      return sampleBezierSegs(segs, t);
+    }
+    default: {
+      // Fallback: ellipse
+      const angle = t * Math.PI * 2;
+      return { x: cx + Math.cos(angle)*rx, y: cy + Math.sin(angle)*ry };
+    }
+  }
+}
+
+// Evaluate a set of cubic bezier segments at parameter t∈[0,1] (uniform across segments)
+function sampleBezierSegs(segs, t) {
+  const n = segs.length;
+  const segT = t * n;
+  const si = Math.min(Math.floor(segT), n-1);
+  const lt = segT - si;
+  const [x0,y0,x1,y1,x2,y2,x3,y3] = segs[si];
+  const mt = 1-lt;
+  return {
+    x: mt*mt*mt*x0 + 3*mt*mt*lt*x1 + 3*mt*lt*lt*x2 + lt*lt*lt*x3,
+    y: mt*mt*mt*y0 + 3*mt*mt*lt*y1 + 3*mt*lt*lt*y2 + lt*lt*lt*y3,
+  };
+}
+
+// Mirror left-eye normalised point to right-eye normalised point
+function mirrorEyePoint(nx, ny, eyeFlip, eyeRot180) {
+  let mx = nx, my = ny;
+  if (eyeRot180) { mx = 1-mx; my = 1-my; }
+  if (eyeFlip)   { mx = 1-mx; }
+  return { nx: mx, ny: my };
+}
+
+// Convert normalised point to canvas coords within eye box
+function eyePtToCanvas(nx, ny, boxX, boxY, boxW, boxH) {
+  return { x: boxX + nx*boxW, y: boxY + ny*boxH };
+}
+
+// ── Core operations ──────────────────────────────────────────────────────────
+
+function onEyePointsToggle() {
+  const enabled = document.getElementById('eyePointsEnabled').checked;
+  document.getElementById('eyePointControls').style.display = enabled ? '' : 'none';
+  if (enabled) {
+    initEyePoints();
+  } else {
+    eyeCustomPoints = [];
+    removeEyePointHandles();
+    drawFace();
+  }
+}
+
+function onEyePointCountChange() {
+  if (!document.getElementById('eyePointsEnabled').checked) return;
+  initEyePoints();
+}
+
+function initEyePoints() {
+  const shape    = document.getElementById('eyeShape').value;
+  const n        = Math.max(3, Math.min(20, parseInt(document.getElementById('eyePointCount').value)||8));
+  const flip     = document.getElementById('eyeFlipRight').checked;
+  const rot180   = document.getElementById('eyeRotate180').checked;
+  eyeCustomPoints = sampleEyeShapePath(shape, n, flip, rot180);
+  renderEyePointHandles();
+  drawFace();
+}
+
+function resetEyePoints() {
+  initEyePoints();
+}
+
+// ── Draw custom eye from points ──────────────────────────────────────────────
+
+function drawEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, eyeRot180) {
+  if (!pts || pts.length < 3) return;
+  const curveMode = document.getElementById('eyeCurveMode').value;
+  // Map normalised points to canvas coords, mirroring if right eye
+  const canvasPts = pts.map(({nx,ny}) => {
+    let mnx = nx, mny = ny;
+    if (isRight) { const m = mirrorEyePoint(nx, ny, eyeFlip, eyeRot180); mnx=m.nx; mny=m.ny; }
+    return eyePtToCanvas(mnx, mny, boxX, boxY, boxW, boxH);
+  });
+  ctx.save();
+  ctx.beginPath();
+  if (curveMode === 'smooth') {
+    catmullRomPath(ctx, canvasPts, true);
+  } else {
+    ctx.moveTo(canvasPts[0].x, canvasPts[0].y);
+    canvasPts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Clip region using custom points (for iris masking)
+function clipToEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, eyeRot180) {
+  if (!pts || pts.length < 3) return false;
+  const curveMode = document.getElementById('eyeCurveMode').value;
+  const canvasPts = pts.map(({nx,ny}) => {
+    let mnx = nx, mny = ny;
+    if (isRight) { const m = mirrorEyePoint(nx, ny, eyeFlip, eyeRot180); mnx=m.nx; mny=m.ny; }
+    return eyePtToCanvas(mnx, mny, boxX, boxY, boxW, boxH);
+  });
+  ctx.save();
+  ctx.beginPath();
+  if (curveMode === 'smooth') {
+    catmullRomPath(ctx, canvasPts, true);
+  } else {
+    ctx.moveTo(canvasPts[0].x, canvasPts[0].y);
+    canvasPts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.closePath();
+  }
+  ctx.restore();
+  ctx.clip();
+  return true;
+}
+
+// Catmull-Rom spline through points (closed)
+function catmullRomPath(ctx, pts, closed) {
+  const n = pts.length;
+  const get = i => pts[((i % n) + n) % n];
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 0; i < (closed ? n : n-1); i++) {
+    const p0 = get(i-1), p1 = get(i), p2 = get(i+1), p3 = get(i+2);
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y);
+  }
+  if (closed) ctx.closePath();
+}
+
+// ── DOM handles ──────────────────────────────────────────────────────────────
+
+function renderEyePointHandles() {
+  removeEyePointHandles();
+  if (!eyeCustomPoints.length || !faceInited) return;
+  // We need eye box coords — read from last drawFace geometry
+  // Store them as module-level vars updated each drawFace
+  const eyeFlip  = document.getElementById('eyeFlipRight').checked;
+  const eyeRot180 = document.getElementById('eyeRotate180').checked;
+
+  eyeCustomPoints.forEach((pt, idx) => {
+    // Left eye handle (green)
+    const lp = eyePtToCanvas(pt.nx, pt.ny, _eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
+    const lEl = document.createElement('div');
+    lEl.className = 'eye-point'; lEl.dataset.idx = idx; lEl.dataset.side = 'left';
+    lEl.style.left = lp.x + 'px'; lEl.style.top = lp.y + 'px';
+    faceWrap.appendChild(lEl);
+
+    // Right eye handle (blue)
+    const rm = mirrorEyePoint(pt.nx, pt.ny, eyeFlip, eyeRot180);
+    const rp = eyePtToCanvas(rm.nx, rm.ny, _eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
+    const rEl = document.createElement('div');
+    rEl.className = 'eye-point right-eye'; rEl.dataset.idx = idx; rEl.dataset.side = 'right';
+    rEl.style.left = rp.x + 'px'; rEl.style.top = rp.y + 'px';
+    faceWrap.appendChild(rEl);
+  });
+}
+
+function removeEyePointHandles() {
+  faceWrap && faceWrap.querySelectorAll('.eye-point').forEach(el => el.remove());
+}
+
+function updateEyePointHandlePositions() {
+  if (!faceWrap || !eyeCustomPoints.length) return;
+  const eyeFlip   = document.getElementById('eyeFlipRight').checked;
+  const eyeRot180 = document.getElementById('eyeRotate180').checked;
+  faceWrap.querySelectorAll('.eye-point').forEach(el => {
+    const idx  = parseInt(el.dataset.idx);
+    const side = el.dataset.side;
+    const pt   = eyeCustomPoints[idx]; if (!pt) return;
+    if (side === 'left') {
+      const lp = eyePtToCanvas(pt.nx, pt.ny, _eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
+      el.style.left = lp.x + 'px'; el.style.top = lp.y + 'px';
+    } else {
+      const rm = mirrorEyePoint(pt.nx, pt.ny, eyeFlip, eyeRot180);
+      const rp = eyePtToCanvas(rm.nx, rm.ny, _eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
+      el.style.left = rp.x + 'px'; el.style.top = rp.y + 'px';
+    }
+  });
+}
+
+// ── Drag system ──────────────────────────────────────────────────────────────
+
+function setupEyePointDrag() {
+  let dragging = null; // {idx, side, startNx, startNy, startPx, startPy}
+
+  function getPos(e) {
+    const rect = faceWrap.getBoundingClientRect();
+    const cx = e.touches ? e.touches[0].clientX : e.clientX;
+    const cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: cx - rect.left, y: cy - rect.top };
+  }
+
+  faceWrap.addEventListener('mousedown', onEyePtStart);
+  faceWrap.addEventListener('touchstart', onEyePtStart, { passive: false });
+  window.addEventListener('mousemove', onEyePtMove);
+  window.addEventListener('touchmove', onEyePtMove, { passive: false });
+  window.addEventListener('mouseup', onEyePtEnd);
+  window.addEventListener('touchend', onEyePtEnd);
+
+  function onEyePtStart(e) {
+    const el = e.target.closest('.eye-point'); if (!el) return;
+    e.preventDefault(); e.stopPropagation();
+    const idx  = parseInt(el.dataset.idx);
+    const side = el.dataset.side;
+    const pos  = getPos(e);
+    dragging   = { idx, side, startPx: pos.x, startPy: pos.y,
+                   startNx: eyeCustomPoints[idx].nx, startNy: eyeCustomPoints[idx].ny };
+  }
+
+  function onEyePtMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    const { idx, side, startPx, startPy, startNx, startNy } = dragging;
+
+    // Determine which eye box to use for coordinate conversion
+    const eyeFlip   = document.getElementById('eyeFlipRight').checked;
+    const eyeRot180 = document.getElementById('eyeRotate180').checked;
+
+    if (side === 'left') {
+      // Dragging left handle → update the normalised point directly
+      const box = _eyeBoxL;
+      const dnx = (pos.x - startPx) / box.w;
+      const dny = (pos.y - startPy) / box.h;
+      eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, startNx + dnx));
+      eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, startNy + dny));
+    } else {
+      // Dragging right handle → inverse-mirror back to left normalised space
+      const box = _eyeBoxR;
+      const rawNx = Math.max(0, Math.min(1, startNx + (pos.x - startPx) / box.w));
+      const rawNy = Math.max(0, Math.min(1, startNy + (pos.y - startPy) / box.h));
+      // rawNx/rawNy are in right-eye normalised space; inverse-mirror to left
+      let lnx = rawNx, lny = rawNy;
+      if (eyeFlip)   lnx = 1 - lnx;
+      if (eyeRot180) { lnx = 1 - lnx; lny = 1 - lny; }
+      eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, lnx));
+      eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, lny));
+    }
+
+    updateEyePointHandlePositions();
+    drawFace();
+  }
+
+  function onEyePtEnd() { dragging = null; }
+}
+
+// Module-level eye box geometry (set during drawFace so handles can use them)
+let _eyeBoxL = { x:0,y:0,w:1,h:1 }, _eyeBoxR = { x:0,y:0,w:1,h:1 };
+
+function initShapePickers() {
+  buildShapePicker('eyeShapePicker','eyeShape',EYE_SHAPES,'eye',56,28);
+  buildShapePicker('noseShapePicker','noseShape',NOSE_FRONT_SHAPES,'nose-front',48,52);
+  buildShapePicker('noseSideShapePicker','noseSideShape',NOSE_SIDE_SHAPES,'nose-side',48,42);
+  buildShapePicker('mouthShapePicker','mouthShape',MOUTH_SHAPES,'mouth',56,28);
+}
+
+// ─── Shape drawing functions ───────────────────────────────────────────────
+
+function drawEyeShape(ctx, shape, x, y, w, h, flipped, rotate180) {
+  const cx=x+w/2, cy=y+h/2, rx=w/2, ry=h/2;
+  ctx.save();
+  ctx.translate(cx,cy);
+  if (rotate180) ctx.rotate(Math.PI);
+  if (flipped) ctx.scale(-1,1);
+  ctx.translate(-cx,-cy);
+  ctx.beginPath();
+  switch(shape) {
+    // ── Realistic ──
+    case 'almond':  // pointed inner & outer corners, slight lid arch
+      ctx.moveTo(x,cy);
+      ctx.bezierCurveTo(x+w*0.12,y+h*0.05, x+w*0.4,y, x+w*0.65,y+h*0.05);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.1, x+w,cy-ry*0.15, x+w,cy);
+      ctx.bezierCurveTo(x+w,cy+ry*0.5, x+w*0.85,y+h, x+w*0.6,y+h);
+      ctx.bezierCurveTo(x+w*0.3,y+h, x+w*0.1,y+h*0.75, x,cy);
+      break;
+    case 'round':   // large open circle-ish, slight lid crease
+      ctx.ellipse(cx, cy-ry*0.05, rx, ry*0.95, 0, 0, Math.PI*2); break;
+    case 'hooded':  // heavy top lid droops low, reducing visible area
+      ctx.moveTo(x,cy+ry*0.1);
+      ctx.bezierCurveTo(x+w*0.1,cy-ry*0.3, x+w*0.45,y+h*0.15, x+w*0.65,y+h*0.2);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.25, x+w,cy, x+w,cy+ry*0.1);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.85, x+w*0.15,y+h*0.85, x,cy+ry*0.1);
+      break;
+    case 'monolid': // flat top line, curved bottom — no upper crease visible
+      ctx.moveTo(x,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w*0.3,cy-ry*0.5, x+w*0.7,cy-ry*0.5, x+w,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w,cy+ry*0.6, x,cy+ry*0.6, x,cy-ry*0.1);
+      break;
+    case 'droopy':  // outer corner falls below centre line
+      ctx.moveTo(x,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w*0.1,y+h*0.05, x+w*0.7,y+h*0.05, x+w,cy+ry*0.55);
+      ctx.bezierCurveTo(x+w*0.85,y+h*0.9, x+w*0.1,y+h*0.9, x,cy-ry*0.1);
+      break;
+    case 'upturned': // outer corner lifts above centre
+      ctx.moveTo(x,cy+ry*0.2);
+      ctx.bezierCurveTo(x+w*0.1,cy-ry*0.3, x+w*0.5,y+h*0.05, x+w,y+h*0.05);
+      ctx.bezierCurveTo(x+w,y+h*0.05, x+w,cy, x+w,cy-ry*0.35);
+      ctx.bezierCurveTo(x+w*0.8,cy+ry*0.6, x+w*0.2,cy+ry*0.7, x,cy+ry*0.2);
+      break;
+    case 'deep-set': // visible slit — heavy brow shadow on top
+      ctx.moveTo(x+w*0.05,cy+ry*0.05);
+      ctx.bezierCurveTo(x+w*0.15,cy-ry*0.6, x+w*0.85,cy-ry*0.6, x+w*0.95,cy+ry*0.05);
+      ctx.bezierCurveTo(x+w*0.85,cy+ry*0.6, x+w*0.15,cy+ry*0.6, x+w*0.05,cy+ry*0.05);
+      break;
+    case 'wide-set': // very elongated almond
+      ctx.moveTo(x,cy);
+      ctx.bezierCurveTo(x+w*0.05,y+h*0.05, x+w*0.4,y, x+w*0.7,y+h*0.08);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.15, x+w,cy, x+w,cy);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.82, x+w*0.5,y+h, x+w*0.2,y+h);
+      ctx.bezierCurveTo(x+w*0.05,y+h, x,cy, x,cy);
+      break;
+    // ── Stylised / anime ──
+    case 'cat':  // sharp flat inner corner, arched top, pointed outer
+      ctx.moveTo(x,cy+ry*0.1);
+      ctx.bezierCurveTo(x+w*0.05,y+h*0.1, x+w*0.4,y, x+w*0.7,y+h*0.05);
+      ctx.bezierCurveTo(x+w*0.88,y+h*0.1, x+w,y+h*0.1, x+w,cy-ry*0.2);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.75, x+w*0.15,y+h*0.85, x,cy+ry*0.1);
+      break;
+    case 'manga-round': // very large teardrop-bottom circle, anime style
+      ctx.ellipse(cx, cy+ry*0.08, rx*0.92, ry*0.92, 0, 0, Math.PI*2); break;
+    case 'manga-sharp': // wide with sharp outer corner spike
+      ctx.moveTo(x+w*0.05,cy);
+      ctx.bezierCurveTo(x+w*0.1,y+h*0.05, x+w*0.5,y, x+w*0.82,y+h*0.08);
+      ctx.bezierCurveTo(x+w*0.92,y+h*0.12, x+w*1.05,cy*0.3+y*0.7, x+w,cy);
+      ctx.bezierCurveTo(x+w*0.88,y+h*0.85, x+w*0.1,y+h, x+w*0.05,cy);
+      break;
+    case 'tareme': // soft droopy bottom-heavy anime (kind eyes)
+      ctx.moveTo(x+w*0.05,cy-ry*0.2);
+      ctx.bezierCurveTo(x+w*0.1,y+h*0.08, x+w*0.55,y+h*0.05, x+w*0.85,cy-ry*0.1);
+      ctx.bezierCurveTo(x+w*0.95,cy, x+w,cy+ry*0.3, x+w,cy+ry*0.45);
+      ctx.bezierCurveTo(x+w*0.8,y+h*0.92, x+w*0.1,y+h, x+w*0.05,cy-ry*0.2);
+      break;
+    case 'tsurime': // sharp upswept outer corner (fierce eyes)
+      ctx.moveTo(x+w*0.05,cy+ry*0.3);
+      ctx.bezierCurveTo(x+w*0.12,y+h*0.18, x+w*0.5,y+h*0.05, x+w*0.85,y+h*0.02);
+      ctx.bezierCurveTo(x+w*0.95,y, x+w,y-h*0.05, x+w,y);
+      ctx.bezierCurveTo(x+w,y+h*0.35, x+w*0.8,y+h*0.75, x+w*0.05,cy+ry*0.3);
+      break;
+    case 'crescent': // thin curved sliver
+      ctx.moveTo(x,cy+ry*0.25);
+      ctx.bezierCurveTo(x+w*0.2,cy-ry*0.55, x+w*0.8,cy-ry*0.55, x+w,cy+ry*0.25);
+      ctx.bezierCurveTo(x+w*0.8,cy+ry*0.65, x+w*0.2,cy+ry*0.65, x,cy+ry*0.25);
+      ctx.closePath(); break;
+    case 'leaf': // symmetrical pointed both ends, fully convex sides
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(x+w,y, x+w,y+h, cx,y+h);
+      ctx.bezierCurveTo(x,y+h, x,y, cx,y);
+      break;
+    case 'gothic': // tall narrow almond, elongated vertically
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(x+w*0.9,y+h*0.12, x+w,y+h*0.85, cx,y+h);
+      ctx.bezierCurveTo(x,y+h*0.85, x+w*0.1,y+h*0.12, cx,y);
+      break;
+    default: ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawIrisShapeRaw(ctx, shape, x, y, w, h) {
+  const cx=x+w/2, cy=y+h/2, rx=w/2, ry=h/2;
+  ctx.beginPath();
+  switch(shape) {
+    // ── Realistic ──
+    case 'circle':    ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); break;
+    case 'oval-tall': ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); break;
+    case 'cat-slit':  // outer oval + vertical slit inside
+      ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+      ctx.moveTo(cx,y+h*0.08);
+      ctx.bezierCurveTo(cx+rx*0.22,cy,cx+rx*0.22,cy,cx,y+h*0.92);
+      ctx.bezierCurveTo(cx-rx*0.22,cy,cx-rx*0.22,cy,cx,y+h*0.08);
+      break;
+    case 'dilated':   // large circle with thin outer ring
+      ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+      ctx.moveTo(cx+rx*0.82,cy);
+      ctx.ellipse(cx,cy,rx*0.82,ry*0.82,0,0,Math.PI*2);
+      break;
+    // ── Geometric ──
+    case 'diamond': ctx.moveTo(cx,y);ctx.lineTo(x+w,cy);ctx.lineTo(cx,y+h);ctx.lineTo(x,cy);ctx.closePath(); break;
+    case 'triangle-down': ctx.moveTo(cx,y+h);ctx.lineTo(x,y);ctx.lineTo(x+w,y);ctx.closePath(); break;
+    case 'triangle-up':   ctx.moveTo(cx,y);ctx.lineTo(x+w,y+h);ctx.lineTo(x,y+h);ctx.closePath(); break;
+    case 'teardrop-down':
+      ctx.moveTo(cx,y+h);
+      ctx.bezierCurveTo(cx+rx*0.55,y+h*0.55, cx+rx,y, cx,y);
+      ctx.bezierCurveTo(cx-rx,y, cx-rx*0.55,y+h*0.55, cx,y+h); break;
+    case 'teardrop-up':
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(cx+rx*0.55,y+h*0.45, cx+rx,y+h, cx,y+h);
+      ctx.bezierCurveTo(cx-rx,y+h, cx-rx*0.55,y+h*0.45, cx,y); break;
+    case 'leaf':
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(x+w,y, x+w,y+h, cx,y+h);
+      ctx.bezierCurveTo(x,y+h, x,y, cx,y); break;
+    case 'crescent':
+      ctx.arc(cx,cy,Math.min(rx,ry),0,Math.PI*2);
+      ctx.moveTo(cx+rx*0.42,cy-ry*0.65);
+      ctx.arc(cx+rx*0.38,cy,Math.min(rx,ry)*0.78,Math.PI*1.5,Math.PI*0.5); break;
+    case 'star4':
+      ctx.moveTo(cx,y); ctx.lineTo(cx+rx*0.32,cy-ry*0.32);
+      ctx.lineTo(x+w,cy); ctx.lineTo(cx+rx*0.32,cy+ry*0.32);
+      ctx.lineTo(cx,y+h); ctx.lineTo(cx-rx*0.32,cy+ry*0.32);
+      ctx.lineTo(x,cy); ctx.lineTo(cx-rx*0.32,cy-ry*0.32); ctx.closePath(); break;
+    case 'star3':
+      for(let r=0;r<3;r++){const a=r*Math.PI*2/3-Math.PI/2,oa=a+Math.PI/3;if(r===0)ctx.moveTo(cx+Math.cos(a)*rx,cy+Math.sin(a)*ry);else ctx.lineTo(cx+Math.cos(a)*rx,cy+Math.sin(a)*ry);ctx.lineTo(cx+Math.cos(oa)*rx*0.36,cy+Math.sin(oa)*ry*0.36);}ctx.closePath(); break;
+    case 'cross':
+      ctx.moveTo(cx-rx*0.28,y);ctx.lineTo(cx+rx*0.28,y);ctx.lineTo(cx+rx*0.28,cy-ry*0.28);ctx.lineTo(x+w,cy-ry*0.28);ctx.lineTo(x+w,cy+ry*0.28);ctx.lineTo(cx+rx*0.28,cy+ry*0.28);ctx.lineTo(cx+rx*0.28,y+h);ctx.lineTo(cx-rx*0.28,y+h);ctx.lineTo(cx-rx*0.28,cy+ry*0.28);ctx.lineTo(x,cy+ry*0.28);ctx.lineTo(x,cy-ry*0.28);ctx.lineTo(cx-rx*0.28,cy-ry*0.28);ctx.closePath(); break;
+    case 'hex':
+      ctx.moveTo(cx,y);ctx.lineTo(x+w,cy-ry*0.5);ctx.lineTo(x+w,cy+ry*0.5);ctx.lineTo(cx,y+h);ctx.lineTo(x,cy+ry*0.5);ctx.lineTo(x,cy-ry*0.5);ctx.closePath(); break;
+    // ── Decorative / anime ──
+    case 'heart':
+      ctx.moveTo(cx,cy+ry*0.5);
+      ctx.bezierCurveTo(cx,cy-ry*0.1, x,cy-ry*0.1, x,cy-ry*0.3);
+      ctx.bezierCurveTo(x,cy-ry, cx,cy-ry, cx,cy-ry*0.3);
+      ctx.bezierCurveTo(cx,cy-ry, x+w,cy-ry, x+w,cy-ry*0.3);
+      ctx.bezierCurveTo(x+w,cy-ry*0.1, cx,cy-ry*0.1, cx,cy+ry*0.5);
+      break;
+    case 'flower': // 4-petal flower
+      for(let p=0;p<4;p++){
+        const a=p*Math.PI/2, px=cx+Math.cos(a)*rx*0.45, py=cy+Math.sin(a)*ry*0.45;
+        ctx.moveTo(px,py); ctx.ellipse(px,py,rx*0.42,ry*0.42,a,0,Math.PI*2);
+      }
+      ctx.moveTo(cx+rx*0.25,cy); ctx.ellipse(cx,cy,rx*0.25,ry*0.25,0,0,Math.PI*2); break;
+    case 'swirl':
+      ctx.arc(cx,cy,rx*0.88,-Math.PI*0.5,Math.PI*1.25);
+      ctx.arc(cx+rx*0.22,cy,rx*0.52,Math.PI*1.25,-Math.PI*0.35);
+      ctx.arc(cx+rx*0.1,cy+ry*0.08,rx*0.22,-Math.PI*0.35,Math.PI*0.85); break;
+    case 'target':
+      ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+      ctx.moveTo(cx+rx*0.58,cy); ctx.ellipse(cx,cy,rx*0.58,ry*0.58,0,0,Math.PI*2);
+      ctx.moveTo(cx+rx*0.22,cy); ctx.ellipse(cx,cy,rx*0.22,ry*0.22,0,0,Math.PI*2); break;
+    case 'sun':
+      ctx.ellipse(cx,cy,rx*0.52,ry*0.52,0,0,Math.PI*2);
+      for(let r=0;r<8;r++){const a=r*Math.PI/4,ia=a+0.2,oa=a-0.2;ctx.moveTo(cx+Math.cos(ia)*rx*0.58,cy+Math.sin(ia)*ry*0.58);ctx.lineTo(cx+Math.cos(a)*rx,cy+Math.sin(a)*ry);ctx.lineTo(cx+Math.cos(oa)*rx*0.58,cy+Math.sin(oa)*ry*0.58);} break;
+    default: ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
+  }
+  ctx.stroke();
+}
+
+function drawNoseFront(ctx, shape, x, y, w, h) {
+  const cx=x+w/2, cy=y+h/2;
+  ctx.beginPath();
+  switch(shape) {
+    // ── Realistic ──
+    case 'nostrils': // two tiny vertical straight lines — like ,, spaced apart
+      ctx.moveTo(cx-w*0.22, y+h*0.55); ctx.lineTo(cx-w*0.22, y+h*0.85);
+      ctx.moveTo(cx+w*0.22, y+h*0.55); ctx.lineTo(cx+w*0.22, y+h*0.85); break;
+    case 'button':  // small rounded triangle with nostril hints
+      ctx.moveTo(cx,y+h*0.15);
+      ctx.bezierCurveTo(cx+w*0.38,y+h*0.15, cx+w*0.5,y+h*0.5, cx+w*0.48,y+h*0.75);
+      ctx.bezierCurveTo(cx+w*0.42,y+h, cx+w*0.05,y+h, cx,y+h);
+      ctx.bezierCurveTo(cx-w*0.05,y+h, cx-w*0.42,y+h, cx-w*0.48,y+h*0.75);
+      ctx.bezierCurveTo(cx-w*0.5,y+h*0.5, cx-w*0.38,y+h*0.15, cx,y+h*0.15);
+      break;
+    case 'wide':    // wide low shape, realistic broad nose front
+      ctx.moveTo(cx-w*0.5,y+h*0.4);
+      ctx.bezierCurveTo(cx-w*0.4,y, cx+w*0.4,y, cx+w*0.5,y+h*0.4);
+      ctx.bezierCurveTo(cx+w*0.5,y+h*0.75, cx+w*0.35,y+h, cx,y+h);
+      ctx.bezierCurveTo(cx-w*0.35,y+h, cx-w*0.5,y+h*0.75, cx-w*0.5,y+h*0.4);
+      break;
+    case 'slim':    // narrow tall ridge, refined nose
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(cx+w*0.22,y+h*0.1, cx+w*0.32,y+h*0.5, cx+w*0.35,y+h*0.78);
+      ctx.bezierCurveTo(cx+w*0.28,y+h, cx-w*0.28,y+h, cx-w*0.35,y+h*0.78);
+      ctx.bezierCurveTo(cx-w*0.32,y+h*0.5, cx-w*0.22,y+h*0.1, cx,y);
+      break;
+    case 'bulb':    // wide round bulbous tip
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(cx+w*0.18,y, cx+w*0.3,y+h*0.35, cx+w*0.48,y+h*0.5);
+      ctx.bezierCurveTo(cx+w*0.65,y+h*0.65, cx+w*0.5,y+h, cx,y+h);
+      ctx.bezierCurveTo(cx-w*0.5,y+h, cx-w*0.65,y+h*0.65, cx-w*0.48,y+h*0.5);
+      ctx.bezierCurveTo(cx-w*0.3,y+h*0.35, cx-w*0.18,y, cx,y);
+      break;
+    case 'hawk':    // narrow aquiline — tall and slightly pinched
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(cx+w*0.12,y+h*0.08, cx+w*0.2,y+h*0.55, cx+w*0.22,y+h*0.78);
+      ctx.bezierCurveTo(cx+w*0.18,y+h, cx-w*0.18,y+h, cx-w*0.22,y+h*0.78);
+      ctx.bezierCurveTo(cx-w*0.2,y+h*0.55, cx-w*0.12,y+h*0.08, cx,y);
+      break;
+    case 'snub-front': // low wide turned-up feel, rounded base
+      ctx.moveTo(cx-w*0.48,y+h*0.5);
+      ctx.bezierCurveTo(cx-w*0.4,y+h*0.15, cx+w*0.4,y+h*0.15, cx+w*0.48,y+h*0.5);
+      ctx.bezierCurveTo(cx+w*0.5,y+h*0.82, cx+w*0.25,y+h, cx,y+h);
+      ctx.bezierCurveTo(cx-w*0.25,y+h, cx-w*0.5,y+h*0.82, cx-w*0.48,y+h*0.5);
+      break;
+    // ── Stylised ──
+    case 'dot':     // single small circle, minimal anime
+      ctx.ellipse(cx,cy+h*0.15,Math.min(w,h)*0.28,Math.min(w,h)*0.28,0,0,Math.PI*2); break;
+    case 'triangle':
+      ctx.moveTo(cx,y);ctx.lineTo(x+w,y+h);ctx.lineTo(x,y+h);ctx.closePath(); break;
+    case 'heart':
+      ctx.moveTo(cx,cy+h*0.25);
+      ctx.bezierCurveTo(cx,cy-h*0.05, x,cy-h*0.05, x,cy-h*0.22);
+      ctx.bezierCurveTo(x,cy-h*0.55, cx,cy-h*0.55, cx,cy-h*0.22);
+      ctx.bezierCurveTo(cx,cy-h*0.55, x+w,cy-h*0.55, x+w,cy-h*0.22);
+      ctx.bezierCurveTo(x+w,cy-h*0.05, cx,cy-h*0.05, cx,cy+h*0.25);
+      break;
+    case 'water-droplet':
+      ctx.moveTo(cx,y);
+      ctx.bezierCurveTo(cx+w*0.08,y+h*0.25, cx+w*0.45,y+h*0.45, cx+w*0.5,y+h*0.65);
+      ctx.arc(cx, y+h*0.78, w*0.5, 0, Math.PI);
+      ctx.bezierCurveTo(cx-w*0.45,y+h*0.45, cx-w*0.08,y+h*0.25, cx,y);
+      break;
+    default: ctx.ellipse(cx,cy,w*0.4,h*0.4,0,0,Math.PI*2);
+  }
+  ctx.stroke();
+}
+
+function drawNoseSide(ctx, shape, x, y, w, h, tipX, tipY) {
+  // tipX (0–1): horizontal projection of the tip (0=flat/back, 1=fully front)
+  // tipY (0–1): vertical position of the tip point (0=top of box, 1=bottom; default~0.55 = mid-lower)
+  const tipY2 = (tipY !== undefined) ? tipY : 0.55;
+  const tipXpx = x + w * tipX;
+  const tipYpx = y + h * tipY2;
+  // blendY: used for bezier control points that track tip height
+  const blend = (a, b, t) => a*(1-t)+b*t;
+  ctx.beginPath();
+  switch(shape) {
+    case 'straight-bridge':
+      ctx.moveTo(x, y);
+      ctx.lineTo(tipXpx, tipYpx);
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx, y+h, 0.5), blend(tipXpx,x,0.15), y+h, x, y+h);
+      ctx.closePath(); break;
+    case 'curved-bridge':
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(x+w*0.2, y+h*0.15, blend(tipXpx,x,0.3), blend(tipYpx,y,0.4), tipXpx, tipYpx);
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.4), blend(tipXpx,x,0.4), y+h, x, y+h);
+      ctx.closePath(); break;
+    case 'concave':
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(x+w*0.05, y+h*0.2, x-w*0.08, blend(tipYpx,y,0.1), blend(tipXpx,x,0.3), blend(tipYpx,y,0.05));
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y,0), tipXpx, blend(tipYpx,y,0.3), tipXpx, tipYpx);
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.3), blend(tipXpx,x,0.5), y+h, x, y+h);
+      ctx.closePath(); break;
+    case 'convex':
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(x+w*0.15, y+h*0.08, blend(tipXpx,x,0.1), blend(tipYpx,y,0.6), blend(tipXpx,x,0.18), blend(tipYpx,y,0.45));
+      ctx.bezierCurveTo(blend(tipXpx,x,0.28), blend(tipYpx,y,0.3), blend(tipXpx,x,0.35), blend(tipYpx,y,0.2), tipXpx, tipYpx);
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.4), blend(tipXpx,x,0.45), y+h, x, y+h);
+      ctx.closePath(); break;
+    case 'round-tip':
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(x+w*0.15, y+h*0.2, blend(tipXpx,x,0.2), blend(tipYpx,y,0.3), blend(tipXpx,x,0.28), blend(tipYpx,y,0.1));
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y,0.1), tipXpx, blend(tipYpx,y,0.1), tipXpx, tipYpx);
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.5), blend(tipXpx,x,0.65), y+h, x, y+h);
+      ctx.closePath(); break;
+    case 'upturned':
+      ctx.moveTo(x, y+h*0.15);
+      ctx.bezierCurveTo(x+w*0.12, y, blend(tipXpx,x,0.4), blend(tipYpx,y,0.45), blend(tipXpx,x,0.18), blend(tipYpx,y,0.25));
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y,0.1), tipXpx, blend(tipYpx,y,0.35), tipXpx, tipYpx);
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.4), blend(tipXpx,x,0.6), y+h, x, y+h);
+      ctx.closePath(); break;
+    case 'hooked':
+      ctx.moveTo(x, y);
+      ctx.bezierCurveTo(x+w*0.2, y+h*0.1, blend(tipXpx,x,0.25), blend(tipYpx,y,0.4), tipXpx, tipYpx);
+      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.3), blend(tipXpx,x,0.15), blend(y+h,tipYpx,0.2), blend(tipXpx,x,0.4), y+h);
+      ctx.lineTo(x, y+h); ctx.closePath(); break;
+    default:
+      ctx.moveTo(x,y); ctx.lineTo(tipXpx,tipYpx); ctx.lineTo(x,y+h); ctx.closePath();
+  }
+  ctx.stroke();
+}
+
+function drawMouthShape(ctx, shape, x, y, w, h) {
+  const cx=x+w/2, cy=y+h/2;
+  ctx.beginPath();
+  switch(shape) {
+    case 'neutral':   // flat straight line
+      ctx.moveTo(x,cy); ctx.lineTo(x+w,cy); break;
+    case 'smile':     // gentle upward curve, closed lips
+      ctx.moveTo(x,cy);
+      ctx.bezierCurveTo(x+w*0.25,cy, x+w*0.25,y+h*0.15, cx,y+h*0.15);
+      ctx.bezierCurveTo(x+w*0.75,y+h*0.15, x+w*0.75,cy, x+w,cy);
+      break;
+    case 'frown':     // downward curve
+      ctx.moveTo(x,cy-h*0.1);
+      ctx.bezierCurveTo(x+w*0.25,cy-h*0.1, x+w*0.25,y+h*0.85, cx,y+h*0.85);
+      ctx.bezierCurveTo(x+w*0.75,y+h*0.85, x+w*0.75,cy-h*0.1, x+w,cy-h*0.1);
+      break;
+    case 'open-neutral': // slight open parting, neutral
+      ctx.moveTo(x,cy-h*0.12);
+      ctx.bezierCurveTo(cx,cy-h*0.22, cx,cy-h*0.22, x+w,cy-h*0.12);
+      ctx.bezierCurveTo(x+w*0.85,cy+h*0.35, x+w*0.15,cy+h*0.35, x,cy-h*0.12);
+      break;
+    case 'open-smile': // open smiling, teeth gap visible
+      ctx.moveTo(x,cy-h*0.08);
+      ctx.bezierCurveTo(x+w*0.2,y, cx,y, x+w,cy-h*0.08);
+      ctx.bezierCurveTo(x+w*0.8,cy+h*0.5, x+w*0.2,cy+h*0.5, x,cy-h*0.08);
+      // teeth line
+      ctx.moveTo(x+w*0.05,cy+h*0.05); ctx.lineTo(x+w*0.95,cy+h*0.05);
+      break;
+    case 'lips-full': // full cupid-bow top lip + full bottom lip
+      // top lip
+      ctx.moveTo(x+w*0.04,cy);
+      ctx.bezierCurveTo(x+w*0.18,cy, x+w*0.32,y+h*0.12, cx,y+h*0.18);
+      ctx.bezierCurveTo(x+w*0.68,y+h*0.12, x+w*0.82,cy, x+w*0.96,cy);
+      // bottom lip
+      ctx.moveTo(x+w*0.04,cy);
+      ctx.bezierCurveTo(x+w*0.15,cy+h*0.55, x+w*0.35,y+h, cx,y+h);
+      ctx.bezierCurveTo(x+w*0.65,y+h, x+w*0.85,cy+h*0.55, x+w*0.96,cy);
+      break;
+    case 'lips-thin': // thin pressed lips with cupid bow hint
+      ctx.moveTo(x+w*0.04,cy+h*0.12);
+      ctx.bezierCurveTo(x+w*0.22,cy+h*0.12, x+w*0.35,cy-h*0.12, cx,cy-h*0.18);
+      ctx.bezierCurveTo(x+w*0.65,cy-h*0.12, x+w*0.78,cy+h*0.12, x+w*0.96,cy+h*0.12);
+      ctx.bezierCurveTo(x+w*0.78,cy+h*0.35, x+w*0.22,cy+h*0.35, x+w*0.04,cy+h*0.12);
+      break;
+    case 'cat-mouth': // anime W-shape
+      ctx.moveTo(x,cy-h*0.05);
+      ctx.bezierCurveTo(x+w*0.18,cy-h*0.05, x+w*0.25,cy+h*0.55, cx,cy+h*0.55);
+      ctx.bezierCurveTo(x+w*0.75,cy+h*0.55, x+w*0.82,cy-h*0.05, x+w,cy-h*0.05);
+      break;
+    case 'o-shape':   // round surprised O
+      ctx.ellipse(cx,cy+h*0.08,w*0.3,h*0.42,0,0,Math.PI*2); break;
+    case 'smirk':     // one side raised (left side higher)
+      ctx.moveTo(x,cy+h*0.1);
+      ctx.bezierCurveTo(x+w*0.3,cy+h*0.1, x+w*0.55,cy-h*0.25, x+w,cy-h*0.25);
+      break;
+    case 'wide-grin': // exaggerated wide arc
+      ctx.moveTo(x,cy+h*0.1);
+      ctx.bezierCurveTo(x+w*0.2,y, cx,y, x+w*0.8,y);
+      ctx.bezierCurveTo(x+w,y, x+w,cy+h*0.1, x+w,cy+h*0.1);
+      ctx.bezierCurveTo(x+w*0.7,y+h, x+w*0.3,y+h, x,cy+h*0.1);
+      break;
+    default:
+      ctx.moveTo(x,cy); ctx.bezierCurveTo(x+w*0.25,cy,x+w*0.75,cy+h*0.2,x+w,cy);
+  }
+  ctx.stroke();
+}
+
+function drawBrow(ctx, shape, x, y, w, h, rotation) {
+  ctx.save();
+  ctx.translate(x+w/2,y+h/2); ctx.rotate(rotation*Math.PI/180); ctx.translate(-w/2,-h/2);
+  ctx.beginPath();
+  switch(shape) {
+    case 'straight': ctx.moveTo(0,h/2);ctx.lineTo(w,h/2); break;
+    case 'curved': ctx.moveTo(0,h*0.8);ctx.bezierCurveTo(w*0.3,0,w*0.7,0,w,h*0.8); break;
+    case 'flat-oval': {
+      // Small squished oval anchored to the inner (nose-side) corner.
+      // Left brow: right edge = inner corner. Right brow is drawn via ctx.scale(-1,1) so it mirrors automatically.
+      const ow = w * 0.28, oh = h * 0.4;
+      ctx.ellipse(w - ow, h/2, ow, oh, 0, 0, Math.PI*2); break;
+    }
+    default: ctx.moveTo(0,h/2);ctx.lineTo(w,h/2);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── drawFace ─────────────────────────────────────────────────────────────
+function drawFace() {
+  if (!faceCtx) return;
+  const ctx=faceCtx;
+  ctx.clearRect(0,0,fW,fH);
+  ctx.fillStyle='#161618'; ctx.fillRect(0,0,fW,fH);
+
+  // Grid
+  ctx.strokeStyle='rgba(255,255,255,0.08)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(headX+headW/2,headY);ctx.lineTo(headX+headW/2,headY+headH);ctx.stroke();
+  for (let i=1;i<=2;i++){const y=headY+(headH/3)*i;ctx.beginPath();ctx.moveTo(headX,y);ctx.lineTo(headX+headW,y);ctx.stroke();}
+  ctx.setLineDash([]);
+
+  // Head box
+  ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1.5;
+  ctx.strokeRect(headX,headY,headW,headH);
+
+  // Head top curve
+  const _p1L=chinHandles.find(h=>h.id==='p1-left'), _p1R=chinHandles.find(h=>h.id==='p1-right');
+  if (_p1L&&_p1R){
+    ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(_p1L.x,_p1L.y);
+    const cpY=headY-headH*0.15;
+    ctx.bezierCurveTo(_p1L.x,cpY,_p1R.x,cpY,_p1R.x,_p1R.y);
+    ctx.stroke();
+  }
+
+  // Hairline
+  ctx.strokeStyle='rgba(255,80,80,0.7)'; ctx.lineWidth=1.5; ctx.setLineDash([6,4]);
+  ctx.beginPath();ctx.moveTo(headX,fringeY);ctx.lineTo(headX+headW,fringeY);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(255,100,100,0.7)'; ctx.font=`9px 'Space Mono',monospace`;
+  ctx.fillText('Hairline',headX+4,fringeY-3);
+
+  // Prominent % line
+  const pct=Math.max(0,Math.min(100,parseFloat(document.getElementById('prominentFace').value)||50))/100;
+  const prominentY=headY+headH*(1-pct);
+  ctx.strokeStyle='rgba(180,100,255,0.5)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(headX,prominentY);ctx.lineTo(headX+headW,prominentY);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(180,100,255,0.6)'; ctx.font=`9px 'Space Mono',monospace`;
+  ctx.fillText(`${Math.round(pct*100)}%`,headX+4,prominentY-3);
+
+  // Neck
+  ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.lineWidth=1.5;
+  ctx.strokeRect(neckX,neckY,neckW,neckH);
+
+  // ── Geometry ──
+  const slack=headW*(Math.max(0,Math.min(45,parseFloat(document.getElementById('innerSlack').value)||15))/100);
+  const innerLeft=headX+slack, innerRight=headX+headW-slack, innerW=innerRight-innerLeft;
+  const noseWRatio=parseFloat(document.getElementById('noseWidthRatio').value)||3;
+  const noseHRatio=parseFloat(document.getElementById('noseHeightRatio').value)||2;
+  const noseBoxW=innerW/noseWRatio;
+  const noseBoxX=headX+headW/2-noseBoxW/2;
+
+  // PATCH 1: shape width — shrink drawn shape within the box
+  const noseShapeWidthPct=Math.max(20,Math.min(200,parseFloat(document.getElementById('noseShapeWidth').value)||100))/100;
+  const noseShapeHeightPct=Math.max(10,Math.min(200,parseFloat(document.getElementById('noseShapeHeight').value)||100))/100;
+  const noseW=noseBoxW*noseShapeWidthPct;
+  const noseOffsetX=parseFloat(document.getElementById('noseOffsetX').value)||0;
+  const noseOffsetY=parseFloat(document.getElementById('noseOffsetY').value)||0;
+  const noseX=headX+headW/2-noseW/2+noseOffsetX; // centered within box + offset
+
+  const browW=noseBoxX-innerLeft;
+  const browBaseH=browW/4;
+  const browThickMult=parseFloat(document.getElementById('browThickness').value)||1;
+  const browH=browBaseH*browThickMult;
+  const browTopY=prominentY, rBrowX=noseBoxX+noseBoxW;
+  const eyeWRatio=parseFloat(document.getElementById('eyeHeightRatio').value)||1;
+  const eyeW=browW, eyeH=eyeW*eyeWRatio;
+  const eyeTopY=browTopY+browBaseH;
+  const noseTopY=eyeTopY, noseH=noseBoxW*noseHRatio;
+  const noseShapeH=noseH*noseShapeHeightPct;
+  const noseShapeY=noseTopY+noseOffsetY+(noseH-noseShapeH)/2; // keep vertically centred in box
+
+  // ── Nose front ──
+  ctx.strokeStyle='rgba(100,200,255,0.2)'; ctx.lineWidth=1;
+  ctx.strokeRect(noseBoxX+noseOffsetX,noseTopY+noseOffsetY,noseBoxW,noseH); // faint box
+  ctx.strokeStyle='rgba(100,200,255,0.85)'; ctx.lineWidth=1.5;
+  drawNoseFront(ctx,document.getElementById('noseShape').value,noseX,noseShapeY,noseW,noseShapeH);
+  ctx.fillStyle='rgba(100,200,255,0.35)'; ctx.font=`7px 'Space Mono',monospace`;
+  ctx.fillText('nose',noseBoxX+2,noseTopY+8);
+
+  // ── Nose side ──
+  const sideWRatio=parseFloat(document.getElementById('noseSideWidthRatio').value)||1;
+  const sideNoseW=noseBoxW*sideWRatio, sideNoseH=noseH;
+  const sideNoseX=neckX+neckW+16, sideNoseY=neckY+(neckH-sideNoseH)/2+50;
+  ctx.strokeStyle='rgba(100,200,255,0.2)'; ctx.lineWidth=1;
+  ctx.strokeRect(sideNoseX,sideNoseY,sideNoseW,sideNoseH);
+  ctx.strokeStyle='rgba(100,200,255,0.85)'; ctx.lineWidth=1.5;
+  const noseTipXPct=(parseFloat(document.getElementById('noseSideTipX').value)||100)/100;
+  const noseTipYPct=(parseFloat(document.getElementById('noseSideTipY').value)||55)/100;
+  drawNoseSide(ctx,document.getElementById('noseSideShape').value,sideNoseX,sideNoseY,sideNoseW,sideNoseH,noseTipXPct,noseTipYPct);
+  ctx.fillStyle='rgba(100,200,255,0.45)'; ctx.font=`7px 'Space Mono',monospace`;
+  ctx.fillText('nose side',sideNoseX,sideNoseY-3);
+
+  // ── Eyebrows ──
+  const browRot=parseFloat(document.getElementById('browRotation').value)||0;
+  const browShapeV=document.getElementById('browShape').value;
+  ctx.strokeStyle='rgba(255,180,60,0.3)'; ctx.lineWidth=1;
+  ctx.strokeRect(innerLeft,browTopY,browW,browBaseH);
+  ctx.strokeRect(rBrowX,browTopY,browW,browBaseH);
+  ctx.strokeStyle='rgba(255,180,60,0.9)'; ctx.lineWidth=Math.max(1.5,browH*0.4);
+  drawBrow(ctx,browShapeV,innerLeft,browTopY,browW,browBaseH,browRot);
+  ctx.save();ctx.translate(rBrowX+browW/2,browTopY+browBaseH/2);ctx.scale(-1,1);ctx.translate(-browW/2,-browBaseH/2);
+  ctx.strokeStyle='rgba(255,180,60,0.9)'; ctx.lineWidth=Math.max(1.5,browH*0.4);
+  drawBrow(ctx,browShapeV,0,0,browW,browBaseH,browRot);
+  ctx.restore();
+
+  // ── Eyes ──
+  const eyeShapeV=document.getElementById('eyeShape').value;
+  const eyeFlip=document.getElementById('eyeFlipRight').checked;
+  const eyeRot180=document.getElementById('eyeRotate180').checked;
+  const eyePtsOn = document.getElementById('eyePointsEnabled').checked && eyeCustomPoints.length >= 3;
+  // Store live eye box geometry for drag handles
+  _eyeBoxL = { x:innerLeft, y:eyeTopY, w:eyeW, h:eyeH };
+  _eyeBoxR = { x:rBrowX,   y:eyeTopY, w:eyeW, h:eyeH };
+  ctx.strokeStyle='rgba(80,220,120,0.3)'; ctx.lineWidth=1;
+  ctx.strokeRect(innerLeft,eyeTopY,eyeW,eyeH);
+  ctx.strokeRect(rBrowX,eyeTopY,eyeW,eyeH);
+  ctx.strokeStyle='rgba(80,220,120,0.9)'; ctx.lineWidth=1.5;
+  // Left eye
+  ctx.save();ctx.beginPath();ctx.rect(innerLeft,eyeTopY,eyeW,eyeH);ctx.clip();
+  if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,innerLeft,eyeTopY,eyeW,eyeH,false,eyeFlip,eyeRot180);
+  else drawEyeShape(ctx,eyeShapeV,innerLeft,eyeTopY,eyeW,eyeH,false,eyeRot180);
+  ctx.restore();
+  // Right eye
+  ctx.save();ctx.beginPath();ctx.rect(rBrowX,eyeTopY,eyeW,eyeH);ctx.clip();
+  if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,rBrowX,eyeTopY,eyeW,eyeH,true,eyeFlip,eyeRot180);
+  else drawEyeShape(ctx,eyeShapeV,rBrowX,eyeTopY,eyeW,eyeH,eyeFlip,eyeRot180);
+  ctx.restore();
+  // Update drag handles to match new geometry (e.g. after Generate)
+  if (eyePtsOn) updateEyePointHandlePositions();
+
+  // ── Iris layers — clipped to eye shape path ──
+  const irisWRatio=parseFloat(document.getElementById('irisWidthRatio').value)||3;
+  const baseIrisW=eyeW/irisWRatio;
+  // Left eye iris
+  drawIrisLayers(ctx,innerLeft,eyeTopY,eyeW,eyeH,baseIrisW,eyeShapeV,false,false,eyeRot180,eyePtsOn?eyeCustomPoints:null);
+  // Right eye iris
+  drawIrisLayers(ctx,rBrowX,eyeTopY,eyeW,eyeH,baseIrisW,eyeShapeV,true,eyeFlip,eyeRot180,eyePtsOn?eyeCustomPoints:null);
+
+  // ── Mouth ──
+  const lEyeCX=innerLeft+eyeW/2, rEyeCX=rBrowX+eyeW/2;
+  const mouthWBase=rEyeCX-lEyeCX, mouthH=mouthWBase/4;
+  const mouthWidthPct=(parseFloat(document.getElementById('mouthWidthPct').value)||100)/100;
+  const mouthW=mouthWBase*mouthWidthPct;
+  const mouthCX=(lEyeCX+rEyeCX)/2;
+  const mouthX=mouthCX-mouthW/2;
+  const jawSpan=(headY+headH)-prominentY;
+  const mouthOffsetY=parseFloat(document.getElementById('mouthOffsetY').value)||0;
+  const mouthY=prominentY+jawSpan*2/3-mouthH/2+mouthOffsetY;
+  ctx.strokeStyle='rgba(255,100,160,0.2)'; ctx.lineWidth=1;
+  ctx.strokeRect(mouthX,mouthY,mouthW,mouthH);
+  ctx.strokeStyle='rgba(255,100,160,0.9)'; ctx.lineWidth=1.5;
+  drawMouthShape(ctx,document.getElementById('mouthShape').value,mouthX,mouthY,mouthW,mouthH);
+
+  // ── Chin ──
+  drawChin(ctx);
+
+  // Labels
+  ctx.fillStyle='rgba(255,255,255,0.2)'; ctx.font=`9px 'Space Mono',monospace`;
+  ctx.fillText('5W',headX+headW/2-8,headY-6);
+  ctx.save();ctx.translate(headX-8,headY+headH/2);ctx.rotate(-Math.PI/2);ctx.fillText('6H',-8,0);ctx.restore();
+}
+
+function drawChin(ctx) {
+  if (chinHandles.length===0) return;
+  const bottomH=chinHandles.find(h=>h.id==='bottom');
+  const p1L=chinHandles.find(h=>h.id==='p1-left'), p1R=chinHandles.find(h=>h.id==='p1-right');
+  if (!bottomH||!p1L||!p1R) return;
+  const leftDrag=chinHandles.filter(h=>!h.anchor&&h.id.includes('left')&&h.id!=='p1-left').sort((a,b)=>a.y-b.y);
+  const rightDrag=chinHandles.filter(h=>!h.anchor&&h.id.includes('right')&&h.id!=='p1-right').sort((a,b)=>a.y-b.y);
+  const leftPts=[p1L,...leftDrag,bottomH], rightPts=[p1R,...rightDrag,bottomH];
+  const segCount=leftPts.length-1, shapes=[];
+  for (let i=0;i<segCount;i++){const sel=document.getElementById(`segShape-${i}`);shapes.push(sel?sel.value:'curved');}
+  ctx.strokeStyle='rgba(255,220,80,0.9)'; ctx.lineWidth=2; ctx.setLineDash([]);
+  function drawSide(pts) {
+    for (let i=0;i<pts.length-1;i++){
+      const A=pts[i],B=pts[i+1],seg=shapes[i]||'curved';
+      ctx.beginPath();ctx.moveTo(A.x,A.y);
+      if (seg==='straight'){ctx.lineTo(B.x,B.y);}
+      else {
+        if (pts.length===2){ctx.bezierCurveTo(A.x,A.y+(B.y-A.y)*0.95,B.x,B.y,B.x,B.y);}
+        else {
+          const P0=pts[Math.max(0,i-1)],P1=A,P2=B,P3=pts[Math.min(pts.length-1,i+2)],t=0.5;
+          ctx.bezierCurveTo(P1.x+(P2.x-P0.x)*t/3,P1.y+(P2.y-P0.y)*t/3,P2.x-(P3.x-P1.x)*t/3,P2.y-(P3.y-P1.y)*t/3,P2.x,P2.y);
+        }
+      }
+      ctx.stroke();
+    }
+  }
+  drawSide(leftPts); drawSide(rightPts);
+  ctx.fillStyle='rgba(255,220,80,0.4)';
+  ctx.beginPath();ctx.arc(p1L.x,p1L.y,4,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(p1R.x,p1R.y,4,0,Math.PI*2);ctx.fill();
+}
+
+function renderChinHandles() {
+  faceWrap.querySelectorAll('.chin-handle').forEach(h=>h.remove());
+  chinHandles.filter(h=>!h.anchor).forEach(h=>{
+    const el=document.createElement('div'); el.className='chin-handle';
+    el.style.left=h.x+'px'; el.style.top=h.y+'px'; el.dataset.id=h.id;
+    faceWrap.appendChild(el);
+  });
+}
+function setupChinDrag() {
+  let dragging=null, offsetX=0, offsetY=0;
+  function getPos(e) {
+    const rect=faceWrap.getBoundingClientRect();
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    return {x:clientX-rect.left,y:clientY-rect.top};
+  }
+  function onStart(e) {
+    const el=e.target.closest('.chin-handle'); if (!el) return;
+    e.preventDefault(); dragging=el.dataset.id;
+    const pos=getPos(e), h=chinHandles.find(h=>h.id===dragging);
+    const isRight=dragging.includes('right');
+    if (isRight){const leftId=dragging.replace('right','left');const hLeft=chinHandles.find(h=>h.id===leftId);if(hLeft){offsetX=(headX+headW)-(pos.x-headX)-hLeft.x;}else offsetX=0;}
+    else offsetX=pos.x-h.x;
+    offsetY=pos.y-h.y;
+  }
+  function onMove(e) {
+    if (!dragging) return; e.preventDefault();
+    const pos=getPos(e), isRight=dragging.includes('right');
+    const leftId=isRight?dragging.replace('right','left'):dragging;
+    const rightId=isRight?dragging:dragging.replace('left','right');
+    const hLeft=chinHandles.find(h=>h.id===leftId), hRight=chinHandles.find(h=>h.id===rightId);
+    if (!hLeft) return;
+    const rawX=pos.x-offsetX, rawY=pos.y-offsetY, centerX=headX+headW/2;
+    const canonX=isRight?(headX+headW)-(rawX-headX):rawX;
+    const clampedX=Math.max(headX,Math.min(centerX,canonX));
+    const clampedY=Math.max(headY+headH*0.4,Math.min(headY+headH,rawY));
+    hLeft.x=clampedX; hLeft.y=clampedY;
+    if (hRight){hRight.x=(headX+headW)-(clampedX-headX);hRight.y=clampedY;}
+    faceWrap.querySelectorAll('.chin-handle').forEach(el=>{const hh=chinHandles.find(h=>h.id===el.dataset.id);if(hh){el.style.left=hh.x+'px';el.style.top=hh.y+'px';}});
+    drawFace();
+  }
+  function onEnd(){dragging=null;}
+  faceWrap.addEventListener('mousedown',onStart);
+  faceWrap.addEventListener('touchstart',onStart,{passive:false});
+  window.addEventListener('mousemove',onMove);
+  window.addEventListener('touchmove',onMove,{passive:false});
+  window.addEventListener('mouseup',onEnd);
+  window.addEventListener('touchend',onEnd);
+}
+function downloadFace() {
+  if (!faceCanvas) return;
+  const link=document.createElement('a'); link.download='face-proportion.jpg';
+  const off=document.createElement('canvas'); off.width=faceCanvas.width; off.height=faceCanvas.height;
+  off.getContext('2d').drawImage(faceCanvas,0,0);
+  link.href=off.toDataURL('image/jpeg',0.95); link.click();
+}
+
+// ═══════════════════════════════════════
+// FACE EXCEL EXPORT / IMPORT
+// ═══════════════════════════════════════
+function exportFaceExcel() {
+  if (!faceInited){alert('Open the Face tab first!');return;}
+  const chinPts=parseInt(document.getElementById('chinPoints').value)||2;
+  const segShapes=[];
+  for(let i=0;i<chinPts;i++){const sel=document.getElementById(`segShape-${i}`);segShapes.push(sel?sel.value:'curved');}
+  const draggableLeft=chinHandles.filter(h=>!h.anchor&&h.id.endsWith('-left')).sort((a,b)=>a.y-b.y);
+  const baseHeaders=['Prominent Face %','Chin Points','Nose Width Ratio','Nose Height Ratio','Nose Shape Width %','Nose Shape Height %','Nose Offset X','Nose Offset Y','Nose Shape','Nose Side Width Ratio','Nose Side Tip %','Nose Side Tip Y %','Nose Side Shape','Brow Shape','Brow Rotation','Brow Thickness','Eye Shape','Eye Height Ratio','Eye Flip Right','Eye Rotate 180','Eye Pts Enabled','Eye Pt Count','Eye Curve Mode','Iris Width Ratio','Mouth Shape','Mouth Offset Y','Mouth Width %'];
+  const segLabels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
+  const segHeaders=segLabels.slice(0,chinPts).map(l=>`Seg [${l}] Shape`);
+  const handleHeaders=[], handleValues=[], pointLabels=['P2','P3','P4'];
+  draggableLeft.forEach((h,i)=>{const lbl=pointLabels[i]||`PT${i+2}`;handleHeaders.push(`${lbl} X (0–1 of head W)`,`${lbl} Y (0–1 of head H)`);handleValues.push(+((h.x-headX)/headW).toFixed(4),+((h.y-headY)/headH).toFixed(4));});
+  // Eye custom points — up to 20 slots
+  const EYE_PT_MAX=20;
+  const eyePtHeaders=[], eyePtValues=[];
+  for(let i=0;i<EYE_PT_MAX;i++){eyePtHeaders.push(`Eye Pt${i+1} NX`,`Eye Pt${i+1} NY`); const p=eyeCustomPoints[i]; eyePtValues.push(p?+p.nx.toFixed(5):'', p?+p.ny.toFixed(5):'');}
+  const headers=[...baseHeaders,...segHeaders,...handleHeaders,...eyePtHeaders];
+  const row=[
+    parseFloat(document.getElementById('prominentFace').value)||50,chinPts,
+    parseFloat(document.getElementById('noseWidthRatio').value)||3,parseFloat(document.getElementById('noseHeightRatio').value)||2,
+    parseFloat(document.getElementById('noseShapeWidth').value)||100,
+    parseFloat(document.getElementById('noseShapeHeight').value)||100,
+    parseFloat(document.getElementById('noseOffsetX').value)||0,
+    parseFloat(document.getElementById('noseOffsetY').value)||0,
+    document.getElementById('noseShape').value,parseFloat(document.getElementById('noseSideWidthRatio').value)||1,
+    parseFloat(document.getElementById('noseSideTipX').value)||100,
+    parseFloat(document.getElementById('noseSideTipY').value)||55,
+    document.getElementById('noseSideShape').value,document.getElementById('browShape').value,
+    parseFloat(document.getElementById('browRotation').value)||0,parseFloat(document.getElementById('browThickness').value)||1,
+    document.getElementById('eyeShape').value,parseFloat(document.getElementById('eyeHeightRatio').value)||1,
+    document.getElementById('eyeFlipRight').checked?1:0,
+    document.getElementById('eyeRotate180').checked?1:0,
+    document.getElementById('eyePointsEnabled').checked?1:0,
+    parseInt(document.getElementById('eyePointCount').value)||8,
+    document.getElementById('eyeCurveMode').value,
+    parseFloat(document.getElementById('irisWidthRatio').value)||3,
+    document.getElementById('mouthShape').value,parseFloat(document.getElementById('mouthOffsetY').value)||0,
+    parseFloat(document.getElementById('mouthWidthPct').value)||100,
+    ...segShapes,...handleValues,...eyePtValues,
+  ];
+  const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet([headers,row]);
+  ws['!cols']=headers.map(h=>({wch:Math.max(h.length+4,20)}));
+  XLSX.utils.book_append_sheet(wb,ws,'Face Data');
+  XLSX.writeFile(wb,'face-settings.xlsx');
+}
+function importFaceExcel(event) {
+  const file=event.target.files[0]; if (!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try {
+      const wb=XLSX.read(e.target.result,{type:'array'}),ws=wb.Sheets['Face Data'];
+      if (!ws){alert('Could not find "Face Data" sheet.');return;}
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1});
+      if (rows.length<2){alert('No data found.');return;}
+      const headers=rows[0].map(h=>String(h).trim()),data=rows[1];
+      const get=n=>{const i=headers.indexOf(n);return i>=0?data[i]:undefined;};
+      const getNum=(n,fb)=>{const v=parseFloat(get(n));return isNaN(v)?fb:v;};
+      const getStr=(n,fb)=>{const v=get(n);return(v!==undefined&&v!==null&&v!=='')?String(v):fb;};
+      document.getElementById('prominentFace').value=getNum('Prominent Face %',50);
+      document.getElementById('noseWidthRatio').value=getNum('Nose Width Ratio',3);
+      document.getElementById('noseHeightRatio').value=getNum('Nose Height Ratio',2);
+      document.getElementById('noseShapeWidth').value=getNum('Nose Shape Width %',100);
+      document.getElementById('noseShapeHeight').value=getNum('Nose Shape Height %',100);
+      document.getElementById('noseSideWidthRatio').value=getNum('Nose Side Width Ratio',1);
+      document.getElementById('noseOffsetX').value=getNum('Nose Offset X',0);
+      document.getElementById('noseOffsetY').value=getNum('Nose Offset Y',0);
+      document.getElementById('noseSideTipY').value=getNum('Nose Side Tip Y %',55);
+      document.getElementById('mouthWidthPct').value=getNum('Mouth Width %',100);
+      document.getElementById('browRotation').value=getNum('Brow Rotation',0);
+      document.getElementById('browThickness').value=getNum('Brow Thickness',1);
+      document.getElementById('eyeHeightRatio').value=getNum('Eye Height Ratio',1);
+      document.getElementById('irisWidthRatio').value=getNum('Iris Width Ratio',3);
+      // Eye flags
+      const eyeFlipVal=getNum('Eye Flip Right',0); document.getElementById('eyeFlipRight').checked=eyeFlipVal===1;
+      const eyeRotVal=getNum('Eye Rotate 180',0);  document.getElementById('eyeRotate180').checked=eyeRotVal===1;
+      // Eye curve mode
+      const curveMode=getStr('Eye Curve Mode','smooth');
+      const curveSel=document.getElementById('eyeCurveMode'); if(curveSel){const o=[...curveSel.options].find(o=>o.value===curveMode);if(o)curveSel.value=curveMode;}
+      // Eye point count
+      const ptCount=getNum('Eye Pt Count',8); document.getElementById('eyePointCount').value=Math.max(3,Math.min(20,ptCount));
+      // safeSetShape: validates value against known picker values, falls back to default
+      function safeSetShape(pickerId,hiddenId,val,def){
+        const hidden=document.getElementById(hiddenId);if(!hidden)return;
+        const container=document.getElementById(pickerId);
+        const knownValues=container?[...container.querySelectorAll('.shape-tile')].map(t=>t.dataset.value):[];
+        hidden.value=(knownValues.length===0||knownValues.includes(val))?val:def;
+        if(container){container.querySelectorAll('.shape-tile').forEach(t=>t.classList.toggle('selected',t.dataset.value===hidden.value));}
+      }
+      function safeSet(id,val){const sel=document.getElementById(id);if(!sel)return;const opt=[...sel.options].find(o=>o.value===val);if(opt)sel.value=val;}
+      safeSetShape('noseShapePicker','noseShape',getStr('Nose Shape',''),'nostrils');
+      safeSetShape('noseSideShapePicker','noseSideShape',getStr('Nose Side Shape',''),'straight-bridge');
+      safeSetShape('eyeShapePicker','eyeShape',getStr('Eye Shape',''),'almond');
+      safeSetShape('mouthShapePicker','mouthShape',getStr('Mouth Shape',''),'smile');
+      safeSet('browShape',getStr('Brow Shape','straight'));
+      document.getElementById('noseSideTipX').value=getNum('Nose Side Tip %',100);
+      document.getElementById('mouthOffsetY').value=getNum('Mouth Offset Y',0);
+      const chinPts=Math.max(1,Math.min(4,getNum('Chin Points',2)));
+      document.getElementById('chinPoints').value=chinPts;
+      if (!faceInited) initFace();
+      chinHandles=buildDefaultChinHandles(chinPts); buildSegmentSelectors(chinPts);
+      const segLabels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
+      for(let i=0;i<chinPts;i++){const shape=getStr(`Seg [${segLabels[i]}] Shape`,'curved');const sel=document.getElementById(`segShape-${i}`);if(sel){const opt=[...sel.options].find(o=>o.value===shape);if(opt)sel.value=shape;}}
+      const pointLabels=['P2','P3','P4'];
+      chinHandles.filter(h=>!h.anchor&&h.id.endsWith('-left')).sort((a,b)=>a.y-b.y).forEach((hLeft,i)=>{
+        const lbl=pointLabels[i]||`PT${i+2}`;
+        const normX=parseFloat(get(`${lbl} X (0–1 of head W)`)),normY=parseFloat(get(`${lbl} Y (0–1 of head H)`));
+        if(isNaN(normX)||isNaN(normY))return;
+        const rightId=hLeft.id.replace('-left','-right'),hRight=chinHandles.find(h=>h.id===rightId);
+        hLeft.x=headX+normX*headW; hLeft.y=headY+normY*headH;
+        if(hRight){hRight.x=(headX+headW)-normX*headW;hRight.y=headY+normY*headH;}
+      });
+      drawFace(); renderChinHandles();
+      // Restore eye custom points
+      const eyePtsEnabledVal=getNum('Eye Pts Enabled',0);
+      const EYE_PT_MAX=20;
+      const loadedPts=[];
+      for(let i=0;i<EYE_PT_MAX;i++){
+        const nx=parseFloat(get(`Eye Pt${i+1} NX`)), ny=parseFloat(get(`Eye Pt${i+1} NY`));
+        if(!isNaN(nx)&&!isNaN(ny)) loadedPts.push({nx,ny});
+      }
+      const eyePtsCb=document.getElementById('eyePointsEnabled');
+      const eyePtControls=document.getElementById('eyePointControls');
+      if(eyePtsEnabledVal===1&&loadedPts.length>=3){
+        eyeCustomPoints=loadedPts;
+        eyePtsCb.checked=true; eyePtControls.style.display='';
+        renderEyePointHandles();
+      } else {
+        eyeCustomPoints=[]; eyePtsCb.checked=false; eyePtControls.style.display='none';
+        removeEyePointHandles();
+      }
+      drawFace();
+      document.getElementById('facePreset').value='';
+    } catch(err){alert('Failed: '+err.message);}
+    event.target.value='';
+  };
+  reader.readAsArrayBuffer(file);
+}
+</script>
+</body>
+</html>  .tab-page { display: none; flex-direction: column; align-items: center; width: 100%; max-width: min(450px, calc(100vw - 32px)); gap: 16px; }
+  .tab-page.active { display: flex; }
+  .face-canvas-wrap {
+    position: relative; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px;
+    overflow: visible; touch-action: none;
+  }
+  .chin-handle {
+    position: absolute; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent-gold); border: 2px solid #000;
+    transform: translate(-50%, -50%); cursor: grab; z-index: 100; touch-action: none;
+  }
+  .chin-handle:active { cursor: grabbing; }
 
   /* ── Floating Generate Button ── */
   #floatingGenerate {
