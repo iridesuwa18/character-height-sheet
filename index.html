@@ -2356,26 +2356,50 @@ function drawChin(ctx, T) {
         // curvature=0 → straight line
         // We parameterise control point "pull" by curvature
         if (pts.length===2){
-          // Single segment with no intermediate — curve outward
-          const mx = (A.x+B.x)/2;
-          const dx = B.x - A.x, dy = B.y - A.y;
-          const len = Math.sqrt(dx*dx+dy*dy);
-          // perpendicular outward direction (left side curves left, right side curves right)
-          const perpX = -dy/len * len * 0.4 * curvature;
-          const perpY =  dx/len * len * 0.4 * curvature;
-          ctx.bezierCurveTo(
-            A.x + perpX * 0.5, A.y + perpY * 0.5,
-            B.x + perpX * 0.5, B.y + perpY * 0.5,
-            B.x, B.y
-          );
-        } else {
-          const P0=pts[Math.max(0,i-1)], P1=A, P2=B, P3=pts[Math.min(pts.length-1,i+2)];
+          // 1 chin point: two-segment curve passing through an invisible mid-point
+          // placed at the bottom-left 1/3 of the side — i.e. 1/3 across and 2/3 down
+          // from A toward B, pushed outward.
+          const isLeft = (A.x <= B.x);
+          const dy = B.y - A.y;
+          const dx = B.x - A.x;
+          // Invisible waypoint: 1/3 along horizontally, 2/3 down vertically, pushed outward
+          const midX = isLeft
+            ? A.x + dx * 0.55 - headW * 0.12 * curvature
+            : A.x + dx * 0.55 + headW * 0.12 * curvature;
+          const midY = A.y + dy * 0.67;
+          const mid = { x: midX, y: midY };
+
+          // Segment 1: A → mid (Catmull-Rom with phantom prev=A, next=B)
           const t = 0.5 * curvature;
-          ctx.bezierCurveTo(
-            P1.x+(P2.x-P0.x)*t/3, P1.y+(P2.y-P0.y)*t/3,
-            P2.x-(P3.x-P1.x)*t/3, P2.y-(P3.y-P1.y)*t/3,
-            P2.x, P2.y
-          );
+          // P0=A(phantom), P1=A, P2=mid, P3=B
+          let s1cp1x = A.x + (mid.x - A.x)*t/3;
+          let s1cp1y = A.y + (mid.y - A.y)*t/3;
+          let s1cp2x = mid.x - (B.x - A.x)*t/3;
+          let s1cp2y = mid.y - (B.y - A.y)*t/3;
+          ctx.bezierCurveTo(s1cp1x, s1cp1y, s1cp2x, s1cp2y, mid.x, mid.y);
+
+          // Segment 2: mid → B (Catmull-Rom with prev=A, next=B(phantom))
+          let s2cp1x = mid.x + (B.x - A.x)*t/3;
+          let s2cp1y = mid.y + (B.y - A.y)*t/3;
+          let s2cp2x = B.x - (B.x - mid.x)*t/3;
+          let s2cp2y = B.y - (B.y - mid.y)*t/3;
+          ctx.bezierCurveTo(s2cp1x, s2cp1y, s2cp2x, s2cp2y, B.x, B.y);
+        } else {
+          // Catmull-Rom → bezier: use neighbour tangents, clamped to segment length
+          const P0=pts[Math.max(0,i-1)], P1=A, P2=B, P3=pts[Math.min(pts.length-1,i+2)];
+          const segDx=P2.x-P1.x, segDy=P2.y-P1.y;
+          const segLen=Math.sqrt(segDx*segDx+segDy*segDy)||1;
+          const t = 0.5 * curvature;
+          // Raw Catmull-Rom tangent vectors
+          let cp1x=P1.x+(P2.x-P0.x)*t/3, cp1y=P1.y+(P2.y-P0.y)*t/3;
+          let cp2x=P2.x-(P3.x-P1.x)*t/3, cp2y=P2.y-(P3.y-P1.y)*t/3;
+          // Clamp control point distance from anchor to at most 0.6× segment length
+          const maxCP = segLen * 0.6;
+          const d1=Math.sqrt((cp1x-P1.x)**2+(cp1y-P1.y)**2)||1;
+          const d2=Math.sqrt((cp2x-P2.x)**2+(cp2y-P2.y)**2)||1;
+          if(d1>maxCP){cp1x=P1.x+(cp1x-P1.x)/d1*maxCP;cp1y=P1.y+(cp1y-P1.y)/d1*maxCP;}
+          if(d2>maxCP){cp2x=P2.x+(cp2x-P2.x)/d2*maxCP;cp2y=P2.y+(cp2y-P2.y)/d2*maxCP;}
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, P2.x, P2.y);
         }
       }
       ctx.stroke();
