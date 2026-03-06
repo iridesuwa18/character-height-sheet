@@ -457,6 +457,34 @@
     <div id="eyeShapePicker" class="shape-picker"></div>
     <input type="hidden" id="eyeShape" value="almond"/>
 
+    <!-- Always-visible Eye Shape Scale & Position -->
+    <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
+      <div class="panel-title" style="margin-bottom:10px;">Shape Scale &amp; Position <span style="font-size:9px;color:var(--muted);text-transform:none;letter-spacing:0;">— always active</span></div>
+      <div class="eye-pt-scale-row">
+        <div class="field">
+          <label>Scale X % <span id="eyeShapeScaleXVal" style="color:var(--accent-gold);">100</span></label>
+          <input type="range" id="eyeShapeScaleX" min="10" max="100" value="100" step="1"
+            oninput="document.getElementById('eyeShapeScaleXVal').textContent=this.value; onEyeShapeScaleChange()"/>
+        </div>
+        <div class="field">
+          <label>Scale Y % <span id="eyeShapeScaleYVal" style="color:var(--accent-gold);">100</span></label>
+          <input type="range" id="eyeShapeScaleY" min="10" max="100" value="100" step="1"
+            oninput="document.getElementById('eyeShapeScaleYVal').textContent=this.value; onEyeShapeScaleChange()"/>
+        </div>
+        <div class="field">
+          <label>Offset X % <span id="eyeShapeOffsetXVal" style="color:var(--accent-gold);">0</span></label>
+          <input type="range" id="eyeShapeOffsetX" min="-45" max="45" value="0" step="1"
+            oninput="document.getElementById('eyeShapeOffsetXVal').textContent=this.value; onEyeShapeScaleChange()"/>
+        </div>
+        <div class="field">
+          <label>Offset Y % <span id="eyeShapeOffsetYVal" style="color:var(--accent-gold);">0</span></label>
+          <input type="range" id="eyeShapeOffsetY" min="-45" max="45" value="0" step="1"
+            oninput="document.getElementById('eyeShapeOffsetYVal').textContent=this.value; onEyeShapeScaleChange()"/>
+        </div>
+      </div>
+      <button class="btn-secondary" style="width:100%; font-size:10px; padding:7px; margin-top:6px;" onclick="resetEyeShapeScale()">↺ Reset Scale &amp; Position</button>
+    </div>
+
     <!-- Eye point editor -->
     <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
       <div class="iris-flags" style="margin-bottom:10px;">
@@ -476,26 +504,25 @@
             </select>
           </div>
         </div>
-        <!-- FIX 2: Eye point scale/offset controls -->
-        <div class="panel-title" style="margin-top:8px; margin-bottom:8px;">Point Scale &amp; Position</div>
+        <div class="panel-title" style="margin-top:8px; margin-bottom:8px;">Point Fine-Tune</div>
         <div class="eye-pt-scale-row">
           <div class="field">
-            <label>Scale X % <span id="eyePtScaleXVal" style="color:var(--accent-gold);">100</span></label>
+            <label>Fine X % <span id="eyePtScaleXVal" style="color:var(--accent-gold);">100</span></label>
             <input type="range" id="eyePtScaleX" min="10" max="200" value="100" step="1"
               oninput="document.getElementById('eyePtScaleXVal').textContent=this.value; applyEyePtTransform()"/>
           </div>
           <div class="field">
-            <label>Scale Y % <span id="eyePtScaleYVal" style="color:var(--accent-gold);">100</span></label>
+            <label>Fine Y % <span id="eyePtScaleYVal" style="color:var(--accent-gold);">100</span></label>
             <input type="range" id="eyePtScaleY" min="10" max="200" value="100" step="1"
               oninput="document.getElementById('eyePtScaleYVal').textContent=this.value; applyEyePtTransform()"/>
           </div>
           <div class="field">
-            <label>Offset X % <span id="eyePtOffsetXVal" style="color:var(--accent-gold);">0</span></label>
+            <label>Fine Off X % <span id="eyePtOffsetXVal" style="color:var(--accent-gold);">0</span></label>
             <input type="range" id="eyePtOffsetX" min="-50" max="50" value="0" step="1"
               oninput="document.getElementById('eyePtOffsetXVal').textContent=this.value; applyEyePtTransform()"/>
           </div>
           <div class="field">
-            <label>Offset Y % <span id="eyePtOffsetYVal" style="color:var(--accent-gold);">0</span></label>
+            <label>Fine Off Y % <span id="eyePtOffsetYVal" style="color:var(--accent-gold);">0</span></label>
             <input type="range" id="eyePtOffsetY" min="-50" max="50" value="0" step="1"
               oninput="document.getElementById('eyePtOffsetYVal').textContent=this.value; applyEyePtTransform()"/>
           </div>
@@ -1323,6 +1350,49 @@ function getEyePtTransform() {
   };
 }
 
+// Always-active eye shape scale/offset helpers
+function getEyeShapeScale() {
+  return {
+    scaleX:  (parseFloat(document.getElementById('eyeShapeScaleX')?.value)  || 100) / 100,
+    scaleY:  (parseFloat(document.getElementById('eyeShapeScaleY')?.value)  || 100) / 100,
+    offsetX: (parseFloat(document.getElementById('eyeShapeOffsetX')?.value) || 0)   / 100,
+    offsetY: (parseFloat(document.getElementById('eyeShapeOffsetY')?.value) || 0)   / 100,
+  };
+}
+
+function applyEyeShapeScaleToBox(boxX, boxY, boxW, boxH) {
+  const { scaleX, scaleY, offsetX, offsetY } = getEyeShapeScale();
+  const newW = boxW * scaleX;
+  const newH = boxH * scaleY;
+  const centreX = boxX + boxW / 2;
+  const centreY = boxY + boxH / 2;
+  const rawX = centreX - newW / 2 + offsetX * boxW;
+  const rawY = centreY - newH / 2 + offsetY * boxH;
+  const clampedX = Math.max(boxX, Math.min(boxX + boxW - newW, rawX));
+  const clampedY = Math.max(boxY, Math.min(boxY + boxH - newH, rawY));
+  return { x: clampedX, y: clampedY, w: newW, h: newH };
+}
+
+function onEyeShapeScaleChange() {
+  if (document.getElementById('eyePointsEnabled')?.checked) {
+    initEyePoints();
+  } else {
+    drawFace();
+  }
+}
+
+function resetEyeShapeScale() {
+  [['eyeShapeScaleX','eyeShapeScaleXVal'],['eyeShapeScaleY','eyeShapeScaleYVal']].forEach(([id,vid]) => {
+    const el = document.getElementById(id); if (el) el.value = 100;
+    const v = document.getElementById(vid); if (v) v.textContent = 100;
+  });
+  [['eyeShapeOffsetX','eyeShapeOffsetXVal'],['eyeShapeOffsetY','eyeShapeOffsetYVal']].forEach(([id,vid]) => {
+    const el = document.getElementById(id); if (el) el.value = 0;
+    const v = document.getElementById(vid); if (v) v.textContent = 0;
+  });
+  onEyeShapeScaleChange();
+}
+
 function applyEyePtTransform() {
   if (!eyeBasePoints.length) return;
   const { scaleX, scaleY, offsetX, offsetY } = getEyePtTransform();
@@ -1382,14 +1452,14 @@ function onEyePointCountChange() {
 function initEyePoints() {
   const shape = document.getElementById('eyeShape').value;
   const n = Math.max(3, Math.min(20, parseInt(document.getElementById('eyePointCount').value)||8));
-  // Reset scale/offset sliders to 100/0
+  // Reset fine-tune sliders to 100/0 (but keep shape scale sliders)
   const sxEl = document.getElementById('eyePtScaleX'), syEl = document.getElementById('eyePtScaleY');
   const oxEl = document.getElementById('eyePtOffsetX'), oyEl = document.getElementById('eyePtOffsetY');
   if (sxEl) { sxEl.value = 100; document.getElementById('eyePtScaleXVal').textContent = 100; }
   if (syEl) { syEl.value = 100; document.getElementById('eyePtScaleYVal').textContent = 100; }
   if (oxEl) { oxEl.value = 0; document.getElementById('eyePtOffsetXVal').textContent = 0; }
   if (oyEl) { oyEl.value = 0; document.getElementById('eyePtOffsetYVal').textContent = 0; }
-  // Sample points ON the shape
+  // Sample points ON the shape (normalised 0-1 within the scaled rect)
   eyeBasePoints = sampleEyeShapeNorm(shape, n);
   eyeCustomPoints = eyeBasePoints.map(p => ({...p}));
   renderEyePointHandles();
@@ -1596,9 +1666,12 @@ function renderEyePointHandles() {
   if (!eyeCustomPoints.length || !faceInited) return;
   const eyeFlip  = document.getElementById('eyeFlipRight').checked;
   const eyeRot180 = document.getElementById('eyeRotate180').checked;
+  // Use scaled rects so handles appear on the actual drawn shape
+  const eSL = applyEyeShapeScaleToBox(_eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
+  const eSR = applyEyeShapeScaleToBox(_eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
 
   eyeCustomPoints.forEach((pt, idx) => {
-    const lp = eyePtToCanvas(pt.nx, pt.ny, _eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
+    const lp = eyePtToCanvas(pt.nx, pt.ny, eSL.x, eSL.y, eSL.w, eSL.h);
     const lEl = document.createElement('div');
     lEl.className = 'eye-point'; lEl.dataset.idx = idx; lEl.dataset.side = 'left';
     lEl.style.left = lp.x + 'px'; lEl.style.top = lp.y + 'px';
@@ -1606,7 +1679,7 @@ function renderEyePointHandles() {
 
     // Right eye: always mirror left horizontally
     const rm = mirrorPointForRight(pt, eyeFlip, eyeRot180);
-    const rp = eyePtToCanvas(rm.nx, rm.ny, _eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
+    const rp = eyePtToCanvas(rm.nx, rm.ny, eSR.x, eSR.y, eSR.w, eSR.h);
     const rEl = document.createElement('div');
     rEl.className = 'eye-point right-eye'; rEl.dataset.idx = idx; rEl.dataset.side = 'right';
     rEl.style.left = rp.x + 'px'; rEl.style.top = rp.y + 'px';
@@ -1622,17 +1695,18 @@ function updateEyePointHandlePositions() {
   if (!faceWrap || !eyeCustomPoints.length) return;
   const eyeFlip   = document.getElementById('eyeFlipRight').checked;
   const eyeRot180 = document.getElementById('eyeRotate180').checked;
+  const eSL = applyEyeShapeScaleToBox(_eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
+  const eSR = applyEyeShapeScaleToBox(_eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
   faceWrap.querySelectorAll('.eye-point').forEach(el => {
     const idx  = parseInt(el.dataset.idx);
     const side = el.dataset.side;
     const pt   = eyeCustomPoints[idx]; if (!pt) return;
     if (side === 'left') {
-      const lp = eyePtToCanvas(pt.nx, pt.ny, _eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
+      const lp = eyePtToCanvas(pt.nx, pt.ny, eSL.x, eSL.y, eSL.w, eSL.h);
       el.style.left = lp.x + 'px'; el.style.top = lp.y + 'px';
     } else {
-      // FIX 3: right eye always mirrors left
       const rm = mirrorPointForRight(pt, eyeFlip, eyeRot180);
-      const rp = eyePtToCanvas(rm.nx, rm.ny, _eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
+      const rp = eyePtToCanvas(rm.nx, rm.ny, eSR.x, eSR.y, eSR.w, eSR.h);
       el.style.left = rp.x + 'px'; el.style.top = rp.y + 'px';
     }
   });
@@ -1675,16 +1749,20 @@ function setupEyePointDrag() {
     const eyeFlip   = document.getElementById('eyeFlipRight').checked;
     const eyeRot180 = document.getElementById('eyeRotate180').checked;
 
+    // Use scaled rects so drag distance maps correctly to normalised coords
+    const eSL = applyEyeShapeScaleToBox(_eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
+    const eSR = applyEyeShapeScaleToBox(_eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
+
     if (side === 'left') {
-      const box = _eyeBoxL;
+      const box = eSL;
       const dnx = (pos.x - startPx) / box.w;
       const dny = (pos.y - startPy) / box.h;
       eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, startNx + dnx));
       eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, startNy + dny));
     } else {
-      // FIX 3: Dragging right handle → compute delta in right-eye box space,
+      // Dragging right handle → compute delta in scaled right-eye space,
       // then invert the mirror to get the left-eye delta.
-      const box = _eyeBoxR;
+      const box = eSR;
       const dnx = (pos.x - startPx) / box.w;
       const dny = (pos.y - startPy) / box.h;
 
@@ -2203,26 +2281,32 @@ function drawFace(theme) {
   const eyeFlip=document.getElementById('eyeFlipRight').checked;
   const eyeRot180=document.getElementById('eyeRotate180').checked;
   const eyePtsOn = document.getElementById('eyePointsEnabled').checked && eyeCustomPoints.length >= 3;
+  // Eye box (full area defined by proportions)
   _eyeBoxL = { x:innerLeft, y:eyeTopY, w:eyeW, h:eyeH };
   _eyeBoxR = { x:rBrowX,   y:eyeTopY, w:eyeW, h:eyeH };
+  // Scaled/offset draw rect within the eye box (always active)
+  const eSL = applyEyeShapeScaleToBox(innerLeft, eyeTopY, eyeW, eyeH);
+  const eSR = applyEyeShapeScaleToBox(rBrowX,   eyeTopY, eyeW, eyeH);
   ctx.strokeStyle=T.eyeBox; ctx.lineWidth=1;
   ctx.strokeRect(innerLeft,eyeTopY,eyeW,eyeH);
   ctx.strokeRect(rBrowX,eyeTopY,eyeW,eyeH);
   ctx.strokeStyle=T.eye; ctx.lineWidth=1.5;
+  // Left eye
   ctx.save();ctx.beginPath();ctx.rect(innerLeft,eyeTopY,eyeW,eyeH);ctx.clip();
-  if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,innerLeft,eyeTopY,eyeW,eyeH,false,eyeFlip,eyeRot180);
-  else drawEyeShape(ctx,eyeShapeV,innerLeft,eyeTopY,eyeW,eyeH,false,eyeRot180);
+  if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,eSL.x,eSL.y,eSL.w,eSL.h,false,eyeFlip,eyeRot180);
+  else drawEyeShape(ctx,eyeShapeV,eSL.x,eSL.y,eSL.w,eSL.h,false,eyeRot180);
   ctx.restore();
+  // Right eye
   ctx.save();ctx.beginPath();ctx.rect(rBrowX,eyeTopY,eyeW,eyeH);ctx.clip();
-  if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,rBrowX,eyeTopY,eyeW,eyeH,true,eyeFlip,eyeRot180);
-  else drawEyeShape(ctx,eyeShapeV,rBrowX,eyeTopY,eyeW,eyeH,eyeFlip,eyeRot180);
+  if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,eSR.x,eSR.y,eSR.w,eSR.h,true,eyeFlip,eyeRot180);
+  else drawEyeShape(ctx,eyeShapeV,eSR.x,eSR.y,eSR.w,eSR.h,eyeFlip,eyeRot180);
   ctx.restore();
   if (eyePtsOn) updateEyePointHandlePositions();
 
   const irisWRatio=parseFloat(document.getElementById('irisWidthRatio').value)||3;
-  const baseIrisW=eyeW/irisWRatio;
-  drawIrisLayers(ctx,innerLeft,eyeTopY,eyeW,eyeH,baseIrisW,eyeShapeV,false,false,eyeRot180,eyePtsOn?eyeCustomPoints:null);
-  drawIrisLayers(ctx,rBrowX,eyeTopY,eyeW,eyeH,baseIrisW,eyeShapeV,true,eyeFlip,eyeRot180,eyePtsOn?eyeCustomPoints:null);
+  const baseIrisW=eSL.w/irisWRatio;
+  drawIrisLayers(ctx,eSL.x,eSL.y,eSL.w,eSL.h,baseIrisW,eyeShapeV,false,false,eyeRot180,eyePtsOn?eyeCustomPoints:null);
+  drawIrisLayers(ctx,eSR.x,eSR.y,eSR.w,eSR.h,baseIrisW,eyeShapeV,true,eyeFlip,eyeRot180,eyePtsOn?eyeCustomPoints:null);
 
   const lEyeCX=innerLeft+eyeW/2, rEyeCX=rBrowX+eyeW/2;
   const mouthWBase=rEyeCX-lEyeCX, mouthH=mouthWBase/4;
@@ -2435,6 +2519,7 @@ function exportFaceExcel() {
     'Brow Shape','Brow Rotation','Brow Thickness',
     'Eye Shape','Eye Height Ratio','Eye Flip Right','Eye Rotate 180',
     'Eye Pts Enabled','Eye Pt Count','Eye Curve Mode',
+    'Eye Shape Scale X','Eye Shape Scale Y','Eye Shape Offset X','Eye Shape Offset Y',
     'Eye Pt Scale X','Eye Pt Scale Y','Eye Pt Offset X','Eye Pt Offset Y',
     'Iris Width Ratio','Mouth Shape','Mouth Offset Y','Mouth Width %'
   ];
@@ -2473,6 +2558,10 @@ function exportFaceExcel() {
     document.getElementById('eyePointsEnabled').checked?1:0,
     parseInt(document.getElementById('eyePointCount').value)||8,
     document.getElementById('eyeCurveMode').value,
+    parseFloat(document.getElementById('eyeShapeScaleX')?.value)||100,
+    parseFloat(document.getElementById('eyeShapeScaleY')?.value)||100,
+    parseFloat(document.getElementById('eyeShapeOffsetX')?.value)||0,
+    parseFloat(document.getElementById('eyeShapeOffsetY')?.value)||0,
     parseFloat(document.getElementById('eyePtScaleX')?.value)||100,
     parseFloat(document.getElementById('eyePtScaleY')?.value)||100,
     parseFloat(document.getElementById('eyePtOffsetX')?.value)||0,
@@ -2531,6 +2620,15 @@ function importFaceExcel(event) {
       if(syEl){syEl.value=syV;document.getElementById('eyePtScaleYVal').textContent=syV;}
       if(oxEl){oxEl.value=oxV;document.getElementById('eyePtOffsetXVal').textContent=oxV;}
       if(oyEl){oyEl.value=oyV;document.getElementById('eyePtOffsetYVal').textContent=oyV;}
+      // Restore eye shape scale/offset
+      const ssxEl=document.getElementById('eyeShapeScaleX'),ssyEl=document.getElementById('eyeShapeScaleY');
+      const soxEl=document.getElementById('eyeShapeOffsetX'),soyEl=document.getElementById('eyeShapeOffsetY');
+      const ssxV=getNum('Eye Shape Scale X',100),ssyV=getNum('Eye Shape Scale Y',100);
+      const soxV=getNum('Eye Shape Offset X',0),soyV=getNum('Eye Shape Offset Y',0);
+      if(ssxEl){ssxEl.value=ssxV;document.getElementById('eyeShapeScaleXVal').textContent=ssxV;}
+      if(ssyEl){ssyEl.value=ssyV;document.getElementById('eyeShapeScaleYVal').textContent=ssyV;}
+      if(soxEl){soxEl.value=soxV;document.getElementById('eyeShapeOffsetXVal').textContent=soxV;}
+      if(soyEl){soyEl.value=soyV;document.getElementById('eyeShapeOffsetYVal').textContent=soyV;}
       function safeSetShape(pickerId,hiddenId,val,def){
         const hidden=document.getElementById(hiddenId);if(!hidden)return;
         const container=document.getElementById(pickerId);
