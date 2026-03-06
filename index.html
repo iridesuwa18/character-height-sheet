@@ -47,6 +47,8 @@
     transform: translate(-50%, -50%); cursor: grab; z-index: 100; touch-action: none;
   }
   .chin-handle:active { cursor: grabbing; }
+  /* Selected chin handle segment highlight */
+  .chin-handle.seg-selected { box-shadow: 0 0 0 3px rgba(240,192,64,0.5); }
   .eye-point {
     position: absolute; width: 11px; height: 11px; border-radius: 50%;
     background: rgba(80,220,120,0.95); border: 2px solid #000;
@@ -55,6 +57,23 @@
   }
   .eye-point:active { cursor: grabbing; }
   .eye-point.right-eye { background: rgba(80,180,255,0.95); box-shadow: 0 0 4px rgba(80,180,255,0.7); }
+
+  /* ── Curvature popup ── */
+  .curve-popup {
+    position: absolute; z-index: 500;
+    background: #1e1e22; border: 1px solid var(--accent-gold); border-radius: 8px;
+    padding: 10px 14px; font-family: 'Space Mono', monospace; font-size: 10px;
+    color: var(--accent-gold); white-space: nowrap;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    pointer-events: all;
+    min-width: 180px;
+  }
+  .curve-popup label { display: block; margin-bottom: 6px; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .curve-popup input[type=range] {
+    width: 100%; accent-color: var(--accent-gold); cursor: pointer;
+    background: transparent; border: none; padding: 0;
+  }
+  .curve-popup .curve-val { text-align: center; font-size: 11px; color: var(--accent-gold); margin-top: 4px; }
 
   /* ── Face Section Nav ── */
   .face-section-nav {
@@ -258,6 +277,11 @@
     transition: border-color 0.12s, color 0.12s;
   }
   .add-iris-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
+
+  /* Eye point size/position controls */
+  .eye-pt-scale-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
+  }
 </style>
 </head>
 <body>
@@ -266,7 +290,6 @@
   <p>Proportion reference generator for artists</p>
 </header>
 
-<!-- Floating Generate Button (shows when on Face tab) -->
 <button id="floatingGenerate" onclick="generateFace()">⟳ Generate</button>
 
 <div class="tab-bar">
@@ -274,7 +297,7 @@
   <button class="tab-btn" onclick="switchTab('face')">Face</button>
 </div>
 
-<!-- ═══════════ BODY TAB ═══════════ -->
+<!-- ═══════════════════════════════════════ BODY TAB ═══════════════════════════════════════ -->
 <div class="tab-page active" id="tab-height">
   <div class="panel" style="width:100%;">
   <div class="panel-title">Character Parameters</div>
@@ -334,10 +357,9 @@
   </div>
 </div>
 
-<!-- ═══════════ FACE TAB ═══════════ -->
+<!-- ═══════════════════════════════════════ FACE TAB ═══════════════════════════════════════ -->
 <div class="tab-page" id="tab-face">
 
-  <!-- Section nav -->
   <nav class="face-section-nav" id="faceSecNav">
     <button class="face-nav-btn active" onclick="faceNavTo('sec-head')">Head</button>
     <button class="face-nav-btn" onclick="faceNavTo('sec-nose')">Nose</button>
@@ -409,7 +431,6 @@
   <div class="panel" id="sec-brows" style="width:100%;">
     <div class="panel-title">Eyebrows</div>
     <div class="field-grid">
-      <!-- PATCH 4: removed "Rounded (arch)", renamed circle-anime → flat-oval -->
       <div class="field">
         <label>Line shape</label>
         <select id="browShape">
@@ -435,6 +456,7 @@
     <label style="font-size:10px; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted); margin-bottom:8px; display:block;">Eye Shape</label>
     <div id="eyeShapePicker" class="shape-picker"></div>
     <input type="hidden" id="eyeShape" value="almond"/>
+
     <!-- Eye point editor -->
     <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
       <div class="iris-flags" style="margin-bottom:10px;">
@@ -454,13 +476,36 @@
             </select>
           </div>
         </div>
-        <button class="btn-secondary" style="width:100%; font-size:10px; padding:7px;" onclick="resetEyePoints()">↺ Reset Points to Shape</button>
+        <!-- FIX 2: Eye point scale/offset controls -->
+        <div class="panel-title" style="margin-top:8px; margin-bottom:8px;">Point Scale &amp; Position</div>
+        <div class="eye-pt-scale-row">
+          <div class="field">
+            <label>Scale X % <span id="eyePtScaleXVal" style="color:var(--accent-gold);">100</span></label>
+            <input type="range" id="eyePtScaleX" min="10" max="200" value="100" step="1"
+              oninput="document.getElementById('eyePtScaleXVal').textContent=this.value; applyEyePtTransform()"/>
+          </div>
+          <div class="field">
+            <label>Scale Y % <span id="eyePtScaleYVal" style="color:var(--accent-gold);">100</span></label>
+            <input type="range" id="eyePtScaleY" min="10" max="200" value="100" step="1"
+              oninput="document.getElementById('eyePtScaleYVal').textContent=this.value; applyEyePtTransform()"/>
+          </div>
+          <div class="field">
+            <label>Offset X % <span id="eyePtOffsetXVal" style="color:var(--accent-gold);">0</span></label>
+            <input type="range" id="eyePtOffsetX" min="-50" max="50" value="0" step="1"
+              oninput="document.getElementById('eyePtOffsetXVal').textContent=this.value; applyEyePtTransform()"/>
+          </div>
+          <div class="field">
+            <label>Offset Y % <span id="eyePtOffsetYVal" style="color:var(--accent-gold);">0</span></label>
+            <input type="range" id="eyePtOffsetY" min="-50" max="50" value="0" step="1"
+              oninput="document.getElementById('eyePtOffsetYVal').textContent=this.value; applyEyePtTransform()"/>
+          </div>
+        </div>
+        <button class="btn-secondary" style="width:100%; font-size:10px; padding:7px; margin-top:6px;" onclick="resetEyePoints()">↺ Reset Points to Shape</button>
       </div>
     </div>
   </div>
 
   <div class="panel" id="sec-iris" style="width:100%;">
-    <!-- PATCH 5: removed coverage dropdown — iris is now masked by eye shape path -->
     <div class="panel-title">Iris <span style="font-size:9px;color:var(--muted);text-transform:none;letter-spacing:0;">— clipped to eye shape</span></div>
     <div class="field-grid" style="margin-bottom:12px;">
       <div class="field"><label>Base width ratio (1:N eye)</label><input type="number" id="irisWidthRatio" value="3" min="1" max="10" step="0.5"/></div>
@@ -491,9 +536,9 @@
   <div class="face-canvas-wrap" id="faceWrap" style="width:100%;">
     <canvas id="faceCanvas"></canvas>
   </div>
-  </div><!-- /sec-preview -->
+  </div>
   <div style="font-size:10px; color:var(--muted); text-align:center; font-family:'Space Mono',monospace; text-transform:uppercase; letter-spacing:0.08em; padding-bottom: 16px;">
-    Drag the gold handles to adjust chin points
+    Drag gold handles to adjust chin · Click a curved segment line to adjust curvature
   </div>
 </div>
 
@@ -654,10 +699,6 @@ function downloadSheetPng(bw) {
   const btnId = bw ? "downloadBwBtn" : "downloadPngBtn";
   const btn = document.getElementById(btnId);
   const origText = btn.textContent; btn.textContent="Generating…"; btn.disabled=true;
-  const h = document.getElementById("heightInput").value||"character";
-  const g = document.getElementById("genderSelect").value;
-
-  // Save/restore helper
   const saved = [];
   function set(el, styles) {
     const entry = { el, props: {} };
@@ -665,45 +706,23 @@ function downloadSheetPng(bw) {
     saved.push(entry);
   }
   function restore() { saved.forEach(({el,props}) => Object.assign(el.style, props)); }
-
-  // Always: transparent preview background + hide tooltips
   set(preview, { background: 'transparent' });
   preview.querySelectorAll('.line-tooltip').forEach(el => set(el, { opacity: '0' }));
-
   if (bw) {
-    // BW: boxes = black outlines, lines = blue, labels = blue, all transparent bg
-    preview.querySelectorAll('.grid-line').forEach(el =>
-      set(el, { borderColor: 'rgba(80,120,220,0.2)', background: 'transparent' })
-    );
-    preview.querySelectorAll('.grid-label').forEach(el =>
-      set(el, { background: 'transparent', color: 'rgba(80,120,220,0.5)' })
-    );
-    preview.querySelectorAll('.height-line,.neck-line,.shoulder-line').forEach(el =>
-      set(el, { borderColor: 'rgba(80,120,220,0.9)' })
-    );
-    preview.querySelectorAll('.hip-line,.knee-line,.waist-line').forEach(el =>
-      set(el, { borderColor: 'rgba(80,120,220,0.75)' })
-    );
-    preview.querySelectorAll('.line-label').forEach(el =>
-      set(el, { background: 'transparent', color: 'rgba(80,120,220,0.9)' })
-    );
+    preview.querySelectorAll('.grid-line').forEach(el => set(el, { borderColor: 'rgba(80,120,220,0.2)', background: 'transparent' }));
+    preview.querySelectorAll('.grid-label').forEach(el => set(el, { background: 'transparent', color: 'rgba(80,120,220,0.5)' }));
+    preview.querySelectorAll('.height-line,.neck-line,.shoulder-line').forEach(el => set(el, { borderColor: 'rgba(80,120,220,0.9)' }));
+    preview.querySelectorAll('.hip-line,.knee-line,.waist-line').forEach(el => set(el, { borderColor: 'rgba(80,120,220,0.75)' }));
+    preview.querySelectorAll('.line-label').forEach(el => set(el, { background: 'transparent', color: 'rgba(80,120,220,0.9)' }));
     preview.querySelectorAll('.head-box,.neck-box,.torso-box,.waist-box,.leg-box,.arm-box').forEach(el => {
       set(el, { borderColor: 'rgba(0,0,0,0.55)', background: 'transparent' });
       el.querySelectorAll('div').forEach(inner => set(inner, { borderColor: 'rgba(0,0,0,0.2)' }));
     });
   } else {
-    // Normal PNG: keep all original colors, just make backgrounds transparent
-    preview.querySelectorAll('.grid-label,.line-label').forEach(el =>
-      set(el, { background: 'transparent' })
-    );
-    preview.querySelectorAll('.head-box,.neck-box,.torso-box,.waist-box,.leg-box,.arm-box').forEach(el =>
-      set(el, { background: 'transparent' })
-    );
-    preview.querySelectorAll('.grid-line').forEach(el =>
-      set(el, { background: 'transparent' })
-    );
+    preview.querySelectorAll('.grid-label,.line-label').forEach(el => set(el, { background: 'transparent' }));
+    preview.querySelectorAll('.head-box,.neck-box,.torso-box,.waist-box,.leg-box,.arm-box').forEach(el => set(el, { background: 'transparent' }));
+    preview.querySelectorAll('.grid-line').forEach(el => set(el, { background: 'transparent' }));
   }
-
   html2canvas(preview, { backgroundColor: null, scale: 2, useCORS: true, logging: false }).then(canvas => {
     restore();
     const link = document.createElement("a");
@@ -774,7 +793,6 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-'+tab).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b => { if (b.getAttribute('onclick')===`switchTab('${tab}')`) b.classList.add('active'); });
-  // Show/hide floating generate button
   const floatBtn = document.getElementById('floatingGenerate');
   if (tab === 'face') { floatBtn.classList.add('visible'); initFace(); }
   else floatBtn.classList.remove('visible');
@@ -787,6 +805,10 @@ let faceInited=false, faceCanvas, faceCtx, faceWrap;
 const DPR=window.devicePixelRatio||1, PAD=40;
 let fW, fH, headW, headH, headX, headY, neckW, neckH, neckX, neckY, fringeY;
 let chinHandles=[];
+
+// ── FIX 3: Per-segment curvature values (0–100, default 100) ──
+let segCurvatures = []; // array of numbers 0–100 per segment
+let selectedCurveSegIdx = null; // currently selected segment index for popup
 
 function initFace() {
   if (faceInited) return; faceInited=true;
@@ -805,6 +827,7 @@ function initFace() {
   drawFace();
   setupChinDrag();
   setupEyePointDrag();
+  setupCurvePopup();
   initFaceNavObserver();
 }
 function computeFaceGeometry() {
@@ -837,6 +860,7 @@ function resetFaceDefaults() {
   document.getElementById('mouthWidthPct').value=100;
   initIrisLayers();
   chinHandles=buildDefaultChinHandles(2);
+  segCurvatures=[100,100];
   buildSegmentSelectors(2);
   drawFace(); renderChinHandles();
 }
@@ -850,6 +874,7 @@ function applyFacePreset() {
   document.getElementById('noseHeightRatio').value=p.noseHeightRatio;
   document.getElementById('eyeHeightRatio').value=p.eyeHeightRatio;
   document.getElementById('irisWidthRatio').value=p.irisWidthRatio;
+  segCurvatures = p.segments.map(()=>100);
   chinHandles=buildDefaultChinHandles(p.chinPoints);
   buildSegmentSelectors(p.chinPoints);
   p.segments.forEach((shape,i) => { const sel=document.getElementById(`segShape-${i}`); if (sel) sel.value=shape; });
@@ -860,6 +885,8 @@ function buildSegmentSelectors(segCount) {
   const existing=[]; container.querySelectorAll('select').forEach(s=>existing.push(s.value));
   container.innerHTML='';
   const labels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
+  // Ensure segCurvatures has enough entries
+  while (segCurvatures.length < segCount) segCurvatures.push(100);
   for (let i=0;i<segCount;i++) {
     const label=labels[i]||`Seg ${i+1}`, val=existing[i]||'curved';
     const row=document.createElement('div');
@@ -867,6 +894,7 @@ function buildSegmentSelectors(segCount) {
     const sel=document.createElement('select');
     sel.id=`segShape-${i}`; sel.style.cssText="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:'Space Mono',monospace;font-size:10px;";
     ['curved','straight'].forEach(v=>{const opt=document.createElement('option');opt.value=v;opt.textContent=v.charAt(0).toUpperCase()+v.slice(1);if(v===val)opt.selected=true;sel.appendChild(opt);});
+    sel.addEventListener('change', () => drawFace());
     const span=document.createElement('span'); span.style.flex='1'; span.textContent=label;
     row.appendChild(span); row.appendChild(sel); container.appendChild(row);
   }
@@ -892,11 +920,16 @@ function generateFace() {
     for (let i=1;i<newPts;i++){keepIds.add(`p${i+1}-left`);keepIds.add(`p${i+1}-right`);}
     chinHandles=chinHandles.filter(h=>keepIds.has(h.id));
   }
+  // Resize segCurvatures to match
+  while (segCurvatures.length < newPts) segCurvatures.push(100);
+  segCurvatures = segCurvatures.slice(0, newPts);
   buildSegmentSelectors(newPts); drawFace(); renderChinHandles();
 }
 function resetChin() {
   const pts=parseInt(document.getElementById('chinPoints').value)||2;
-  chinHandles=buildDefaultChinHandles(pts); buildSegmentSelectors(pts); drawFace(); renderChinHandles();
+  chinHandles=buildDefaultChinHandles(pts);
+  segCurvatures = Array(pts).fill(100);
+  buildSegmentSelectors(pts); drawFace(); renderChinHandles();
 }
 function buildDefaultChinHandles(pts) {
   const cx=headX+headW/2, bottomY=headY+headH;
@@ -912,78 +945,143 @@ function buildDefaultChinHandles(pts) {
   return handles;
 }
 
+// ── FIX 3: Curvature popup setup ──────────────────────────────────────────
+function setupCurvePopup() {
+  // Clicking the canvas checks if user clicked near a curved segment midpoint
+  faceCanvas.addEventListener('click', onCurveCanvasClick);
+  faceCanvas.addEventListener('touchend', onCurveTouchEnd, { passive: false });
+  // Close popup on outside click
+  document.addEventListener('click', onDocClickForPopup);
+}
+
+function onDocClickForPopup(e) {
+  const popup = document.getElementById('curvePopup');
+  if (!popup) return;
+  if (!popup.contains(e.target) && e.target !== faceCanvas) {
+    closeCurvePopup();
+  }
+}
+
+function onCurveTouchEnd(e) {
+  const rect = faceCanvas.getBoundingClientRect();
+  const touch = e.changedTouches[0];
+  const x = touch.clientX - rect.left, y = touch.clientY - rect.top;
+  checkCurveSegmentHit(x, y);
+}
+
+function onCurveCanvasClick(e) {
+  const rect = faceCanvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  checkCurveSegmentHit(x, y);
+}
+
+function checkCurveSegmentHit(mx, my) {
+  // Build segment midpoints for each side pair
+  const p1L=chinHandles.find(h=>h.id==='p1-left'), p1R=chinHandles.find(h=>h.id==='p1-right');
+  const bottomH=chinHandles.find(h=>h.id==='bottom');
+  if (!p1L||!p1R||!bottomH) return;
+  const leftDrag=chinHandles.filter(h=>!h.anchor&&h.id.includes('left')&&h.id!=='p1-left').sort((a,b)=>a.y-b.y);
+  const leftPts=[p1L,...leftDrag,bottomH];
+  const segCount=leftPts.length-1;
+  const HIT_DIST = 18;
+  for (let i=0;i<segCount;i++){
+    const sel=document.getElementById(`segShape-${i}`);
+    if (!sel||sel.value!=='curved') continue;
+    const A=leftPts[i], B=leftPts[i+1];
+    // Midpoint of the segment
+    const midX=(A.x+B.x)/2, midY=(A.y+B.y)/2;
+    const dx=mx-midX, dy=my-midY;
+    if (Math.sqrt(dx*dx+dy*dy)<HIT_DIST) {
+      showCurvePopup(i, midX, midY);
+      return;
+    }
+    // Also check right side midpoint
+    const rightDrag=chinHandles.filter(h=>!h.anchor&&h.id.includes('right')&&h.id!=='p1-right').sort((a,b)=>a.y-b.y);
+    const rightPts=[p1R,...rightDrag,bottomH];
+    const RA=rightPts[i], RB=rightPts[i+1];
+    const rmidX=(RA.x+RB.x)/2, rmidY=(RA.y+RB.y)/2;
+    const rdx=mx-rmidX, rdy=my-rmidY;
+    if (Math.sqrt(rdx*rdx+rdy*rdy)<HIT_DIST) {
+      showCurvePopup(i, rmidX, rmidY);
+      return;
+    }
+  }
+}
+
+function showCurvePopup(segIdx, canvasX, canvasY) {
+  closeCurvePopup();
+  selectedCurveSegIdx = segIdx;
+  const curvature = segCurvatures[segIdx] !== undefined ? segCurvatures[segIdx] : 100;
+
+  const popup = document.createElement('div');
+  popup.className = 'curve-popup';
+  popup.id = 'curvePopup';
+
+  const labels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
+  popup.innerHTML = `
+    <label>Seg ${labels[segIdx]||segIdx+1} — Curvature</label>
+    <input type="range" id="curveSlider" min="0" max="100" value="${curvature}" step="1"/>
+    <div class="curve-val" id="curveSliderVal">${curvature}</div>
+  `;
+
+  // Position near midpoint but constrained to canvas
+  const wrapRect = faceWrap.getBoundingClientRect();
+  const canvRect = faceCanvas.getBoundingClientRect();
+  // Canvas coords → wrap-relative coords
+  const scaleX = canvRect.width / fW;
+  const scaleY = canvRect.height / fH;
+  let px = canvasX * scaleX + (canvRect.left - wrapRect.left) - 90;
+  let py = canvasY * scaleY + (canvRect.top - wrapRect.top) - 80;
+  px = Math.max(4, Math.min(fW * scaleX - 196, px));
+  py = Math.max(4, py);
+
+  popup.style.left = px + 'px';
+  popup.style.top  = py + 'px';
+  faceWrap.appendChild(popup);
+
+  const slider = popup.querySelector('#curveSlider');
+  const valEl  = popup.querySelector('#curveSliderVal');
+  slider.addEventListener('input', () => {
+    const v = parseInt(slider.value);
+    valEl.textContent = v;
+    segCurvatures[segIdx] = v;
+    drawFace();
+  });
+  // Highlight handles near this segment
+  renderChinHandles();
+}
+
+function closeCurvePopup() {
+  const popup = document.getElementById('curvePopup');
+  if (popup) popup.remove();
+  selectedCurveSegIdx = null;
+}
+
 // ═══════════════════════════════════════
 // SHAPE PICKER SYSTEM
 // ═══════════════════════════════════════
 const EYE_SHAPES = [
-  // ── Realistic ──
-  {v:'almond',l:'Almond'},       // classic tapered ends, slightly lifted
-  {v:'round',l:'Round'},         // large open circle-ish
-  {v:'hooded',l:'Hooded'},       // heavy top lid drapes over
-  {v:'monolid',l:'Monolid'},     // flat top crease, curved bottom
-  {v:'droopy',l:'Droopy'},       // outer corner falls lower
-  {v:'upturned',l:'Upturned'},   // outer corner lifts up
-  {v:'deep-set',l:'Deep Set'},   // small visible area, strong top lid shadow line
-  {v:'wide-set',l:'Wide Set'},   // wide elongated almond
-  // ── Stylised / anime ──
-  {v:'cat',l:'Cat'},             // sharp outer point, flat inner
-  {v:'manga-round',l:'Manga Rnd'}, // very large round anime eye
-  {v:'manga-sharp',l:'Manga Sharp'}, // wide with sharp outer spike
-  {v:'tareme',l:'Tareme'},       // soft droopy anime (gentle character)
-  {v:'tsurime',l:'Tsurime'},     // sharp upswept anime (fierce character)
-  {v:'crescent',l:'Crescent'},   // thin curved sliver
-  {v:'leaf',l:'Leaf'},           // pointed both ends, fully curved sides
-  {v:'gothic',l:'Gothic'},       // tall narrow almond
+  {v:'almond',l:'Almond'},{v:'round',l:'Round'},{v:'hooded',l:'Hooded'},{v:'monolid',l:'Monolid'},
+  {v:'droopy',l:'Droopy'},{v:'upturned',l:'Upturned'},{v:'deep-set',l:'Deep Set'},{v:'wide-set',l:'Wide Set'},
+  {v:'cat',l:'Cat'},{v:'manga-round',l:'Manga Rnd'},{v:'manga-sharp',l:'Manga Sharp'},{v:'tareme',l:'Tareme'},
+  {v:'tsurime',l:'Tsurime'},{v:'crescent',l:'Crescent'},{v:'leaf',l:'Leaf'},{v:'gothic',l:'Gothic'},
 ];
 const NOSE_FRONT_SHAPES = [
-  // ── Realistic ──
-  {v:'nostrils',l:'Nostrils'},       // just two oval nostrils, realistic base
-  {v:'button',l:'Button'},           // small round tip + slight nostrils
-  {v:'wide',l:'Wide'},               // wide low triangle with curved base
-  {v:'slim',l:'Slim'},               // narrow tall shape
-  {v:'bulb',l:'Bulb'},               // wide round bulbous tip
-  {v:'hawk',l:'Hawk'},               // narrow ridge, pointed tip, aquiline
-  {v:'snub-front',l:'Snub'},         // low and wide, turned-up feel
-  // ── Stylised ──
-  {v:'dot',l:'Dot'},                 // single small circle (anime minimal)
-  {v:'triangle',l:'Triangle'},       // clean triangle
-  {v:'heart',l:'Heart'},             // cute heart shape
-  {v:'water-droplet',l:'Droplet'},   // thin top, very round bottom
+  {v:'nostrils',l:'Nostrils'},{v:'button',l:'Button'},{v:'wide',l:'Wide'},{v:'slim',l:'Slim'},
+  {v:'bulb',l:'Bulb'},{v:'hawk',l:'Hawk'},{v:'snub-front',l:'Snub'},
+  {v:'dot',l:'Dot'},{v:'triangle',l:'Triangle'},{v:'heart',l:'Heart'},{v:'water-droplet',l:'Droplet'},
 ];
 const NOSE_SIDE_SHAPES = [
-  // All shapes use noseSideTipX (0–100) to control tip horizontal position
-  {v:'straight-bridge',l:'Straight'},   // straight bridge, angled tip
-  {v:'curved-bridge',l:'Curved'},       // gently curved bridge
-  {v:'concave',l:'Concave'},            // scooped / ski-jump bridge
-  {v:'convex',l:'Convex'},              // roman/hawk bump on bridge
-  {v:'round-tip',l:'Round Tip'},        // soft round bottom
-  {v:'upturned',l:'Upturned'},          // tip points upward
-  {v:'hooked',l:'Hooked'},              // tip hooks downward
+  {v:'straight-bridge',l:'Straight'},{v:'curved-bridge',l:'Curved'},{v:'concave',l:'Concave'},
+  {v:'convex',l:'Convex'},{v:'round-tip',l:'Round Tip'},{v:'upturned',l:'Upturned'},{v:'hooked',l:'Hooked'},
 ];
 const IRIS_SHAPES = [
-  // ── Realistic ──
-  {v:'circle',l:'Circle'},           // standard round iris
-  {v:'oval-tall',l:'Oval Tall'},     // slightly taller than wide
-  {v:'cat-slit',l:'Cat Slit'},       // vertical slit pupil inside oval
-  {v:'dilated',l:'Dilated'},         // large circle with tiny ring
-  // ── Stylised geometric ──
-  {v:'diamond',l:'Diamond'},
-  {v:'triangle-down',l:'Tri Down'},
-  {v:'triangle-up',l:'Tri Up'},
-  {v:'teardrop-down',l:'Drop Down'},
-  {v:'teardrop-up',l:'Drop Up'},
-  {v:'leaf',l:'Leaf'},
-  {v:'crescent',l:'Crescent'},
-  {v:'star4',l:'Star 4'},
-  {v:'star3',l:'Star 3'},
-  {v:'cross',l:'Cross'},
-  {v:'hex',l:'Hex'},
-  // ── Decorative / anime ──
-  {v:'heart',l:'Heart'},
-  {v:'flower',l:'Flower'},
-  {v:'swirl',l:'Swirl'},
-  {v:'target',l:'Target'},
-  {v:'sun',l:'Sun'},
+  {v:'circle',l:'Circle'},{v:'oval-tall',l:'Oval Tall'},{v:'cat-slit',l:'Cat Slit'},{v:'dilated',l:'Dilated'},
+  {v:'diamond',l:'Diamond'},{v:'triangle-down',l:'Tri Down'},{v:'triangle-up',l:'Tri Up'},
+  {v:'teardrop-down',l:'Drop Down'},{v:'teardrop-up',l:'Drop Up'},{v:'leaf',l:'Leaf'},
+  {v:'crescent',l:'Crescent'},{v:'star4',l:'Star 4'},{v:'star3',l:'Star 3'},{v:'cross',l:'Cross'},
+  {v:'hex',l:'Hex'},{v:'heart',l:'Heart'},{v:'flower',l:'Flower'},{v:'swirl',l:'Swirl'},
+  {v:'target',l:'Target'},{v:'sun',l:'Sun'},
 ];
 
 function renderShapePreview(canvas, type, value) {
@@ -1025,7 +1123,6 @@ function buildShapePicker(containerId, hiddenId, shapes, type, tileW, tileH) {
 
 // ═══════════════════════════════════════
 // IRIS LAYER SYSTEM
-// PATCH 5: removed coverage, iris masked by eye shape path
 // ═══════════════════════════════════════
 let irisLayers=[], irisLayerCounter=0;
 function defaultIrisLayer() {
@@ -1081,18 +1178,15 @@ function renderIrisLayerUI(layer) {
   });
 }
 
-// ─── PATCH 5: Eye-shape-masked iris drawing ───────────────────────────────
-// Creates a clip path matching the eye shape, then draws iris inside it
+// ─── Iris drawing clipped to eye shape ────────────────────────────────────
 function drawIrisLayers(ctx, eyeX, eyeY, eyeW, eyeH, baseIrisW, eyeShape, isRight, eyeFlip, eyeRot180, customPts) {
   if (irisLayers.length===0) return;
   ctx.save();
-  // Clip to the eye shape — use custom points if available, else built-in shape
   if (customPts && customPts.length >= 3) {
     clipToEyeFromPoints(ctx, customPts, eyeX, eyeY, eyeW, eyeH, isRight, eyeFlip, eyeRot180);
   } else {
     clipToEyeShape(ctx, eyeShape, eyeX, eyeY, eyeW, eyeH, eyeFlip, eyeRot180);
   }
-
   irisLayers.forEach(layer=>{
     const lW=baseIrisW*(layer.sizeW/100);
     const lH=eyeH*(layer.sizeH/100);
@@ -1101,7 +1195,6 @@ function drawIrisLayers(ctx, eyeX, eyeY, eyeW, eyeH, baseIrisW, eyeShape, isRigh
     if (isRight) lX=eyeX+irisTravel*(layer.posX/100);
     else         lX=eyeX+irisTravel*(1-layer.posX/100);
     const lY=eyeY+eyeH*(layer.posY/100)-lH/2;
-
     ctx.save();
     const lcx=lX+lW/2, lcy=lY+lH/2;
     ctx.translate(lcx,lcy);
@@ -1115,9 +1208,7 @@ function drawIrisLayers(ctx, eyeX, eyeY, eyeW, eyeH, baseIrisW, eyeShape, isRigh
   ctx.restore();
 }
 
-// Generates a clip path that matches the eye shape drawn by drawEyeShape
 function clipToEyeShape(ctx, shape, x, y, w, h, flipped, rotate180) {
-  // Exact mirror of drawEyeShape — same transforms, same paths, used as a clip mask
   const cx=x+w/2, cy=y+h/2, rx=w/2, ry=h/2;
   ctx.save();
   ctx.translate(cx,cy);
@@ -1207,151 +1298,64 @@ function initIrisLayers() {
   addIrisLayer(defaultIrisLayer());
 }
 const MOUTH_SHAPES = [
-  // ── Realistic ──
-  {v:'smile',l:'Smile'},           // gentle upward curve, closed
-  {v:'neutral',l:'Neutral'},       // straight flat line
-  {v:'frown',l:'Frown'},           // downward curve
-  {v:'open-neutral',l:'Open Neut'}, // slightly open mouth, neutral
-  {v:'open-smile',l:'Open Smile'}, // open smiling mouth, teeth visible
-  {v:'lips-full',l:'Lips Full'},   // full cupid-bow lips, closed
-  {v:'lips-thin',l:'Lips Thin'},   // thin pressed lips
-  // ── Stylised ──
-  {v:'cat-mouth',l:'Cat Mouth'},   // anime w-shape / cat mouth
-  {v:'o-shape',l:'O Shape'},       // round surprised O
-  {v:'smirk',l:'Smirk'},           // one side raised
-  {v:'wide-grin',l:'Wide Grin'},   // exaggerated wide smile arc
+  {v:'smile',l:'Smile'},{v:'neutral',l:'Neutral'},{v:'frown',l:'Frown'},
+  {v:'open-neutral',l:'Open Neut'},{v:'open-smile',l:'Open Smile'},{v:'lips-full',l:'Lips Full'},
+  {v:'lips-thin',l:'Lips Thin'},{v:'cat-mouth',l:'Cat Mouth'},{v:'o-shape',l:'O Shape'},
+  {v:'smirk',l:'Smirk'},{v:'wide-grin',l:'Wide Grin'},
 ];
+
 // ═══════════════════════════════════════
-// EYE POINT EDITOR
+// EYE POINT EDITOR — FIX 1 + FIX 2 + FIX 3 (mirroring)
 // ═══════════════════════════════════════
-let eyeCustomPoints = [];   // [{nx,ny}] normalised 0–1 within eye box (left eye)
-let eyePointsDragging = null; // {idx, side, offNx, offNy}
+// eyeCustomPoints: normalised coords on the shape before any scale/offset transform
+let eyeCustomPoints = [];
+// The "base" sampled points from shape — used as reference for scale/offset
+let eyeBasePoints = [];
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-// Sample N equally-spaced points along the current eye shape path
-function sampleEyeShapePath(shape, n, flipped, rotate180) {
-  const W = 200, H = 80; // offscreen resolution
-  const off = document.createElement('canvas');
-  off.width = W; off.height = H;
-  const oc = off.getContext('2d');
-  // Draw the shape path (stroke only, no transform complications)
-  // We sample from the LEFT eye always (flipped=false, rotate180=false)
-  // then mirror later in mirror logic
-  drawEyeShape(oc, shape, 0, 0, W, H, false, false);
-  // Walk the path using getImageData to find the outline pixels,
-  // but easier: re-trace analytically using a 2nd canvas with full path
-  const off2 = document.createElement('canvas');
-  off2.width = W; off2.height = H;
-  const oc2 = off2.getContext('2d');
-  oc2.strokeStyle = '#fff'; oc2.lineWidth = 1;
-  drawEyeShape(oc2, shape, 0, 0, W, H, false, false);
-  // Build points by sampling the outline at equal parametric steps
-  // We use a path-length approach: draw many tiny segments, accumulate length
-  const steps = 2000;
-  const pts = [];
-  for (let i = 0; i <= steps; i++) {
-    const t = i / steps;
-    // Re-evaluate the eye shape as a polygon by sampling via the offscreen ctx
-    // We do this by drawing into an offscreen at each parametric position
-    // Simpler: use the analytical approach — just use the path directly
-    pts.push(sampleEyeAtT(shape, t, W, H));
-  }
-  // Compute cumulative arc length
-  const cumLen = [0];
-  for (let i = 1; i < pts.length; i++) {
-    const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
-    cumLen.push(cumLen[i-1] + Math.sqrt(dx*dx + dy*dy));
-  }
-  const totalLen = cumLen[cumLen.length-1];
-  // Pick N equally-spaced points
-  const result = [];
-  for (let k = 0; k < n; k++) {
-    const target = (k / n) * totalLen;
-    let lo = 0, hi = pts.length - 1;
-    while (lo < hi - 1) {
-      const mid = (lo + hi) >> 1;
-      if (cumLen[mid] < target) lo = mid; else hi = mid;
-    }
-    const seg = cumLen[hi] - cumLen[lo];
-    const frac = seg > 0 ? (target - cumLen[lo]) / seg : 0;
-    const x = pts[lo].x + (pts[hi].x - pts[lo].x) * frac;
-    const y = pts[lo].y + (pts[hi].y - pts[lo].y) * frac;
-    result.push({ nx: x / W, ny: y / H });
-  }
-  return result;
-}
-
-// Sample a single point at parameter t∈[0,1] around the eye shape outline
-function sampleEyeAtT(shape, t, W, H) {
-  const cx = W/2, cy = H/2, rx = W/2, ry = H/2;
-  const x = 0, y = 0, w = W, h = H;
-  // Each shape is a closed curve. We parameterise analytically.
-  switch(shape) {
-    case 'almond': {
-      // 4 bezier segments approximating almond — use the same control points
-      const segs = [
-        [x,cy,  x+w*0.12,y+h*0.05, x+w*0.4,y,    x+w*0.65,y+h*0.05],
-        [x+w*0.65,y+h*0.05, x+w*0.85,y+h*0.1, x+w,cy-ry*0.15, x+w,cy],
-        [x+w,cy, x+w,cy+ry*0.5, x+w*0.85,y+h, x+w*0.6,y+h],
-        [x+w*0.6,y+h, x+w*0.3,y+h, x+w*0.1,y+h*0.75, x,cy],
-      ];
-      return sampleBezierSegs(segs, t);
-    }
-    case 'cat': {
-      const segs = [
-        [x,cy+ry*0.1, x+w*0.05,y+h*0.1, x+w*0.4,y, x+w*0.7,y+h*0.05],
-        [x+w*0.7,y+h*0.05, x+w*0.88,y+h*0.1, x+w,y+h*0.1, x+w,cy-ry*0.2],
-        [x+w,cy-ry*0.2, x+w*0.9,y+h*0.75, x+w*0.15,y+h*0.85, x,cy+ry*0.1],
-      ];
-      return sampleBezierSegs(segs, t);
-    }
-    case 'upturned': {
-      const segs = [
-        [x,cy+ry*0.2, x+w*0.1,cy-ry*0.3, x+w*0.5,y+h*0.05, x+w,y+h*0.05],
-        [x+w,y+h*0.05, x+w,cy, x+w,cy-ry*0.35, x+w,cy-ry*0.35],
-        [x+w,cy-ry*0.35, x+w*0.8,cy+ry*0.6, x+w*0.2,cy+ry*0.7, x,cy+ry*0.2],
-      ];
-      return sampleBezierSegs(segs, t);
-    }
-    case 'droopy': {
-      const segs = [
-        [x,cy-ry*0.1, x+w*0.1,y+h*0.05, x+w*0.7,y+h*0.05, x+w,cy+ry*0.55],
-        [x+w,cy+ry*0.55, x+w*0.85,y+h*0.9, x+w*0.1,y+h*0.9, x,cy-ry*0.1],
-      ];
-      return sampleBezierSegs(segs, t);
-    }
-    default: {
-      // Fallback: ellipse
-      const angle = t * Math.PI * 2;
-      return { x: cx + Math.cos(angle)*rx, y: cy + Math.sin(angle)*ry };
-    }
-  }
-}
-
-// Evaluate a set of cubic bezier segments at parameter t∈[0,1] (uniform across segments)
-function sampleBezierSegs(segs, t) {
-  const n = segs.length;
-  const segT = t * n;
-  const si = Math.min(Math.floor(segT), n-1);
-  const lt = segT - si;
-  const [x0,y0,x1,y1,x2,y2,x3,y3] = segs[si];
-  const mt = 1-lt;
+// FIX 1: Sample points that stay ON the chosen shape
+// FIX 2: Scale/offset applied on top of base shape points
+function getEyePtTransform() {
   return {
-    x: mt*mt*mt*x0 + 3*mt*mt*lt*x1 + 3*mt*lt*lt*x2 + lt*lt*lt*x3,
-    y: mt*mt*mt*y0 + 3*mt*mt*lt*y1 + 3*mt*lt*lt*y2 + lt*lt*lt*y3,
+    scaleX: (parseFloat(document.getElementById('eyePtScaleX')?.value) || 100) / 100,
+    scaleY: (parseFloat(document.getElementById('eyePtScaleY')?.value) || 100) / 100,
+    offsetX: (parseFloat(document.getElementById('eyePtOffsetX')?.value) || 0) / 100,
+    offsetY: (parseFloat(document.getElementById('eyePtOffsetY')?.value) || 0) / 100,
   };
 }
 
-// Mirror left-eye normalised point to right-eye normalised point
-function mirrorEyePoint(nx, ny, eyeFlip, eyeRot180) {
-  let mx = nx, my = ny;
-  if (eyeRot180) { mx = 1-mx; my = 1-my; }
-  if (eyeFlip)   { mx = 1-mx; }
-  return { nx: mx, ny: my };
+function applyEyePtTransform() {
+  if (!eyeBasePoints.length) return;
+  const { scaleX, scaleY, offsetX, offsetY } = getEyePtTransform();
+  // Find centroid of base points
+  let cx = 0, cy = 0;
+  eyeBasePoints.forEach(p => { cx += p.nx; cy += p.ny; });
+  cx /= eyeBasePoints.length; cy /= eyeBasePoints.length;
+  // Scale about centroid, then offset
+  eyeCustomPoints = eyeBasePoints.map(p => ({
+    nx: Math.max(0, Math.min(1, cx + (p.nx - cx) * scaleX + offsetX)),
+    ny: Math.max(0, Math.min(1, cy + (p.ny - cy) * scaleY + offsetY)),
+  }));
+  renderEyePointHandles();
+  drawFace();
 }
 
-// Convert normalised point to canvas coords within eye box
+// FIX 3: Symmetric mirroring — right eye is always the mirror of left
+// Left eye: uses eyeCustomPoints directly
+// Right eye: mirrors each point horizontally (nx → 1-nx)
+// Flip/rotate flags only affect the DRAWING of the right eye shape outline
+// For points: right eye point i mirrors left eye point i (horizontally flipped)
+
+function mirrorPointForRight(pt, eyeFlip, eyeRot180) {
+  // Always mirror horizontally so it looks symmetric
+  // eyeFlip and eyeRot180 are for the eye outline shape, not the point positions
+  // But we DO apply them to keep iris clip consistent
+  let nx = 1 - pt.nx, ny = pt.ny;
+  if (eyeRot180) { nx = 1 - nx; ny = 1 - ny; }
+  // eyeFlip flips the right eye shape, so the points should stay mirrored
+  if (eyeFlip) { nx = 1 - nx; }
+  return { nx, ny };
+}
+
 function eyePtToCanvas(nx, ny, boxX, boxY, boxW, boxH) {
   return { x: boxX + nx*boxW, y: boxY + ny*boxH };
 }
@@ -1364,7 +1368,7 @@ function onEyePointsToggle() {
   if (enabled) {
     initEyePoints();
   } else {
-    eyeCustomPoints = [];
+    eyeCustomPoints = []; eyeBasePoints = [];
     removeEyePointHandles();
     drawFace();
   }
@@ -1376,11 +1380,18 @@ function onEyePointCountChange() {
 }
 
 function initEyePoints() {
-  const shape    = document.getElementById('eyeShape').value;
-  const n        = Math.max(3, Math.min(20, parseInt(document.getElementById('eyePointCount').value)||8));
-  const flip     = document.getElementById('eyeFlipRight').checked;
-  const rot180   = document.getElementById('eyeRotate180').checked;
-  eyeCustomPoints = sampleEyeShapePath(shape, n, flip, rot180);
+  const shape = document.getElementById('eyeShape').value;
+  const n = Math.max(3, Math.min(20, parseInt(document.getElementById('eyePointCount').value)||8));
+  // Reset scale/offset sliders to 100/0
+  const sxEl = document.getElementById('eyePtScaleX'), syEl = document.getElementById('eyePtScaleY');
+  const oxEl = document.getElementById('eyePtOffsetX'), oyEl = document.getElementById('eyePtOffsetY');
+  if (sxEl) { sxEl.value = 100; document.getElementById('eyePtScaleXVal').textContent = 100; }
+  if (syEl) { syEl.value = 100; document.getElementById('eyePtScaleYVal').textContent = 100; }
+  if (oxEl) { oxEl.value = 0; document.getElementById('eyePtOffsetXVal').textContent = 0; }
+  if (oyEl) { oyEl.value = 0; document.getElementById('eyePtOffsetYVal').textContent = 0; }
+  // Sample points ON the shape
+  eyeBasePoints = sampleEyeShapeNorm(shape, n);
+  eyeCustomPoints = eyeBasePoints.map(p => ({...p}));
   renderEyePointHandles();
   drawFace();
 }
@@ -1389,16 +1400,141 @@ function resetEyePoints() {
   initEyePoints();
 }
 
+// Sample N equally-spaced normalised points along the eye shape (0–1 space)
+// FIX 1: uses the exact same bezier definitions as drawEyeShape for accuracy
+function sampleEyeShapeNorm(shape, n) {
+  const W = 300, H = 150;
+  const pts = sampleEyeShapePixels(shape, W, H, 2000);
+  // Cumulative arc length
+  const cumLen = [0];
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+    cumLen.push(cumLen[i-1] + Math.sqrt(dx*dx + dy*dy));
+  }
+  const totalLen = cumLen[cumLen.length-1];
+  const result = [];
+  for (let k = 0; k < n; k++) {
+    const target = (k / n) * totalLen;
+    let lo = 0, hi = pts.length - 1;
+    while (lo < hi - 1) {
+      const mid = (lo + hi) >> 1;
+      if (cumLen[mid] < target) lo = mid; else hi = mid;
+    }
+    const seg = cumLen[hi] - cumLen[lo];
+    const frac = seg > 0 ? (target - cumLen[lo]) / seg : 0;
+    const px = pts[lo].x + (pts[hi].x - pts[lo].x) * frac;
+    const py = pts[lo].y + (pts[hi].y - pts[lo].y) * frac;
+    result.push({ nx: px / W, ny: py / H });
+  }
+  return result;
+}
+
+// Parameterically sample pixels along eye shape outline
+function sampleEyeShapePixels(shape, W, H, steps) {
+  const x=0,y=0,w=W,h=H,cx=W/2,cy=H/2,rx=W/2,ry=H/2;
+  const pts = [];
+  function addBezierSeg(p0x,p0y,p1x,p1y,p2x,p2y,p3x,p3y,n) {
+    for (let i=0;i<=n;i++) {
+      const t=i/n, mt=1-t;
+      pts.push({
+        x: mt*mt*mt*p0x + 3*mt*mt*t*p1x + 3*mt*t*t*p2x + t*t*t*p3x,
+        y: mt*mt*mt*p0y + 3*mt*mt*t*p1y + 3*mt*t*t*p2y + t*t*t*p3y,
+      });
+    }
+  }
+  function addEllipseArc(ecx,ecy,erx,ery,startA,endA,n) {
+    for (let i=0;i<=n;i++) {
+      const a = startA + (endA-startA)*i/n;
+      pts.push({ x: ecx + Math.cos(a)*erx, y: ecy + Math.sin(a)*ery });
+    }
+  }
+  const seg = Math.ceil(steps/4);
+  switch(shape) {
+    case 'almond':
+      addBezierSeg(x,cy, x+w*0.12,y+h*0.05, x+w*0.4,y, x+w*0.65,y+h*0.05, seg);
+      addBezierSeg(x+w*0.65,y+h*0.05, x+w*0.85,y+h*0.1, x+w,cy-ry*0.15, x+w,cy, seg);
+      addBezierSeg(x+w,cy, x+w,cy+ry*0.5, x+w*0.85,y+h, x+w*0.6,y+h, seg);
+      addBezierSeg(x+w*0.6,y+h, x+w*0.3,y+h, x+w*0.1,y+h*0.75, x,cy, seg);
+      break;
+    case 'round': addEllipseArc(cx,cy-ry*0.05,rx,ry*0.95,0,Math.PI*2,steps); break;
+    case 'hooded':
+      addBezierSeg(x,cy+ry*0.1, x+w*0.1,cy-ry*0.3, x+w*0.45,y+h*0.15, x+w*0.65,y+h*0.2, seg);
+      addBezierSeg(x+w*0.65,y+h*0.2, x+w*0.85,y+h*0.25, x+w,cy, x+w,cy+ry*0.1, seg);
+      addBezierSeg(x+w,cy+ry*0.1, x+w*0.85,y+h*0.85, x+w*0.15,y+h*0.85, x,cy+ry*0.1, seg);
+      break;
+    case 'monolid':
+      addBezierSeg(x,cy-ry*0.1, x+w*0.3,cy-ry*0.5, x+w*0.7,cy-ry*0.5, x+w,cy-ry*0.1, seg);
+      addBezierSeg(x+w,cy-ry*0.1, x+w,cy+ry*0.6, x,cy+ry*0.6, x,cy-ry*0.1, seg);
+      break;
+    case 'droopy':
+      addBezierSeg(x,cy-ry*0.1, x+w*0.1,y+h*0.05, x+w*0.7,y+h*0.05, x+w,cy+ry*0.55, seg);
+      addBezierSeg(x+w,cy+ry*0.55, x+w*0.85,y+h*0.9, x+w*0.1,y+h*0.9, x,cy-ry*0.1, seg);
+      break;
+    case 'upturned':
+      addBezierSeg(x,cy+ry*0.2, x+w*0.1,cy-ry*0.3, x+w*0.5,y+h*0.05, x+w,y+h*0.05, seg);
+      addBezierSeg(x+w,y+h*0.05, x+w,cy, x+w,cy-ry*0.35, x+w,cy-ry*0.35, seg);
+      addBezierSeg(x+w,cy-ry*0.35, x+w*0.8,cy+ry*0.6, x+w*0.2,cy+ry*0.7, x,cy+ry*0.2, seg);
+      break;
+    case 'deep-set':
+      addBezierSeg(x+w*0.05,cy+ry*0.05, x+w*0.15,cy-ry*0.6, x+w*0.85,cy-ry*0.6, x+w*0.95,cy+ry*0.05, seg);
+      addBezierSeg(x+w*0.95,cy+ry*0.05, x+w*0.85,cy+ry*0.6, x+w*0.15,cy+ry*0.6, x+w*0.05,cy+ry*0.05, seg);
+      break;
+    case 'wide-set':
+      addBezierSeg(x,cy, x+w*0.05,y+h*0.05, x+w*0.4,y, x+w*0.7,y+h*0.08, seg);
+      addBezierSeg(x+w*0.7,y+h*0.08, x+w*0.9,y+h*0.15, x+w,cy, x+w,cy, seg);
+      addBezierSeg(x+w,cy, x+w*0.9,y+h*0.82, x+w*0.5,y+h, x+w*0.2,y+h, seg);
+      addBezierSeg(x+w*0.2,y+h, x+w*0.05,y+h, x,cy, x,cy, seg);
+      break;
+    case 'cat':
+      addBezierSeg(x,cy+ry*0.1, x+w*0.05,y+h*0.1, x+w*0.4,y, x+w*0.7,y+h*0.05, seg);
+      addBezierSeg(x+w*0.7,y+h*0.05, x+w*0.88,y+h*0.1, x+w,y+h*0.1, x+w,cy-ry*0.2, seg);
+      addBezierSeg(x+w,cy-ry*0.2, x+w*0.9,y+h*0.75, x+w*0.15,y+h*0.85, x,cy+ry*0.1, seg);
+      break;
+    case 'manga-round': addEllipseArc(cx,cy+ry*0.08,rx*0.92,ry*0.92,0,Math.PI*2,steps); break;
+    case 'manga-sharp':
+      addBezierSeg(x+w*0.05,cy, x+w*0.1,y+h*0.05, x+w*0.5,y, x+w*0.82,y+h*0.08, seg);
+      addBezierSeg(x+w*0.82,y+h*0.08, x+w*0.92,y+h*0.12, x+w*1.05,cy*0.3+y*0.7, x+w,cy, seg);
+      addBezierSeg(x+w,cy, x+w*0.88,y+h*0.85, x+w*0.1,y+h, x+w*0.05,cy, seg);
+      break;
+    case 'tareme':
+      addBezierSeg(x+w*0.05,cy-ry*0.2, x+w*0.1,y+h*0.08, x+w*0.55,y+h*0.05, x+w*0.85,cy-ry*0.1, seg);
+      addBezierSeg(x+w*0.85,cy-ry*0.1, x+w*0.95,cy, x+w,cy+ry*0.3, x+w,cy+ry*0.45, seg);
+      addBezierSeg(x+w,cy+ry*0.45, x+w*0.8,y+h*0.92, x+w*0.1,y+h, x+w*0.05,cy-ry*0.2, seg);
+      break;
+    case 'tsurime':
+      addBezierSeg(x+w*0.05,cy+ry*0.3, x+w*0.12,y+h*0.18, x+w*0.5,y+h*0.05, x+w*0.85,y+h*0.02, seg);
+      addBezierSeg(x+w*0.85,y+h*0.02, x+w*0.95,y, x+w,y-h*0.05, x+w,y, seg);
+      addBezierSeg(x+w,y, x+w,y+h*0.35, x+w*0.8,y+h*0.75, x+w*0.05,cy+ry*0.3, seg);
+      break;
+    case 'crescent':
+      addBezierSeg(x,cy+ry*0.25, x+w*0.2,cy-ry*0.55, x+w*0.8,cy-ry*0.55, x+w,cy+ry*0.25, seg);
+      addBezierSeg(x+w,cy+ry*0.25, x+w*0.8,cy+ry*0.65, x+w*0.2,cy+ry*0.65, x,cy+ry*0.25, seg);
+      break;
+    case 'leaf':
+      addBezierSeg(cx,y, x+w,y, x+w,y+h, cx,y+h, seg);
+      addBezierSeg(cx,y+h, x,y+h, x,y, cx,y, seg);
+      break;
+    case 'gothic':
+      addBezierSeg(cx,y, x+w*0.9,y+h*0.12, x+w,y+h*0.85, cx,y+h, seg);
+      addBezierSeg(cx,y+h, x,y+h*0.85, x+w*0.1,y+h*0.12, cx,y, seg);
+      break;
+    default: addEllipseArc(cx,cy,rx,ry,0,Math.PI*2,steps);
+  }
+  return pts;
+}
+
 // ── Draw custom eye from points ──────────────────────────────────────────────
 
+// FIX 3: isRight → mirror nx horizontally, independent of flip/rotate flags
 function drawEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, eyeRot180) {
   if (!pts || pts.length < 3) return;
   const curveMode = document.getElementById('eyeCurveMode').value;
-  // Map normalised points to canvas coords, mirroring if right eye
   const canvasPts = pts.map(({nx,ny}) => {
-    let mnx = nx, mny = ny;
-    if (isRight) { const m = mirrorEyePoint(nx, ny, eyeFlip, eyeRot180); mnx=m.nx; mny=m.ny; }
-    return eyePtToCanvas(mnx, mny, boxX, boxY, boxW, boxH);
+    if (isRight) {
+      const m = mirrorPointForRight({nx,ny}, eyeFlip, eyeRot180);
+      return eyePtToCanvas(m.nx, m.ny, boxX, boxY, boxW, boxH);
+    }
+    return eyePtToCanvas(nx, ny, boxX, boxY, boxW, boxH);
   });
   ctx.save();
   ctx.beginPath();
@@ -1413,14 +1549,16 @@ function drawEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, e
   ctx.restore();
 }
 
-// Clip region using custom points (for iris masking)
+// Clip region using custom points
 function clipToEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, eyeRot180) {
   if (!pts || pts.length < 3) return false;
   const curveMode = document.getElementById('eyeCurveMode').value;
   const canvasPts = pts.map(({nx,ny}) => {
-    let mnx = nx, mny = ny;
-    if (isRight) { const m = mirrorEyePoint(nx, ny, eyeFlip, eyeRot180); mnx=m.nx; mny=m.ny; }
-    return eyePtToCanvas(mnx, mny, boxX, boxY, boxW, boxH);
+    if (isRight) {
+      const m = mirrorPointForRight({nx,ny}, eyeFlip, eyeRot180);
+      return eyePtToCanvas(m.nx, m.ny, boxX, boxY, boxW, boxH);
+    }
+    return eyePtToCanvas(nx, ny, boxX, boxY, boxW, boxH);
   });
   ctx.save();
   ctx.beginPath();
@@ -1436,7 +1574,6 @@ function clipToEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip,
   return true;
 }
 
-// Catmull-Rom spline through points (closed)
 function catmullRomPath(ctx, pts, closed) {
   const n = pts.length;
   const get = i => pts[((i % n) + n) % n];
@@ -1457,21 +1594,18 @@ function catmullRomPath(ctx, pts, closed) {
 function renderEyePointHandles() {
   removeEyePointHandles();
   if (!eyeCustomPoints.length || !faceInited) return;
-  // We need eye box coords — read from last drawFace geometry
-  // Store them as module-level vars updated each drawFace
   const eyeFlip  = document.getElementById('eyeFlipRight').checked;
   const eyeRot180 = document.getElementById('eyeRotate180').checked;
 
   eyeCustomPoints.forEach((pt, idx) => {
-    // Left eye handle (green)
     const lp = eyePtToCanvas(pt.nx, pt.ny, _eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
     const lEl = document.createElement('div');
     lEl.className = 'eye-point'; lEl.dataset.idx = idx; lEl.dataset.side = 'left';
     lEl.style.left = lp.x + 'px'; lEl.style.top = lp.y + 'px';
     faceWrap.appendChild(lEl);
 
-    // Right eye handle (blue)
-    const rm = mirrorEyePoint(pt.nx, pt.ny, eyeFlip, eyeRot180);
+    // Right eye: always mirror left horizontally
+    const rm = mirrorPointForRight(pt, eyeFlip, eyeRot180);
     const rp = eyePtToCanvas(rm.nx, rm.ny, _eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
     const rEl = document.createElement('div');
     rEl.className = 'eye-point right-eye'; rEl.dataset.idx = idx; rEl.dataset.side = 'right';
@@ -1496,7 +1630,8 @@ function updateEyePointHandlePositions() {
       const lp = eyePtToCanvas(pt.nx, pt.ny, _eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
       el.style.left = lp.x + 'px'; el.style.top = lp.y + 'px';
     } else {
-      const rm = mirrorEyePoint(pt.nx, pt.ny, eyeFlip, eyeRot180);
+      // FIX 3: right eye always mirrors left
+      const rm = mirrorPointForRight(pt, eyeFlip, eyeRot180);
       const rp = eyePtToCanvas(rm.nx, rm.ny, _eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
       el.style.left = rp.x + 'px'; el.style.top = rp.y + 'px';
     }
@@ -1506,7 +1641,7 @@ function updateEyePointHandlePositions() {
 // ── Drag system ──────────────────────────────────────────────────────────────
 
 function setupEyePointDrag() {
-  let dragging = null; // {idx, side, startNx, startNy, startPx, startPy}
+  let dragging = null;
 
   function getPos(e) {
     const rect = faceWrap.getBoundingClientRect();
@@ -1537,29 +1672,42 @@ function setupEyePointDrag() {
     e.preventDefault();
     const pos = getPos(e);
     const { idx, side, startPx, startPy, startNx, startNy } = dragging;
-
-    // Determine which eye box to use for coordinate conversion
     const eyeFlip   = document.getElementById('eyeFlipRight').checked;
     const eyeRot180 = document.getElementById('eyeRotate180').checked;
 
     if (side === 'left') {
-      // Dragging left handle → update the normalised point directly
       const box = _eyeBoxL;
       const dnx = (pos.x - startPx) / box.w;
       const dny = (pos.y - startPy) / box.h;
       eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, startNx + dnx));
       eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, startNy + dny));
     } else {
-      // Dragging right handle → inverse-mirror back to left normalised space
+      // FIX 3: Dragging right handle → compute delta in right-eye box space,
+      // then invert the mirror to get the left-eye delta.
       const box = _eyeBoxR;
-      const rawNx = Math.max(0, Math.min(1, startNx + (pos.x - startPx) / box.w));
-      const rawNy = Math.max(0, Math.min(1, startNy + (pos.y - startPy) / box.h));
-      // rawNx/rawNy are in right-eye normalised space; inverse-mirror to left
-      let lnx = rawNx, lny = rawNy;
-      if (eyeFlip)   lnx = 1 - lnx;
-      if (eyeRot180) { lnx = 1 - lnx; lny = 1 - lny; }
-      eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, lnx));
-      eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, lny));
+      const dnx = (pos.x - startPx) / box.w;
+      const dny = (pos.y - startPy) / box.h;
+
+      // The right eye point position is: mirrorPointForRight(leftPt)
+      // mirrorPointForRight: nx_r = (eyeFlip && eyeRot180) ? ... complex
+      // Simpler: d(right_nx)/d(left_nx) = derivative of mirror transform
+      // mirror: nx_r = 1 - nx_l  (base mirror, ignoring rot180 and flip for delta)
+      // rot180 adds: nx_r = 1-(1-nx_l) = nx_l → sign flips again
+      // flip adds: nx_r = 1-(1-nx_l) = nx_l → sign flips again
+      // Net: if (rot180 XOR flip), delta_left_nx = +delta_right_nx else -delta_right_nx
+      const mirrorFlips = (eyeRot180 ? 1 : 0) + (eyeFlip ? 1 : 0);
+      const signX = (mirrorFlips % 2 === 1) ? 1 : -1;
+      // For ny: rot180 flips y; flip does not
+      const signY = eyeRot180 ? -1 : 1;
+
+      eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, startNx + dnx * signX));
+      eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, startNy + dny * signY));
+    }
+
+    // Also update eyeBasePoints to reflect manual drag (so transform stays in sync)
+    if (eyeBasePoints[idx]) {
+      eyeBasePoints[idx].nx = eyeCustomPoints[idx].nx;
+      eyeBasePoints[idx].ny = eyeCustomPoints[idx].ny;
     }
 
     updateEyePointHandlePositions();
@@ -1569,7 +1717,7 @@ function setupEyePointDrag() {
   function onEyePtEnd() { dragging = null; }
 }
 
-// Module-level eye box geometry (set during drawFace so handles can use them)
+// Module-level eye box geometry
 let _eyeBoxL = { x:0,y:0,w:1,h:1 }, _eyeBoxR = { x:0,y:0,w:1,h:1 };
 
 function initShapePickers() {
@@ -1590,88 +1738,84 @@ function drawEyeShape(ctx, shape, x, y, w, h, flipped, rotate180) {
   ctx.translate(-cx,-cy);
   ctx.beginPath();
   switch(shape) {
-    // ── Realistic ──
-    case 'almond':  // pointed inner & outer corners, slight lid arch
+    case 'almond':
       ctx.moveTo(x,cy);
       ctx.bezierCurveTo(x+w*0.12,y+h*0.05, x+w*0.4,y, x+w*0.65,y+h*0.05);
       ctx.bezierCurveTo(x+w*0.85,y+h*0.1, x+w,cy-ry*0.15, x+w,cy);
       ctx.bezierCurveTo(x+w,cy+ry*0.5, x+w*0.85,y+h, x+w*0.6,y+h);
       ctx.bezierCurveTo(x+w*0.3,y+h, x+w*0.1,y+h*0.75, x,cy);
       break;
-    case 'round':   // large open circle-ish, slight lid crease
-      ctx.ellipse(cx, cy-ry*0.05, rx, ry*0.95, 0, 0, Math.PI*2); break;
-    case 'hooded':  // heavy top lid droops low, reducing visible area
+    case 'round': ctx.ellipse(cx, cy-ry*0.05, rx, ry*0.95, 0, 0, Math.PI*2); break;
+    case 'hooded':
       ctx.moveTo(x,cy+ry*0.1);
       ctx.bezierCurveTo(x+w*0.1,cy-ry*0.3, x+w*0.45,y+h*0.15, x+w*0.65,y+h*0.2);
       ctx.bezierCurveTo(x+w*0.85,y+h*0.25, x+w,cy, x+w,cy+ry*0.1);
       ctx.bezierCurveTo(x+w*0.85,y+h*0.85, x+w*0.15,y+h*0.85, x,cy+ry*0.1);
       break;
-    case 'monolid': // flat top line, curved bottom — no upper crease visible
+    case 'monolid':
       ctx.moveTo(x,cy-ry*0.1);
       ctx.bezierCurveTo(x+w*0.3,cy-ry*0.5, x+w*0.7,cy-ry*0.5, x+w,cy-ry*0.1);
       ctx.bezierCurveTo(x+w,cy+ry*0.6, x,cy+ry*0.6, x,cy-ry*0.1);
       break;
-    case 'droopy':  // outer corner falls below centre line
+    case 'droopy':
       ctx.moveTo(x,cy-ry*0.1);
       ctx.bezierCurveTo(x+w*0.1,y+h*0.05, x+w*0.7,y+h*0.05, x+w,cy+ry*0.55);
       ctx.bezierCurveTo(x+w*0.85,y+h*0.9, x+w*0.1,y+h*0.9, x,cy-ry*0.1);
       break;
-    case 'upturned': // outer corner lifts above centre
+    case 'upturned':
       ctx.moveTo(x,cy+ry*0.2);
       ctx.bezierCurveTo(x+w*0.1,cy-ry*0.3, x+w*0.5,y+h*0.05, x+w,y+h*0.05);
       ctx.bezierCurveTo(x+w,y+h*0.05, x+w,cy, x+w,cy-ry*0.35);
       ctx.bezierCurveTo(x+w*0.8,cy+ry*0.6, x+w*0.2,cy+ry*0.7, x,cy+ry*0.2);
       break;
-    case 'deep-set': // visible slit — heavy brow shadow on top
+    case 'deep-set':
       ctx.moveTo(x+w*0.05,cy+ry*0.05);
       ctx.bezierCurveTo(x+w*0.15,cy-ry*0.6, x+w*0.85,cy-ry*0.6, x+w*0.95,cy+ry*0.05);
       ctx.bezierCurveTo(x+w*0.85,cy+ry*0.6, x+w*0.15,cy+ry*0.6, x+w*0.05,cy+ry*0.05);
       break;
-    case 'wide-set': // very elongated almond
+    case 'wide-set':
       ctx.moveTo(x,cy);
       ctx.bezierCurveTo(x+w*0.05,y+h*0.05, x+w*0.4,y, x+w*0.7,y+h*0.08);
       ctx.bezierCurveTo(x+w*0.9,y+h*0.15, x+w,cy, x+w,cy);
       ctx.bezierCurveTo(x+w*0.9,y+h*0.82, x+w*0.5,y+h, x+w*0.2,y+h);
       ctx.bezierCurveTo(x+w*0.05,y+h, x,cy, x,cy);
       break;
-    // ── Stylised / anime ──
-    case 'cat':  // sharp flat inner corner, arched top, pointed outer
+    case 'cat':
       ctx.moveTo(x,cy+ry*0.1);
       ctx.bezierCurveTo(x+w*0.05,y+h*0.1, x+w*0.4,y, x+w*0.7,y+h*0.05);
       ctx.bezierCurveTo(x+w*0.88,y+h*0.1, x+w,y+h*0.1, x+w,cy-ry*0.2);
       ctx.bezierCurveTo(x+w*0.9,y+h*0.75, x+w*0.15,y+h*0.85, x,cy+ry*0.1);
       break;
-    case 'manga-round': // very large teardrop-bottom circle, anime style
-      ctx.ellipse(cx, cy+ry*0.08, rx*0.92, ry*0.92, 0, 0, Math.PI*2); break;
-    case 'manga-sharp': // wide with sharp outer corner spike
+    case 'manga-round': ctx.ellipse(cx, cy+ry*0.08, rx*0.92, ry*0.92, 0, 0, Math.PI*2); break;
+    case 'manga-sharp':
       ctx.moveTo(x+w*0.05,cy);
       ctx.bezierCurveTo(x+w*0.1,y+h*0.05, x+w*0.5,y, x+w*0.82,y+h*0.08);
       ctx.bezierCurveTo(x+w*0.92,y+h*0.12, x+w*1.05,cy*0.3+y*0.7, x+w,cy);
       ctx.bezierCurveTo(x+w*0.88,y+h*0.85, x+w*0.1,y+h, x+w*0.05,cy);
       break;
-    case 'tareme': // soft droopy bottom-heavy anime (kind eyes)
+    case 'tareme':
       ctx.moveTo(x+w*0.05,cy-ry*0.2);
       ctx.bezierCurveTo(x+w*0.1,y+h*0.08, x+w*0.55,y+h*0.05, x+w*0.85,cy-ry*0.1);
       ctx.bezierCurveTo(x+w*0.95,cy, x+w,cy+ry*0.3, x+w,cy+ry*0.45);
       ctx.bezierCurveTo(x+w*0.8,y+h*0.92, x+w*0.1,y+h, x+w*0.05,cy-ry*0.2);
       break;
-    case 'tsurime': // sharp upswept outer corner (fierce eyes)
+    case 'tsurime':
       ctx.moveTo(x+w*0.05,cy+ry*0.3);
       ctx.bezierCurveTo(x+w*0.12,y+h*0.18, x+w*0.5,y+h*0.05, x+w*0.85,y+h*0.02);
       ctx.bezierCurveTo(x+w*0.95,y, x+w,y-h*0.05, x+w,y);
       ctx.bezierCurveTo(x+w,y+h*0.35, x+w*0.8,y+h*0.75, x+w*0.05,cy+ry*0.3);
       break;
-    case 'crescent': // thin curved sliver
+    case 'crescent':
       ctx.moveTo(x,cy+ry*0.25);
       ctx.bezierCurveTo(x+w*0.2,cy-ry*0.55, x+w*0.8,cy-ry*0.55, x+w,cy+ry*0.25);
       ctx.bezierCurveTo(x+w*0.8,cy+ry*0.65, x+w*0.2,cy+ry*0.65, x,cy+ry*0.25);
       ctx.closePath(); break;
-    case 'leaf': // symmetrical pointed both ends, fully convex sides
+    case 'leaf':
       ctx.moveTo(cx,y);
       ctx.bezierCurveTo(x+w,y, x+w,y+h, cx,y+h);
       ctx.bezierCurveTo(x,y+h, x,y, cx,y);
       break;
-    case 'gothic': // tall narrow almond, elongated vertically
+    case 'gothic':
       ctx.moveTo(cx,y);
       ctx.bezierCurveTo(x+w*0.9,y+h*0.12, x+w,y+h*0.85, cx,y+h);
       ctx.bezierCurveTo(x,y+h*0.85, x+w*0.1,y+h*0.12, cx,y);
@@ -1686,21 +1830,19 @@ function drawIrisShapeRaw(ctx, shape, x, y, w, h) {
   const cx=x+w/2, cy=y+h/2, rx=w/2, ry=h/2;
   ctx.beginPath();
   switch(shape) {
-    // ── Realistic ──
     case 'circle':    ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); break;
     case 'oval-tall': ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); break;
-    case 'cat-slit':  // outer oval + vertical slit inside
+    case 'cat-slit':
       ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
       ctx.moveTo(cx,y+h*0.08);
       ctx.bezierCurveTo(cx+rx*0.22,cy,cx+rx*0.22,cy,cx,y+h*0.92);
       ctx.bezierCurveTo(cx-rx*0.22,cy,cx-rx*0.22,cy,cx,y+h*0.08);
       break;
-    case 'dilated':   // large circle with thin outer ring
+    case 'dilated':
       ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2);
       ctx.moveTo(cx+rx*0.82,cy);
       ctx.ellipse(cx,cy,rx*0.82,ry*0.82,0,0,Math.PI*2);
       break;
-    // ── Geometric ──
     case 'diamond': ctx.moveTo(cx,y);ctx.lineTo(x+w,cy);ctx.lineTo(cx,y+h);ctx.lineTo(x,cy);ctx.closePath(); break;
     case 'triangle-down': ctx.moveTo(cx,y+h);ctx.lineTo(x,y);ctx.lineTo(x+w,y);ctx.closePath(); break;
     case 'triangle-up':   ctx.moveTo(cx,y);ctx.lineTo(x+w,y+h);ctx.lineTo(x,y+h);ctx.closePath(); break;
@@ -1731,7 +1873,6 @@ function drawIrisShapeRaw(ctx, shape, x, y, w, h) {
       ctx.moveTo(cx-rx*0.28,y);ctx.lineTo(cx+rx*0.28,y);ctx.lineTo(cx+rx*0.28,cy-ry*0.28);ctx.lineTo(x+w,cy-ry*0.28);ctx.lineTo(x+w,cy+ry*0.28);ctx.lineTo(cx+rx*0.28,cy+ry*0.28);ctx.lineTo(cx+rx*0.28,y+h);ctx.lineTo(cx-rx*0.28,y+h);ctx.lineTo(cx-rx*0.28,cy+ry*0.28);ctx.lineTo(x,cy+ry*0.28);ctx.lineTo(x,cy-ry*0.28);ctx.lineTo(cx-rx*0.28,cy-ry*0.28);ctx.closePath(); break;
     case 'hex':
       ctx.moveTo(cx,y);ctx.lineTo(x+w,cy-ry*0.5);ctx.lineTo(x+w,cy+ry*0.5);ctx.lineTo(cx,y+h);ctx.lineTo(x,cy+ry*0.5);ctx.lineTo(x,cy-ry*0.5);ctx.closePath(); break;
-    // ── Decorative / anime ──
     case 'heart':
       ctx.moveTo(cx,cy+ry*0.5);
       ctx.bezierCurveTo(cx,cy-ry*0.1, x,cy-ry*0.1, x,cy-ry*0.3);
@@ -1739,7 +1880,7 @@ function drawIrisShapeRaw(ctx, shape, x, y, w, h) {
       ctx.bezierCurveTo(cx,cy-ry, x+w,cy-ry, x+w,cy-ry*0.3);
       ctx.bezierCurveTo(x+w,cy-ry*0.1, cx,cy-ry*0.1, cx,cy+ry*0.5);
       break;
-    case 'flower': // 4-petal flower
+    case 'flower':
       for(let p=0;p<4;p++){
         const a=p*Math.PI/2, px=cx+Math.cos(a)*rx*0.45, py=cy+Math.sin(a)*ry*0.45;
         ctx.moveTo(px,py); ctx.ellipse(px,py,rx*0.42,ry*0.42,a,0,Math.PI*2);
@@ -1765,84 +1906,68 @@ function drawNoseFront(ctx, shape, x, y, w, h) {
   const cx=x+w/2, cy=y+h/2;
   ctx.beginPath();
   switch(shape) {
-    // ── Realistic ──
-    case 'nostrils': // two tiny vertical straight lines — like ,, spaced apart
+    case 'nostrils':
       ctx.moveTo(cx-w*0.22, y+h*0.55); ctx.lineTo(cx-w*0.22, y+h*0.85);
       ctx.moveTo(cx+w*0.22, y+h*0.55); ctx.lineTo(cx+w*0.22, y+h*0.85); break;
-    case 'button':  // small rounded triangle with nostril hints
+    case 'button':
       ctx.moveTo(cx,y+h*0.15);
       ctx.bezierCurveTo(cx+w*0.38,y+h*0.15, cx+w*0.5,y+h*0.5, cx+w*0.48,y+h*0.75);
       ctx.bezierCurveTo(cx+w*0.42,y+h, cx+w*0.05,y+h, cx,y+h);
       ctx.bezierCurveTo(cx-w*0.05,y+h, cx-w*0.42,y+h, cx-w*0.48,y+h*0.75);
-      ctx.bezierCurveTo(cx-w*0.5,y+h*0.5, cx-w*0.38,y+h*0.15, cx,y+h*0.15);
-      break;
-    case 'wide':    // wide low shape, realistic broad nose front
+      ctx.bezierCurveTo(cx-w*0.5,y+h*0.5, cx-w*0.38,y+h*0.15, cx,y+h*0.15); break;
+    case 'wide':
       ctx.moveTo(cx-w*0.5,y+h*0.4);
       ctx.bezierCurveTo(cx-w*0.4,y, cx+w*0.4,y, cx+w*0.5,y+h*0.4);
       ctx.bezierCurveTo(cx+w*0.5,y+h*0.75, cx+w*0.35,y+h, cx,y+h);
-      ctx.bezierCurveTo(cx-w*0.35,y+h, cx-w*0.5,y+h*0.75, cx-w*0.5,y+h*0.4);
-      break;
-    case 'slim':    // narrow tall ridge, refined nose
+      ctx.bezierCurveTo(cx-w*0.35,y+h, cx-w*0.5,y+h*0.75, cx-w*0.5,y+h*0.4); break;
+    case 'slim':
       ctx.moveTo(cx,y);
       ctx.bezierCurveTo(cx+w*0.22,y+h*0.1, cx+w*0.32,y+h*0.5, cx+w*0.35,y+h*0.78);
       ctx.bezierCurveTo(cx+w*0.28,y+h, cx-w*0.28,y+h, cx-w*0.35,y+h*0.78);
-      ctx.bezierCurveTo(cx-w*0.32,y+h*0.5, cx-w*0.22,y+h*0.1, cx,y);
-      break;
-    case 'bulb':    // wide round bulbous tip
+      ctx.bezierCurveTo(cx-w*0.32,y+h*0.5, cx-w*0.22,y+h*0.1, cx,y); break;
+    case 'bulb':
       ctx.moveTo(cx,y);
       ctx.bezierCurveTo(cx+w*0.18,y, cx+w*0.3,y+h*0.35, cx+w*0.48,y+h*0.5);
       ctx.bezierCurveTo(cx+w*0.65,y+h*0.65, cx+w*0.5,y+h, cx,y+h);
       ctx.bezierCurveTo(cx-w*0.5,y+h, cx-w*0.65,y+h*0.65, cx-w*0.48,y+h*0.5);
-      ctx.bezierCurveTo(cx-w*0.3,y+h*0.35, cx-w*0.18,y, cx,y);
-      break;
-    case 'hawk':    // narrow aquiline — tall and slightly pinched
+      ctx.bezierCurveTo(cx-w*0.3,y+h*0.35, cx-w*0.18,y, cx,y); break;
+    case 'hawk':
       ctx.moveTo(cx,y);
       ctx.bezierCurveTo(cx+w*0.12,y+h*0.08, cx+w*0.2,y+h*0.55, cx+w*0.22,y+h*0.78);
       ctx.bezierCurveTo(cx+w*0.18,y+h, cx-w*0.18,y+h, cx-w*0.22,y+h*0.78);
-      ctx.bezierCurveTo(cx-w*0.2,y+h*0.55, cx-w*0.12,y+h*0.08, cx,y);
-      break;
-    case 'snub-front': // low wide turned-up feel, rounded base
+      ctx.bezierCurveTo(cx-w*0.2,y+h*0.55, cx-w*0.12,y+h*0.08, cx,y); break;
+    case 'snub-front':
       ctx.moveTo(cx-w*0.48,y+h*0.5);
       ctx.bezierCurveTo(cx-w*0.4,y+h*0.15, cx+w*0.4,y+h*0.15, cx+w*0.48,y+h*0.5);
       ctx.bezierCurveTo(cx+w*0.5,y+h*0.82, cx+w*0.25,y+h, cx,y+h);
-      ctx.bezierCurveTo(cx-w*0.25,y+h, cx-w*0.5,y+h*0.82, cx-w*0.48,y+h*0.5);
-      break;
-    // ── Stylised ──
-    case 'dot':     // single small circle, minimal anime
-      ctx.ellipse(cx,cy+h*0.15,Math.min(w,h)*0.28,Math.min(w,h)*0.28,0,0,Math.PI*2); break;
-    case 'triangle':
-      ctx.moveTo(cx,y);ctx.lineTo(x+w,y+h);ctx.lineTo(x,y+h);ctx.closePath(); break;
+      ctx.bezierCurveTo(cx-w*0.25,y+h, cx-w*0.5,y+h*0.82, cx-w*0.48,y+h*0.5); break;
+    case 'dot': ctx.ellipse(cx,cy+h*0.15,Math.min(w,h)*0.28,Math.min(w,h)*0.28,0,0,Math.PI*2); break;
+    case 'triangle': ctx.moveTo(cx,y);ctx.lineTo(x+w,y+h);ctx.lineTo(x,y+h);ctx.closePath(); break;
     case 'heart':
       ctx.moveTo(cx,cy+h*0.25);
       ctx.bezierCurveTo(cx,cy-h*0.05, x,cy-h*0.05, x,cy-h*0.22);
       ctx.bezierCurveTo(x,cy-h*0.55, cx,cy-h*0.55, cx,cy-h*0.22);
       ctx.bezierCurveTo(cx,cy-h*0.55, x+w,cy-h*0.55, x+w,cy-h*0.22);
-      ctx.bezierCurveTo(x+w,cy-h*0.05, cx,cy-h*0.05, cx,cy+h*0.25);
-      break;
+      ctx.bezierCurveTo(x+w,cy-h*0.05, cx,cy-h*0.05, cx,cy+h*0.25); break;
     case 'water-droplet':
       ctx.moveTo(cx,y);
       ctx.bezierCurveTo(cx+w*0.08,y+h*0.25, cx+w*0.45,y+h*0.45, cx+w*0.5,y+h*0.65);
       ctx.arc(cx, y+h*0.78, w*0.5, 0, Math.PI);
-      ctx.bezierCurveTo(cx-w*0.45,y+h*0.45, cx-w*0.08,y+h*0.25, cx,y);
-      break;
+      ctx.bezierCurveTo(cx-w*0.45,y+h*0.45, cx-w*0.08,y+h*0.25, cx,y); break;
     default: ctx.ellipse(cx,cy,w*0.4,h*0.4,0,0,Math.PI*2);
   }
   ctx.stroke();
 }
 
 function drawNoseSide(ctx, shape, x, y, w, h, tipX, tipY) {
-  // tipX (0–1): horizontal projection of the tip (0=flat/back, 1=fully front)
-  // tipY (0–1): vertical position of the tip point (0=top of box, 1=bottom; default~0.55 = mid-lower)
   const tipY2 = (tipY !== undefined) ? tipY : 0.55;
   const tipXpx = x + w * tipX;
   const tipYpx = y + h * tipY2;
-  // blendY: used for bezier control points that track tip height
   const blend = (a, b, t) => a*(1-t)+b*t;
   ctx.beginPath();
   switch(shape) {
     case 'straight-bridge':
-      ctx.moveTo(x, y);
-      ctx.lineTo(tipXpx, tipYpx);
+      ctx.moveTo(x, y); ctx.lineTo(tipXpx, tipYpx);
       ctx.bezierCurveTo(tipXpx, blend(tipYpx, y+h, 0.5), blend(tipXpx,x,0.15), y+h, x, y+h);
       ctx.closePath(); break;
     case 'curved-bridge':
@@ -1889,63 +2014,49 @@ function drawMouthShape(ctx, shape, x, y, w, h) {
   const cx=x+w/2, cy=y+h/2;
   ctx.beginPath();
   switch(shape) {
-    case 'neutral':   // flat straight line
-      ctx.moveTo(x,cy); ctx.lineTo(x+w,cy); break;
-    case 'smile':     // gentle upward curve, closed lips
+    case 'neutral': ctx.moveTo(x,cy); ctx.lineTo(x+w,cy); break;
+    case 'smile':
       ctx.moveTo(x,cy);
       ctx.bezierCurveTo(x+w*0.25,cy, x+w*0.25,y+h*0.15, cx,y+h*0.15);
-      ctx.bezierCurveTo(x+w*0.75,y+h*0.15, x+w*0.75,cy, x+w,cy);
-      break;
-    case 'frown':     // downward curve
+      ctx.bezierCurveTo(x+w*0.75,y+h*0.15, x+w*0.75,cy, x+w,cy); break;
+    case 'frown':
       ctx.moveTo(x,cy-h*0.1);
       ctx.bezierCurveTo(x+w*0.25,cy-h*0.1, x+w*0.25,y+h*0.85, cx,y+h*0.85);
-      ctx.bezierCurveTo(x+w*0.75,y+h*0.85, x+w*0.75,cy-h*0.1, x+w,cy-h*0.1);
-      break;
-    case 'open-neutral': // slight open parting, neutral
+      ctx.bezierCurveTo(x+w*0.75,y+h*0.85, x+w*0.75,cy-h*0.1, x+w,cy-h*0.1); break;
+    case 'open-neutral':
       ctx.moveTo(x,cy-h*0.12);
       ctx.bezierCurveTo(cx,cy-h*0.22, cx,cy-h*0.22, x+w,cy-h*0.12);
-      ctx.bezierCurveTo(x+w*0.85,cy+h*0.35, x+w*0.15,cy+h*0.35, x,cy-h*0.12);
-      break;
-    case 'open-smile': // open smiling, teeth gap visible
+      ctx.bezierCurveTo(x+w*0.85,cy+h*0.35, x+w*0.15,cy+h*0.35, x,cy-h*0.12); break;
+    case 'open-smile':
       ctx.moveTo(x,cy-h*0.08);
       ctx.bezierCurveTo(x+w*0.2,y, cx,y, x+w,cy-h*0.08);
       ctx.bezierCurveTo(x+w*0.8,cy+h*0.5, x+w*0.2,cy+h*0.5, x,cy-h*0.08);
-      // teeth line
-      ctx.moveTo(x+w*0.05,cy+h*0.05); ctx.lineTo(x+w*0.95,cy+h*0.05);
-      break;
-    case 'lips-full': // full cupid-bow top lip + full bottom lip
-      // top lip
+      ctx.moveTo(x+w*0.05,cy+h*0.05); ctx.lineTo(x+w*0.95,cy+h*0.05); break;
+    case 'lips-full':
       ctx.moveTo(x+w*0.04,cy);
       ctx.bezierCurveTo(x+w*0.18,cy, x+w*0.32,y+h*0.12, cx,y+h*0.18);
       ctx.bezierCurveTo(x+w*0.68,y+h*0.12, x+w*0.82,cy, x+w*0.96,cy);
-      // bottom lip
       ctx.moveTo(x+w*0.04,cy);
       ctx.bezierCurveTo(x+w*0.15,cy+h*0.55, x+w*0.35,y+h, cx,y+h);
-      ctx.bezierCurveTo(x+w*0.65,y+h, x+w*0.85,cy+h*0.55, x+w*0.96,cy);
-      break;
-    case 'lips-thin': // thin pressed lips with cupid bow hint
+      ctx.bezierCurveTo(x+w*0.65,y+h, x+w*0.85,cy+h*0.55, x+w*0.96,cy); break;
+    case 'lips-thin':
       ctx.moveTo(x+w*0.04,cy+h*0.12);
       ctx.bezierCurveTo(x+w*0.22,cy+h*0.12, x+w*0.35,cy-h*0.12, cx,cy-h*0.18);
       ctx.bezierCurveTo(x+w*0.65,cy-h*0.12, x+w*0.78,cy+h*0.12, x+w*0.96,cy+h*0.12);
-      ctx.bezierCurveTo(x+w*0.78,cy+h*0.35, x+w*0.22,cy+h*0.35, x+w*0.04,cy+h*0.12);
-      break;
-    case 'cat-mouth': // anime W-shape
+      ctx.bezierCurveTo(x+w*0.78,cy+h*0.35, x+w*0.22,cy+h*0.35, x+w*0.04,cy+h*0.12); break;
+    case 'cat-mouth':
       ctx.moveTo(x,cy-h*0.05);
       ctx.bezierCurveTo(x+w*0.18,cy-h*0.05, x+w*0.25,cy+h*0.55, cx,cy+h*0.55);
-      ctx.bezierCurveTo(x+w*0.75,cy+h*0.55, x+w*0.82,cy-h*0.05, x+w,cy-h*0.05);
-      break;
-    case 'o-shape':   // round surprised O
-      ctx.ellipse(cx,cy+h*0.08,w*0.3,h*0.42,0,0,Math.PI*2); break;
-    case 'smirk':     // one side raised (left side higher)
+      ctx.bezierCurveTo(x+w*0.75,cy+h*0.55, x+w*0.82,cy-h*0.05, x+w,cy-h*0.05); break;
+    case 'o-shape': ctx.ellipse(cx,cy+h*0.08,w*0.3,h*0.42,0,0,Math.PI*2); break;
+    case 'smirk':
       ctx.moveTo(x,cy+h*0.1);
-      ctx.bezierCurveTo(x+w*0.3,cy+h*0.1, x+w*0.55,cy-h*0.25, x+w,cy-h*0.25);
-      break;
-    case 'wide-grin': // exaggerated wide arc
+      ctx.bezierCurveTo(x+w*0.3,cy+h*0.1, x+w*0.55,cy-h*0.25, x+w,cy-h*0.25); break;
+    case 'wide-grin':
       ctx.moveTo(x,cy+h*0.1);
       ctx.bezierCurveTo(x+w*0.2,y, cx,y, x+w*0.8,y);
       ctx.bezierCurveTo(x+w,y, x+w,cy+h*0.1, x+w,cy+h*0.1);
-      ctx.bezierCurveTo(x+w*0.7,y+h, x+w*0.3,y+h, x,cy+h*0.1);
-      break;
+      ctx.bezierCurveTo(x+w*0.7,y+h, x+w*0.3,y+h, x,cy+h*0.1); break;
     default:
       ctx.moveTo(x,cy); ctx.bezierCurveTo(x+w*0.25,cy,x+w*0.75,cy+h*0.2,x+w,cy);
   }
@@ -1960,8 +2071,6 @@ function drawBrow(ctx, shape, x, y, w, h, rotation) {
     case 'straight': ctx.moveTo(0,h/2);ctx.lineTo(w,h/2); break;
     case 'curved': ctx.moveTo(0,h*0.8);ctx.bezierCurveTo(w*0.3,0,w*0.7,0,w,h*0.8); break;
     case 'flat-oval': {
-      // Small squished oval anchored to the inner (nose-side) corner.
-      // Left brow: right edge = inner corner. Right brow is drawn via ctx.scale(-1,1) so it mirrors automatically.
       const ow = w * 0.28, oh = h * 0.4;
       ctx.ellipse(w - ow, h/2, ow, oh, 0, 0, Math.PI*2); break;
     }
@@ -1973,55 +2082,25 @@ function drawBrow(ctx, shape, x, y, w, h, rotation) {
 
 // ─── drawFace ─────────────────────────────────────────────────────────────
 const FACE_THEME_DARK = {
-  bg:         '#161618',
-  grid:       'rgba(255,255,255,0.08)',
-  box:        'rgba(255,255,255,0.25)',
-  headCurve:  'rgba(255,255,255,0.7)',
-  hairline:   'rgba(255,80,80,0.7)',
-  hairlineTxt:'rgba(255,100,100,0.7)',
-  prominent:  'rgba(180,100,255,0.5)',
-  prominentTxt:'rgba(180,100,255,0.6)',
-  nose:       'rgba(100,200,255,0.85)',
-  noseBox:    'rgba(100,200,255,0.2)',
-  noseTxt:    'rgba(100,200,255,0.35)',
-  noseSideTxt:'rgba(100,200,255,0.45)',
-  brow:       'rgba(255,180,60,0.9)',
-  browBox:    'rgba(255,180,60,0.3)',
-  eye:        'rgba(80,220,120,0.9)',
-  eyeBox:     'rgba(80,220,120,0.3)',
-  mouth:      'rgba(255,100,160,0.9)',
-  mouthBox:   'rgba(255,100,160,0.2)',
-  label:      'rgba(255,255,255,0.2)',
-  chin:       'rgba(255,220,80,0.9)',
-  chinHandle: 'rgba(255,220,80,0.4)',
-  iris:       'rgba(80,160,255,0.9)',
+  bg:'#161618', grid:'rgba(255,255,255,0.08)', box:'rgba(255,255,255,0.25)',
+  headCurve:'rgba(255,255,255,0.7)', hairline:'rgba(255,80,80,0.7)', hairlineTxt:'rgba(255,100,100,0.7)',
+  prominent:'rgba(180,100,255,0.5)', prominentTxt:'rgba(180,100,255,0.6)',
+  nose:'rgba(100,200,255,0.85)', noseBox:'rgba(100,200,255,0.2)', noseTxt:'rgba(100,200,255,0.35)',
+  noseSideTxt:'rgba(100,200,255,0.45)', brow:'rgba(255,180,60,0.9)', browBox:'rgba(255,180,60,0.3)',
+  eye:'rgba(80,220,120,0.9)', eyeBox:'rgba(80,220,120,0.3)', mouth:'rgba(255,100,160,0.9)',
+  mouthBox:'rgba(255,100,160,0.2)', label:'rgba(255,255,255,0.2)', chin:'rgba(255,220,80,0.9)',
+  chinHandle:'rgba(255,220,80,0.4)', iris:'rgba(80,160,255,0.9)',
 };
-// Same colors as dark but transparent background
 const FACE_THEME_TRANSPARENT = Object.assign({}, FACE_THEME_DARK, { bg: null });
-// B&W: transparent bg, boxes = solid black outline, all shape guides = cornflower blue
 const FACE_THEME_BW = {
-  bg:         null,
-  grid:       'rgba(0,0,0,0.08)',
-  box:        'rgba(0,0,0,0.5)',
-  headCurve:  'rgba(80,120,220,0.85)',
-  hairline:   'rgba(80,120,220,0.8)',
-  hairlineTxt:'rgba(80,120,220,0.85)',
-  prominent:  'rgba(80,120,220,0.6)',
-  prominentTxt:'rgba(80,120,220,0.75)',
-  nose:       'rgba(80,120,220,0.9)',
-  noseBox:    'rgba(0,0,0,0.35)',
-  noseTxt:    'rgba(80,120,220,0.6)',
-  noseSideTxt:'rgba(80,120,220,0.6)',
-  brow:       'rgba(80,120,220,0.9)',
-  browBox:    'rgba(0,0,0,0.25)',
-  eye:        'rgba(80,120,220,0.9)',
-  eyeBox:     'rgba(0,0,0,0.25)',
-  mouth:      'rgba(80,120,220,0.9)',
-  mouthBox:   'rgba(0,0,0,0.25)',
-  label:      'rgba(80,120,220,0.7)',
-  chin:       'rgba(80,120,220,0.9)',
-  chinHandle: 'rgba(80,120,220,0.4)',
-  iris:       'rgba(80,120,220,0.9)',
+  bg:null, grid:'rgba(0,0,0,0.08)', box:'rgba(0,0,0,0.5)',
+  headCurve:'rgba(80,120,220,0.85)', hairline:'rgba(80,120,220,0.8)', hairlineTxt:'rgba(80,120,220,0.85)',
+  prominent:'rgba(80,120,220,0.6)', prominentTxt:'rgba(80,120,220,0.75)',
+  nose:'rgba(80,120,220,0.9)', noseBox:'rgba(0,0,0,0.35)', noseTxt:'rgba(80,120,220,0.6)',
+  noseSideTxt:'rgba(80,120,220,0.6)', brow:'rgba(80,120,220,0.9)', browBox:'rgba(0,0,0,0.25)',
+  eye:'rgba(80,120,220,0.9)', eyeBox:'rgba(0,0,0,0.25)', mouth:'rgba(80,120,220,0.9)',
+  mouthBox:'rgba(0,0,0,0.25)', label:'rgba(80,120,220,0.7)', chin:'rgba(80,120,220,0.9)',
+  chinHandle:'rgba(80,120,220,0.4)', iris:'rgba(80,120,220,0.9)',
 };
 
 function drawFace(theme) {
@@ -2031,17 +2110,14 @@ function drawFace(theme) {
   ctx.clearRect(0,0,fW,fH);
   if (T.bg) { ctx.fillStyle=T.bg; ctx.fillRect(0,0,fW,fH); }
 
-  // Grid
   ctx.strokeStyle=T.grid; ctx.lineWidth=1; ctx.setLineDash([4,4]);
   ctx.beginPath();ctx.moveTo(headX+headW/2,headY);ctx.lineTo(headX+headW/2,headY+headH);ctx.stroke();
   for (let i=1;i<=2;i++){const y=headY+(headH/3)*i;ctx.beginPath();ctx.moveTo(headX,y);ctx.lineTo(headX+headW,y);ctx.stroke();}
   ctx.setLineDash([]);
 
-  // Head box
   ctx.strokeStyle=T.box; ctx.lineWidth=1.5;
   ctx.strokeRect(headX,headY,headW,headH);
 
-  // Head top curve
   const _p1L=chinHandles.find(h=>h.id==='p1-left'), _p1R=chinHandles.find(h=>h.id==='p1-right');
   if (_p1L&&_p1R){
     ctx.strokeStyle=T.headCurve; ctx.lineWidth=1.5;
@@ -2051,14 +2127,12 @@ function drawFace(theme) {
     ctx.stroke();
   }
 
-  // Hairline
   ctx.strokeStyle=T.hairline; ctx.lineWidth=1.5; ctx.setLineDash([6,4]);
   ctx.beginPath();ctx.moveTo(headX,fringeY);ctx.lineTo(headX+headW,fringeY);ctx.stroke();
   ctx.setLineDash([]);
   ctx.fillStyle=T.hairlineTxt; ctx.font=`9px 'Space Mono',monospace`;
   ctx.fillText('Hairline',headX+4,fringeY-3);
 
-  // Prominent % line
   const pct=Math.max(0,Math.min(100,parseFloat(document.getElementById('prominentFace').value)||50))/100;
   const prominentY=headY+headH*(1-pct);
   ctx.strokeStyle=T.prominent; ctx.lineWidth=1; ctx.setLineDash([4,4]);
@@ -2067,26 +2141,21 @@ function drawFace(theme) {
   ctx.fillStyle=T.prominentTxt; ctx.font=`9px 'Space Mono',monospace`;
   ctx.fillText(`${Math.round(pct*100)}%`,headX+4,prominentY-3);
 
-  // Neck
   ctx.strokeStyle=T.box; ctx.lineWidth=1.5;
   ctx.strokeRect(neckX,neckY,neckW,neckH);
 
-  // ── Geometry ──
   const slack=headW*(Math.max(0,Math.min(45,parseFloat(document.getElementById('innerSlack').value)||15))/100);
   const innerLeft=headX+slack, innerRight=headX+headW-slack, innerW=innerRight-innerLeft;
   const noseWRatio=parseFloat(document.getElementById('noseWidthRatio').value)||3;
   const noseHRatio=parseFloat(document.getElementById('noseHeightRatio').value)||2;
   const noseBoxW=innerW/noseWRatio;
   const noseBoxX=headX+headW/2-noseBoxW/2;
-
-  // PATCH 1: shape width — shrink drawn shape within the box
   const noseShapeWidthPct=Math.max(20,Math.min(200,parseFloat(document.getElementById('noseShapeWidth').value)||100))/100;
   const noseShapeHeightPct=Math.max(10,Math.min(200,parseFloat(document.getElementById('noseShapeHeight').value)||100))/100;
   const noseW=noseBoxW*noseShapeWidthPct;
   const noseOffsetX=parseFloat(document.getElementById('noseOffsetX').value)||0;
   const noseOffsetY=parseFloat(document.getElementById('noseOffsetY').value)||0;
-  const noseX=headX+headW/2-noseW/2+noseOffsetX; // centered within box + offset
-
+  const noseX=headX+headW/2-noseW/2+noseOffsetX;
   const browW=noseBoxX-innerLeft;
   const browBaseH=browW/4;
   const browThickMult=parseFloat(document.getElementById('browThickness').value)||1;
@@ -2097,17 +2166,15 @@ function drawFace(theme) {
   const eyeTopY=browTopY+browBaseH;
   const noseTopY=eyeTopY, noseH=noseBoxW*noseHRatio;
   const noseShapeH=noseH*noseShapeHeightPct;
-  const noseShapeY=noseTopY+noseOffsetY+(noseH-noseShapeH)/2; // keep vertically centred in box
+  const noseShapeY=noseTopY+noseOffsetY+(noseH-noseShapeH)/2;
 
-  // ── Nose front ──
   ctx.strokeStyle=T.noseBox; ctx.lineWidth=1;
-  ctx.strokeRect(noseBoxX+noseOffsetX,noseTopY+noseOffsetY,noseBoxW,noseH); // faint box
+  ctx.strokeRect(noseBoxX+noseOffsetX,noseTopY+noseOffsetY,noseBoxW,noseH);
   ctx.strokeStyle=T.nose; ctx.lineWidth=1.5;
   drawNoseFront(ctx,document.getElementById('noseShape').value,noseX,noseShapeY,noseW,noseShapeH);
   ctx.fillStyle=T.noseTxt; ctx.font=`7px 'Space Mono',monospace`;
   ctx.fillText('nose',noseBoxX+2,noseTopY+8);
 
-  // ── Nose side ──
   const sideWRatio=parseFloat(document.getElementById('noseSideWidthRatio').value)||1;
   const sideNoseW=noseBoxW*sideWRatio, sideNoseH=noseH;
   const sideNoseX=neckX+neckW+16, sideNoseY=neckY+(neckH-sideNoseH)/2+50;
@@ -2120,7 +2187,6 @@ function drawFace(theme) {
   ctx.fillStyle=T.noseSideTxt; ctx.font=`7px 'Space Mono',monospace`;
   ctx.fillText('nose side',sideNoseX,sideNoseY-3);
 
-  // ── Eyebrows ──
   const browRot=parseFloat(document.getElementById('browRotation').value)||0;
   const browShapeV=document.getElementById('browShape').value;
   ctx.strokeStyle=T.browBox; ctx.lineWidth=1;
@@ -2133,40 +2199,31 @@ function drawFace(theme) {
   drawBrow(ctx,browShapeV,0,0,browW,browBaseH,browRot);
   ctx.restore();
 
-  // ── Eyes ──
   const eyeShapeV=document.getElementById('eyeShape').value;
   const eyeFlip=document.getElementById('eyeFlipRight').checked;
   const eyeRot180=document.getElementById('eyeRotate180').checked;
   const eyePtsOn = document.getElementById('eyePointsEnabled').checked && eyeCustomPoints.length >= 3;
-  // Store live eye box geometry for drag handles
   _eyeBoxL = { x:innerLeft, y:eyeTopY, w:eyeW, h:eyeH };
   _eyeBoxR = { x:rBrowX,   y:eyeTopY, w:eyeW, h:eyeH };
   ctx.strokeStyle=T.eyeBox; ctx.lineWidth=1;
   ctx.strokeRect(innerLeft,eyeTopY,eyeW,eyeH);
   ctx.strokeRect(rBrowX,eyeTopY,eyeW,eyeH);
   ctx.strokeStyle=T.eye; ctx.lineWidth=1.5;
-  // Left eye
   ctx.save();ctx.beginPath();ctx.rect(innerLeft,eyeTopY,eyeW,eyeH);ctx.clip();
   if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,innerLeft,eyeTopY,eyeW,eyeH,false,eyeFlip,eyeRot180);
   else drawEyeShape(ctx,eyeShapeV,innerLeft,eyeTopY,eyeW,eyeH,false,eyeRot180);
   ctx.restore();
-  // Right eye
   ctx.save();ctx.beginPath();ctx.rect(rBrowX,eyeTopY,eyeW,eyeH);ctx.clip();
   if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,rBrowX,eyeTopY,eyeW,eyeH,true,eyeFlip,eyeRot180);
   else drawEyeShape(ctx,eyeShapeV,rBrowX,eyeTopY,eyeW,eyeH,eyeFlip,eyeRot180);
   ctx.restore();
-  // Update drag handles to match new geometry (e.g. after Generate)
   if (eyePtsOn) updateEyePointHandlePositions();
 
-  // ── Iris layers — clipped to eye shape path ──
   const irisWRatio=parseFloat(document.getElementById('irisWidthRatio').value)||3;
   const baseIrisW=eyeW/irisWRatio;
-  // Left eye iris
   drawIrisLayers(ctx,innerLeft,eyeTopY,eyeW,eyeH,baseIrisW,eyeShapeV,false,false,eyeRot180,eyePtsOn?eyeCustomPoints:null);
-  // Right eye iris
   drawIrisLayers(ctx,rBrowX,eyeTopY,eyeW,eyeH,baseIrisW,eyeShapeV,true,eyeFlip,eyeRot180,eyePtsOn?eyeCustomPoints:null);
 
-  // ── Mouth ──
   const lEyeCX=innerLeft+eyeW/2, rEyeCX=rBrowX+eyeW/2;
   const mouthWBase=rEyeCX-lEyeCX, mouthH=mouthWBase/4;
   const mouthWidthPct=(parseFloat(document.getElementById('mouthWidthPct').value)||100)/100;
@@ -2181,15 +2238,14 @@ function drawFace(theme) {
   ctx.strokeStyle=T.mouth; ctx.lineWidth=1.5;
   drawMouthShape(ctx,document.getElementById('mouthShape').value,mouthX,mouthY,mouthW,mouthH);
 
-  // ── Chin ──
   drawChin(ctx, T);
 
-  // Labels
   ctx.fillStyle=T.label; ctx.font=`9px 'Space Mono',monospace`;
   ctx.fillText('5W',headX+headW/2-8,headY-6);
   ctx.save();ctx.translate(headX-8,headY+headH/2);ctx.rotate(-Math.PI/2);ctx.fillText('6H',-8,0);ctx.restore();
 }
 
+// ─── FIX 3: drawChin with curvature support ───────────────────────────────
 function drawChin(ctx, T) {
   if (!T) T = FACE_THEME_DARK;
   if (chinHandles.length===0) return;
@@ -2201,20 +2257,56 @@ function drawChin(ctx, T) {
   const leftPts=[p1L,...leftDrag,bottomH], rightPts=[p1R,...rightDrag,bottomH];
   const segCount=leftPts.length-1, shapes=[];
   for (let i=0;i<segCount;i++){const sel=document.getElementById(`segShape-${i}`);shapes.push(sel?sel.value:'curved');}
+
   ctx.strokeStyle=T.chin; ctx.lineWidth=2; ctx.setLineDash([]);
+
   function drawSide(pts) {
     for (let i=0;i<pts.length-1;i++){
-      const A=pts[i],B=pts[i+1],seg=shapes[i]||'curved';
-      ctx.beginPath();ctx.moveTo(A.x,A.y);
-      if (seg==='straight'){ctx.lineTo(B.x,B.y);}
-      else {
-        if (pts.length===2){ctx.bezierCurveTo(A.x,A.y+(B.y-A.y)*0.95,B.x,B.y,B.x,B.y);}
-        else {
-          const P0=pts[Math.max(0,i-1)],P1=A,P2=B,P3=pts[Math.min(pts.length-1,i+2)],t=0.5;
-          ctx.bezierCurveTo(P1.x+(P2.x-P0.x)*t/3,P1.y+(P2.y-P0.y)*t/3,P2.x-(P3.x-P1.x)*t/3,P2.y-(P3.y-P1.y)*t/3,P2.x,P2.y);
+      const A=pts[i], B=pts[i+1], seg=shapes[i]||'curved';
+      const curvature = (seg === 'curved') ? ((segCurvatures[i] !== undefined ? segCurvatures[i] : 100) / 100) : 0;
+      ctx.beginPath(); ctx.moveTo(A.x,A.y);
+      if (seg==='straight' || curvature === 0) {
+        ctx.lineTo(B.x,B.y);
+      } else {
+        // curvature=1 → original Catmull-Rom / default bezier
+        // curvature=0 → straight line
+        // We parameterise control point "pull" by curvature
+        if (pts.length===2){
+          // Single segment with no intermediate — curve outward
+          const mx = (A.x+B.x)/2;
+          const dx = B.x - A.x, dy = B.y - A.y;
+          const len = Math.sqrt(dx*dx+dy*dy);
+          // perpendicular outward direction (left side curves left, right side curves right)
+          const perpX = -dy/len * len * 0.4 * curvature;
+          const perpY =  dx/len * len * 0.4 * curvature;
+          ctx.bezierCurveTo(
+            A.x + perpX * 0.5, A.y + perpY * 0.5,
+            B.x + perpX * 0.5, B.y + perpY * 0.5,
+            B.x, B.y
+          );
+        } else {
+          const P0=pts[Math.max(0,i-1)], P1=A, P2=B, P3=pts[Math.min(pts.length-1,i+2)];
+          const t = 0.5 * curvature;
+          ctx.bezierCurveTo(
+            P1.x+(P2.x-P0.x)*t/3, P1.y+(P2.y-P0.y)*t/3,
+            P2.x-(P3.x-P1.x)*t/3, P2.y-(P3.y-P1.y)*t/3,
+            P2.x, P2.y
+          );
         }
       }
       ctx.stroke();
+
+      // Draw a small clickable indicator dot at the midpoint of curved segments
+      if (seg === 'curved') {
+        const midX=(A.x+B.x)/2, midY=(A.y+B.y)/2;
+        const isSelected = selectedCurveSegIdx === i;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(midX, midY, isSelected ? 6 : 4, 0, Math.PI*2);
+        ctx.fillStyle = isSelected ? 'rgba(240,192,64,0.9)' : 'rgba(240,192,64,0.4)';
+        ctx.fill();
+        ctx.restore();
+      }
     }
   }
   drawSide(leftPts); drawSide(rightPts);
@@ -2285,17 +2377,13 @@ function downloadFacePng(bw) {
   const btnId = bw ? 'faceBwBtn' : 'facePngBtn';
   const btn = document.getElementById(btnId);
   const origText = btn ? btn.textContent : ''; if(btn){btn.textContent='Generating…';btn.disabled=true;}
-
   const off = document.createElement('canvas');
   off.width = faceCanvas.width; off.height = faceCanvas.height;
   const octx = off.getContext('2d');
   octx.scale(DPR, DPR);
-
-  // Swap context, draw with chosen theme, swap back
   const savedCtx = faceCtx; faceCtx = octx;
   drawFace(bw ? FACE_THEME_BW : FACE_THEME_TRANSPARENT);
   faceCtx = savedCtx;
-
   const link = document.createElement('a');
   link.download = bw ? `${getFaceFilename()} BW.png` : `${getFaceFilename()}.png`;
   link.href = off.toDataURL('image/png'); link.click();
@@ -2316,11 +2404,9 @@ function setFaceNavActive(id) {
     const target = btn.getAttribute('onclick').match(/'([^']+)'/)?.[1];
     btn.classList.toggle('active', target === id);
   });
-  // Scroll the active nav button into view within the nav bar
   const activeBtn = nav.querySelector('.face-nav-btn.active');
   if (activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
 }
-// Highlight nav button as user scrolls through sections
 function initFaceNavObserver() {
   const sections = ['sec-head','sec-nose','sec-brows','sec-eyes','sec-iris','sec-mouth','sec-preview'];
   const observer = new IntersectionObserver(entries => {
@@ -2339,17 +2425,27 @@ function exportFaceExcel() {
   const chinPts=parseInt(document.getElementById('chinPoints').value)||2;
   const segShapes=[];
   for(let i=0;i<chinPts;i++){const sel=document.getElementById(`segShape-${i}`);segShapes.push(sel?sel.value:'curved');}
+  const segCurvatureValues = [];
+  for(let i=0;i<chinPts;i++){segCurvatureValues.push(segCurvatures[i]!==undefined?segCurvatures[i]:100);}
   const draggableLeft=chinHandles.filter(h=>!h.anchor&&h.id.endsWith('-left')).sort((a,b)=>a.y-b.y);
-  const baseHeaders=['Prominent Face %','Chin Points','Inner Slack %','Nose Width Ratio','Nose Height Ratio','Nose Shape Width %','Nose Shape Height %','Nose Offset X','Nose Offset Y','Nose Shape','Nose Side Width Ratio','Nose Side Tip %','Nose Side Tip Y %','Nose Side Shape','Brow Shape','Brow Rotation','Brow Thickness','Eye Shape','Eye Height Ratio','Eye Flip Right','Eye Rotate 180','Eye Pts Enabled','Eye Pt Count','Eye Curve Mode','Iris Width Ratio','Mouth Shape','Mouth Offset Y','Mouth Width %'];
+  const baseHeaders=[
+    'Prominent Face %','Chin Points','Inner Slack %',
+    'Nose Width Ratio','Nose Height Ratio','Nose Shape Width %','Nose Shape Height %','Nose Offset X','Nose Offset Y','Nose Shape',
+    'Nose Side Width Ratio','Nose Side Tip %','Nose Side Tip Y %','Nose Side Shape',
+    'Brow Shape','Brow Rotation','Brow Thickness',
+    'Eye Shape','Eye Height Ratio','Eye Flip Right','Eye Rotate 180',
+    'Eye Pts Enabled','Eye Pt Count','Eye Curve Mode',
+    'Eye Pt Scale X','Eye Pt Scale Y','Eye Pt Offset X','Eye Pt Offset Y',
+    'Iris Width Ratio','Mouth Shape','Mouth Offset Y','Mouth Width %'
+  ];
   const segLabels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
   const segHeaders=segLabels.slice(0,chinPts).map(l=>`Seg [${l}] Shape`);
+  const segCurveHeaders=segLabels.slice(0,chinPts).map(l=>`Seg [${l}] Curvature`);
   const handleHeaders=[], handleValues=[], pointLabels=['P2','P3','P4'];
   draggableLeft.forEach((h,i)=>{const lbl=pointLabels[i]||`PT${i+2}`;handleHeaders.push(`${lbl} X (0–1 of head W)`,`${lbl} Y (0–1 of head H)`);handleValues.push(+((h.x-headX)/headW).toFixed(4),+((h.y-headY)/headH).toFixed(4));});
-  // Eye custom points — up to 20 slots
   const EYE_PT_MAX=20;
   const eyePtHeaders=[], eyePtValues=[];
   for(let i=0;i<EYE_PT_MAX;i++){eyePtHeaders.push(`Eye Pt${i+1} NX`,`Eye Pt${i+1} NY`); const p=eyeCustomPoints[i]; eyePtValues.push(p?+p.nx.toFixed(5):'', p?+p.ny.toFixed(5):'');}
-  // Iris layers — up to 5
   const IRIS_MAX=5;
   const irisHeaders=[], irisValues=[];
   for(let i=0;i<IRIS_MAX;i++){
@@ -2357,36 +2453,42 @@ function exportFaceExcel() {
     const l=irisLayers[i];
     irisValues.push(l?l.shape:'', l?l.sizeW:'', l?l.sizeH:'', l?l.posX:'', l?l.posY:'', l?(l.rotate180?1:0):'', l?(l.flipRight?1:0):'');
   }
-  const headers=[...baseHeaders,...segHeaders,...handleHeaders,...eyePtHeaders,...irisHeaders];
+  const headers=[...baseHeaders,...segHeaders,...segCurveHeaders,...handleHeaders,...eyePtHeaders,...irisHeaders];
   const row=[
-    parseFloat(document.getElementById('prominentFace').value)||50,chinPts,
+    parseFloat(document.getElementById('prominentFace').value)||50, chinPts,
     parseFloat(document.getElementById('innerSlack').value)||15,
-    parseFloat(document.getElementById('noseWidthRatio').value)||3,parseFloat(document.getElementById('noseHeightRatio').value)||2,
-    parseFloat(document.getElementById('noseShapeWidth').value)||100,
-    parseFloat(document.getElementById('noseShapeHeight').value)||100,
-    parseFloat(document.getElementById('noseOffsetX').value)||0,
-    parseFloat(document.getElementById('noseOffsetY').value)||0,
-    document.getElementById('noseShape').value,parseFloat(document.getElementById('noseSideWidthRatio').value)||1,
-    parseFloat(document.getElementById('noseSideTipX').value)||100,
-    parseFloat(document.getElementById('noseSideTipY').value)||55,
-    document.getElementById('noseSideShape').value,document.getElementById('browShape').value,
-    parseFloat(document.getElementById('browRotation').value)||0,parseFloat(document.getElementById('browThickness').value)||1,
-    document.getElementById('eyeShape').value,parseFloat(document.getElementById('eyeHeightRatio').value)||1,
+    parseFloat(document.getElementById('noseWidthRatio').value)||3, parseFloat(document.getElementById('noseHeightRatio').value)||2,
+    parseFloat(document.getElementById('noseShapeWidth').value)||100, parseFloat(document.getElementById('noseShapeHeight').value)||100,
+    parseFloat(document.getElementById('noseOffsetX').value)||0, parseFloat(document.getElementById('noseOffsetY').value)||0,
+    document.getElementById('noseShape').value,
+    parseFloat(document.getElementById('noseSideWidthRatio').value)||1,
+    parseFloat(document.getElementById('noseSideTipX').value)||100, parseFloat(document.getElementById('noseSideTipY').value)||55,
+    document.getElementById('noseSideShape').value,
+    document.getElementById('browShape').value,
+    parseFloat(document.getElementById('browRotation').value)||0, parseFloat(document.getElementById('browThickness').value)||1,
+    document.getElementById('eyeShape').value,
+    parseFloat(document.getElementById('eyeHeightRatio').value)||1,
     document.getElementById('eyeFlipRight').checked?1:0,
     document.getElementById('eyeRotate180').checked?1:0,
     document.getElementById('eyePointsEnabled').checked?1:0,
     parseInt(document.getElementById('eyePointCount').value)||8,
     document.getElementById('eyeCurveMode').value,
+    parseFloat(document.getElementById('eyePtScaleX')?.value)||100,
+    parseFloat(document.getElementById('eyePtScaleY')?.value)||100,
+    parseFloat(document.getElementById('eyePtOffsetX')?.value)||0,
+    parseFloat(document.getElementById('eyePtOffsetY')?.value)||0,
     parseFloat(document.getElementById('irisWidthRatio').value)||3,
-    document.getElementById('mouthShape').value,parseFloat(document.getElementById('mouthOffsetY').value)||0,
+    document.getElementById('mouthShape').value,
+    parseFloat(document.getElementById('mouthOffsetY').value)||0,
     parseFloat(document.getElementById('mouthWidthPct').value)||100,
-    ...segShapes,...handleValues,...eyePtValues,...irisValues,
+    ...segShapes, ...segCurvatureValues, ...handleValues, ...eyePtValues, ...irisValues,
   ];
   const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet([headers,row]);
   ws['!cols']=headers.map(h=>({wch:Math.max(h.length+4,20)}));
   XLSX.utils.book_append_sheet(wb,ws,'Face Data');
   XLSX.writeFile(wb,`${getFaceFilename()}.xlsx`);
 }
+
 function importFaceExcel(event) {
   const file=event.target.files[0]; if (!file) return;
   const reader=new FileReader();
@@ -2415,15 +2517,20 @@ function importFaceExcel(event) {
       document.getElementById('browThickness').value=getNum('Brow Thickness',1);
       document.getElementById('eyeHeightRatio').value=getNum('Eye Height Ratio',1);
       document.getElementById('irisWidthRatio').value=getNum('Iris Width Ratio',3);
-      // Eye flags
       const eyeFlipVal=getNum('Eye Flip Right',0); document.getElementById('eyeFlipRight').checked=eyeFlipVal===1;
       const eyeRotVal=getNum('Eye Rotate 180',0);  document.getElementById('eyeRotate180').checked=eyeRotVal===1;
-      // Eye curve mode
       const curveMode=getStr('Eye Curve Mode','smooth');
       const curveSel=document.getElementById('eyeCurveMode'); if(curveSel){const o=[...curveSel.options].find(o=>o.value===curveMode);if(o)curveSel.value=curveMode;}
-      // Eye point count
       const ptCount=getNum('Eye Pt Count',8); document.getElementById('eyePointCount').value=Math.max(3,Math.min(20,ptCount));
-      // safeSetShape: validates value against known picker values, falls back to default
+      // Restore eye pt scale/offset
+      const sxEl=document.getElementById('eyePtScaleX'),syEl=document.getElementById('eyePtScaleY');
+      const oxEl=document.getElementById('eyePtOffsetX'),oyEl=document.getElementById('eyePtOffsetY');
+      const sxV=getNum('Eye Pt Scale X',100),syV=getNum('Eye Pt Scale Y',100);
+      const oxV=getNum('Eye Pt Offset X',0),oyV=getNum('Eye Pt Offset Y',0);
+      if(sxEl){sxEl.value=sxV;document.getElementById('eyePtScaleXVal').textContent=sxV;}
+      if(syEl){syEl.value=syV;document.getElementById('eyePtScaleYVal').textContent=syV;}
+      if(oxEl){oxEl.value=oxV;document.getElementById('eyePtOffsetXVal').textContent=oxV;}
+      if(oyEl){oyEl.value=oyV;document.getElementById('eyePtOffsetYVal').textContent=oyV;}
       function safeSetShape(pickerId,hiddenId,val,def){
         const hidden=document.getElementById(hiddenId);if(!hidden)return;
         const container=document.getElementById(pickerId);
@@ -2444,7 +2551,11 @@ function importFaceExcel(event) {
       if (!faceInited) initFace();
       chinHandles=buildDefaultChinHandles(chinPts); buildSegmentSelectors(chinPts);
       const segLabels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
+      // Restore segment shapes
       for(let i=0;i<chinPts;i++){const shape=getStr(`Seg [${segLabels[i]}] Shape`,'curved');const sel=document.getElementById(`segShape-${i}`);if(sel){const opt=[...sel.options].find(o=>o.value===shape);if(opt)sel.value=shape;}}
+      // Restore segment curvatures
+      segCurvatures = Array(chinPts).fill(100);
+      for(let i=0;i<chinPts;i++){const cv=getNum(`Seg [${segLabels[i]}] Curvature`,100);segCurvatures[i]=cv;}
       const pointLabels=['P2','P3','P4'];
       chinHandles.filter(h=>!h.anchor&&h.id.endsWith('-left')).sort((a,b)=>a.y-b.y).forEach((hLeft,i)=>{
         const lbl=pointLabels[i]||`PT${i+2}`;
@@ -2466,11 +2577,12 @@ function importFaceExcel(event) {
       const eyePtsCb=document.getElementById('eyePointsEnabled');
       const eyePtControls=document.getElementById('eyePointControls');
       if(eyePtsEnabledVal===1&&loadedPts.length>=3){
+        eyeBasePoints = loadedPts.map(p=>({...p}));
         eyeCustomPoints=loadedPts;
         eyePtsCb.checked=true; eyePtControls.style.display='';
         renderEyePointHandles();
       } else {
-        eyeCustomPoints=[]; eyePtsCb.checked=false; eyePtControls.style.display='none';
+        eyeCustomPoints=[]; eyeBasePoints=[]; eyePtsCb.checked=false; eyePtControls.style.display='none';
         removeEyePointHandles();
       }
       // Restore iris layers
@@ -2479,17 +2591,13 @@ function importFaceExcel(event) {
       document.getElementById('irisLayersContainer').innerHTML='';
       for(let i=0;i<IRIS_MAX;i++){
         const shape=getStr(`Iris${i+1} Shape`,'');
-        if(!shape) break; // no more layers saved
+        if(!shape) break;
         const layer=defaultIrisLayer();
-        layer.shape=shape;
-        layer.sizeW=getNum(`Iris${i+1} Size W`,100);
-        layer.sizeH=getNum(`Iris${i+1} Size H`,100);
-        layer.posX=getNum(`Iris${i+1} Pos X`,50);
-        layer.posY=getNum(`Iris${i+1} Pos Y`,50);
-        layer.rotate180=getNum(`Iris${i+1} Rotate180`,0)===1;
+        layer.shape=shape; layer.sizeW=getNum(`Iris${i+1} Size W`,100);
+        layer.sizeH=getNum(`Iris${i+1} Size H`,100); layer.posX=getNum(`Iris${i+1} Pos X`,50);
+        layer.posY=getNum(`Iris${i+1} Pos Y`,50); layer.rotate180=getNum(`Iris${i+1} Rotate180`,0)===1;
         layer.flipRight=getNum(`Iris${i+1} FlipRight`,0)===1;
-        irisLayers.push(layer);
-        renderIrisLayerUI(layer);
+        irisLayers.push(layer); renderIrisLayerUI(layer);
       }
       drawFace();
       document.getElementById('facePreset').value='';
@@ -2500,4 +2608,4 @@ function importFaceExcel(event) {
 }
 </script>
 </body>
-                                                        </html>
+</html>
