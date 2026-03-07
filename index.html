@@ -2213,8 +2213,8 @@ function drawFace(theme) {
   const eSL = applyEyeShapeScaleToBox(innerLeft, eyeTopY, eyeW, eyeH);
   const eSR = applyEyeShapeScaleToBox(rBrowX,   eyeTopY, eyeW, eyeH);
   ctx.strokeStyle=T.eyeBox; ctx.lineWidth=1;
-  ctx.strokeRect(innerLeft,eyeTopY,eyeW,eyeH);
-  ctx.strokeRect(rBrowX,eyeTopY,eyeW,eyeH);
+  ctx.strokeRect(eSL.x,eSL.y,eSL.w,eSL.h);
+  ctx.strokeRect(eSR.x,eSR.y,eSR.w,eSR.h);
   ctx.strokeStyle=T.eye; ctx.lineWidth=1.5;
   // Left eye — no clip needed since shape drawing is self-contained
   ctx.save();ctx.beginPath();ctx.rect(innerLeft-eyeW,eyeTopY-eyeH,eyeW*3,eyeH*3);ctx.clip();
