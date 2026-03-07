@@ -47,7 +47,6 @@
     transform: translate(-50%, -50%); cursor: grab; z-index: 100; touch-action: none;
   }
   .chin-handle:active { cursor: grabbing; }
-  /* Selected chin handle segment highlight */
   .chin-handle.seg-selected { box-shadow: 0 0 0 3px rgba(240,192,64,0.5); }
   .eye-point {
     position: absolute; width: 11px; height: 11px; border-radius: 50%;
@@ -58,7 +57,6 @@
   .eye-point:active { cursor: grabbing; }
   .eye-point.right-eye { background: rgba(80,180,255,0.95); box-shadow: 0 0 4px rgba(80,180,255,0.7); }
 
-  /* ── Curvature popup ── */
   .curve-popup {
     position: absolute; z-index: 500;
     background: #1e1e22; border: 1px solid var(--accent-gold); border-radius: 8px;
@@ -75,7 +73,6 @@
   }
   .curve-popup .curve-val { text-align: center; font-size: 11px; color: var(--accent-gold); margin-top: 4px; }
 
-  /* ── Face Section Nav ── */
   .face-section-nav {
     position: sticky; top: 0; z-index: 200;
     width: 100%; background: var(--bg);
@@ -97,7 +94,6 @@
   .face-nav-btn.active { background: var(--accent-gold); color: #0d0d0f; border-color: var(--accent-gold); }
   #tab-face .panel, #tab-face #sec-preview { scroll-margin-top: 56px; }
 
-  /* ── Floating Generate Button ── */
   #floatingGenerate {
     display: none;
     position: fixed;
@@ -278,7 +274,6 @@
   }
   .add-iris-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); }
 
-  /* Eye point size/position controls */
   .eye-pt-scale-row {
     display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;
   }
@@ -457,7 +452,6 @@
     <div id="eyeShapePicker" class="shape-picker"></div>
     <input type="hidden" id="eyeShape" value="almond"/>
 
-    <!-- Always-visible Eye Shape Scale & Position -->
     <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
       <div class="panel-title" style="margin-bottom:10px;">Shape Scale &amp; Position <span style="font-size:9px;color:var(--muted);text-transform:none;letter-spacing:0;">— always active</span></div>
       <div class="eye-pt-scale-row">
@@ -473,19 +467,18 @@
         </div>
         <div class="field">
           <label>Offset X % <span id="eyeShapeOffsetXVal" style="color:var(--accent-gold);">0</span></label>
-          <input type="range" id="eyeShapeOffsetX" min="-45" max="45" value="0" step="1"
+          <input type="range" id="eyeShapeOffsetX" min="-50" max="50" value="0" step="1"
             oninput="document.getElementById('eyeShapeOffsetXVal').textContent=this.value; onEyeShapeScaleChange()"/>
         </div>
         <div class="field">
           <label>Offset Y % <span id="eyeShapeOffsetYVal" style="color:var(--accent-gold);">0</span></label>
-          <input type="range" id="eyeShapeOffsetY" min="-45" max="45" value="0" step="1"
+          <input type="range" id="eyeShapeOffsetY" min="-50" max="50" value="0" step="1"
             oninput="document.getElementById('eyeShapeOffsetYVal').textContent=this.value; onEyeShapeScaleChange()"/>
         </div>
       </div>
       <button class="btn-secondary" style="width:100%; font-size:10px; padding:7px; margin-top:6px;" onclick="resetEyeShapeScale()">↺ Reset Scale &amp; Position</button>
     </div>
 
-    <!-- Eye point editor -->
     <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--border);">
       <div class="iris-flags" style="margin-bottom:10px;">
         <label class="iris-flag"><input type="checkbox" id="eyePointsEnabled" onchange="onEyePointsToggle()"/> Edit Points (live)</label>
@@ -833,9 +826,8 @@ const DPR=window.devicePixelRatio||1, PAD=40;
 let fW, fH, headW, headH, headX, headY, neckW, neckH, neckX, neckY, fringeY;
 let chinHandles=[];
 
-// ── FIX 3: Per-segment curvature values (0–100, default 100) ──
-let segCurvatures = []; // array of numbers 0–100 per segment
-let selectedCurveSegIdx = null; // currently selected segment index for popup
+let segCurvatures = [];
+let selectedCurveSegIdx = null;
 
 function initFace() {
   if (faceInited) return; faceInited=true;
@@ -912,7 +904,6 @@ function buildSegmentSelectors(segCount) {
   const existing=[]; container.querySelectorAll('select').forEach(s=>existing.push(s.value));
   container.innerHTML='';
   const labels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
-  // Ensure segCurvatures has enough entries
   while (segCurvatures.length < segCount) segCurvatures.push(100);
   for (let i=0;i<segCount;i++) {
     const label=labels[i]||`Seg ${i+1}`, val=existing[i]||'curved';
@@ -947,7 +938,6 @@ function generateFace() {
     for (let i=1;i<newPts;i++){keepIds.add(`p${i+1}-left`);keepIds.add(`p${i+1}-right`);}
     chinHandles=chinHandles.filter(h=>keepIds.has(h.id));
   }
-  // Resize segCurvatures to match
   while (segCurvatures.length < newPts) segCurvatures.push(100);
   segCurvatures = segCurvatures.slice(0, newPts);
   buildSegmentSelectors(newPts); drawFace(); renderChinHandles();
@@ -972,12 +962,9 @@ function buildDefaultChinHandles(pts) {
   return handles;
 }
 
-// ── FIX 3: Curvature popup setup ──────────────────────────────────────────
 function setupCurvePopup() {
-  // Clicking the canvas checks if user clicked near a curved segment midpoint
   faceCanvas.addEventListener('click', onCurveCanvasClick);
   faceCanvas.addEventListener('touchend', onCurveTouchEnd, { passive: false });
-  // Close popup on outside click
   document.addEventListener('click', onDocClickForPopup);
 }
 
@@ -1003,7 +990,6 @@ function onCurveCanvasClick(e) {
 }
 
 function checkCurveSegmentHit(mx, my) {
-  // Build segment midpoints for each side pair
   const p1L=chinHandles.find(h=>h.id==='p1-left'), p1R=chinHandles.find(h=>h.id==='p1-right');
   const bottomH=chinHandles.find(h=>h.id==='bottom');
   if (!p1L||!p1R||!bottomH) return;
@@ -1015,14 +1001,12 @@ function checkCurveSegmentHit(mx, my) {
     const sel=document.getElementById(`segShape-${i}`);
     if (!sel||sel.value!=='curved') continue;
     const A=leftPts[i], B=leftPts[i+1];
-    // Midpoint of the segment
     const midX=(A.x+B.x)/2, midY=(A.y+B.y)/2;
     const dx=mx-midX, dy=my-midY;
     if (Math.sqrt(dx*dx+dy*dy)<HIT_DIST) {
       showCurvePopup(i, midX, midY);
       return;
     }
-    // Also check right side midpoint
     const rightDrag=chinHandles.filter(h=>!h.anchor&&h.id.includes('right')&&h.id!=='p1-right').sort((a,b)=>a.y-b.y);
     const rightPts=[p1R,...rightDrag,bottomH];
     const RA=rightPts[i], RB=rightPts[i+1];
@@ -1051,10 +1035,8 @@ function showCurvePopup(segIdx, canvasX, canvasY) {
     <div class="curve-val" id="curveSliderVal">${curvature}</div>
   `;
 
-  // Position near midpoint but constrained to canvas
   const wrapRect = faceWrap.getBoundingClientRect();
   const canvRect = faceCanvas.getBoundingClientRect();
-  // Canvas coords → wrap-relative coords
   const scaleX = canvRect.width / fW;
   const scaleY = canvRect.height / fH;
   let px = canvasX * scaleX + (canvRect.left - wrapRect.left) - 90;
@@ -1074,7 +1056,6 @@ function showCurvePopup(segIdx, canvasX, canvasY) {
     segCurvatures[segIdx] = v;
     drawFace();
   });
-  // Highlight handles near this segment
   renderChinHandles();
 }
 
@@ -1205,7 +1186,6 @@ function renderIrisLayerUI(layer) {
   });
 }
 
-// ─── Iris drawing clipped to eye shape ────────────────────────────────────
 function drawIrisLayers(ctx, eyeX, eyeY, eyeW, eyeH, baseIrisW, eyeShape, isRight, eyeFlip, eyeRot180, customPts) {
   if (irisLayers.length===0) return;
   ctx.save();
@@ -1332,15 +1312,11 @@ const MOUTH_SHAPES = [
 ];
 
 // ═══════════════════════════════════════
-// EYE POINT EDITOR — FIX 1 + FIX 2 + FIX 3 (mirroring)
+// EYE POINT EDITOR
 // ═══════════════════════════════════════
-// eyeCustomPoints: normalised coords on the shape before any scale/offset transform
 let eyeCustomPoints = [];
-// The "base" sampled points from shape — used as reference for scale/offset
 let eyeBasePoints = [];
 
-// FIX 1: Sample points that stay ON the chosen shape
-// FIX 2: Scale/offset applied on top of base shape points
 function getEyePtTransform() {
   return {
     scaleX: (parseFloat(document.getElementById('eyePtScaleX')?.value) || 100) / 100,
@@ -1350,7 +1326,6 @@ function getEyePtTransform() {
   };
 }
 
-// Always-active eye shape scale/offset helpers
 function getEyeShapeScale() {
   return {
     scaleX:  (parseFloat(document.getElementById('eyeShapeScaleX')?.value)  || 100) / 100,
@@ -1360,17 +1335,16 @@ function getEyeShapeScale() {
   };
 }
 
+// ── FIX: removed Math.max/min clamp so offset actually moves the shape freely ──
 function applyEyeShapeScaleToBox(boxX, boxY, boxW, boxH) {
   const { scaleX, scaleY, offsetX, offsetY } = getEyeShapeScale();
   const newW = boxW * scaleX;
   const newH = boxH * scaleY;
   const centreX = boxX + boxW / 2;
   const centreY = boxY + boxH / 2;
-  const rawX = centreX - newW / 2 + offsetX * boxW;
-  const rawY = centreY - newH / 2 + offsetY * boxH;
-  const clampedX = Math.max(boxX, Math.min(boxX + boxW - newW, rawX));
-  const clampedY = Math.max(boxY, Math.min(boxY + boxH - newH, rawY));
-  return { x: clampedX, y: clampedY, w: newW, h: newH };
+  const x = centreX - newW / 2 + offsetX * boxW;
+  const y = centreY - newH / 2 + offsetY * boxH;
+  return { x, y, w: newW, h: newH };
 }
 
 function onEyeShapeScaleChange() {
@@ -1396,11 +1370,9 @@ function resetEyeShapeScale() {
 function applyEyePtTransform() {
   if (!eyeBasePoints.length) return;
   const { scaleX, scaleY, offsetX, offsetY } = getEyePtTransform();
-  // Find centroid of base points
   let cx = 0, cy = 0;
   eyeBasePoints.forEach(p => { cx += p.nx; cy += p.ny; });
   cx /= eyeBasePoints.length; cy /= eyeBasePoints.length;
-  // Scale about centroid, then offset
   eyeCustomPoints = eyeBasePoints.map(p => ({
     nx: Math.max(0, Math.min(1, cx + (p.nx - cx) * scaleX + offsetX)),
     ny: Math.max(0, Math.min(1, cy + (p.ny - cy) * scaleY + offsetY)),
@@ -1409,19 +1381,9 @@ function applyEyePtTransform() {
   drawFace();
 }
 
-// FIX 3: Symmetric mirroring — right eye is always the mirror of left
-// Left eye: uses eyeCustomPoints directly
-// Right eye: mirrors each point horizontally (nx → 1-nx)
-// Flip/rotate flags only affect the DRAWING of the right eye shape outline
-// For points: right eye point i mirrors left eye point i (horizontally flipped)
-
 function mirrorPointForRight(pt, eyeFlip, eyeRot180) {
-  // Always mirror horizontally so it looks symmetric
-  // eyeFlip and eyeRot180 are for the eye outline shape, not the point positions
-  // But we DO apply them to keep iris clip consistent
   let nx = 1 - pt.nx, ny = pt.ny;
   if (eyeRot180) { nx = 1 - nx; ny = 1 - ny; }
-  // eyeFlip flips the right eye shape, so the points should stay mirrored
   if (eyeFlip) { nx = 1 - nx; }
   return { nx, ny };
 }
@@ -1429,8 +1391,6 @@ function mirrorPointForRight(pt, eyeFlip, eyeRot180) {
 function eyePtToCanvas(nx, ny, boxX, boxY, boxW, boxH) {
   return { x: boxX + nx*boxW, y: boxY + ny*boxH };
 }
-
-// ── Core operations ──────────────────────────────────────────────────────────
 
 function onEyePointsToggle() {
   const enabled = document.getElementById('eyePointsEnabled').checked;
@@ -1452,14 +1412,12 @@ function onEyePointCountChange() {
 function initEyePoints() {
   const shape = document.getElementById('eyeShape').value;
   const n = Math.max(3, Math.min(20, parseInt(document.getElementById('eyePointCount').value)||8));
-  // Reset fine-tune sliders to 100/0 (but keep shape scale sliders)
   const sxEl = document.getElementById('eyePtScaleX'), syEl = document.getElementById('eyePtScaleY');
   const oxEl = document.getElementById('eyePtOffsetX'), oyEl = document.getElementById('eyePtOffsetY');
   if (sxEl) { sxEl.value = 100; document.getElementById('eyePtScaleXVal').textContent = 100; }
   if (syEl) { syEl.value = 100; document.getElementById('eyePtScaleYVal').textContent = 100; }
   if (oxEl) { oxEl.value = 0; document.getElementById('eyePtOffsetXVal').textContent = 0; }
   if (oyEl) { oyEl.value = 0; document.getElementById('eyePtOffsetYVal').textContent = 0; }
-  // Sample points ON the shape (normalised 0-1 within the scaled rect)
   eyeBasePoints = sampleEyeShapeNorm(shape, n);
   eyeCustomPoints = eyeBasePoints.map(p => ({...p}));
   renderEyePointHandles();
@@ -1470,12 +1428,9 @@ function resetEyePoints() {
   initEyePoints();
 }
 
-// Sample N equally-spaced normalised points along the eye shape (0–1 space)
-// FIX 1: uses the exact same bezier definitions as drawEyeShape for accuracy
 function sampleEyeShapeNorm(shape, n) {
   const W = 300, H = 150;
   const pts = sampleEyeShapePixels(shape, W, H, 2000);
-  // Cumulative arc length
   const cumLen = [0];
   for (let i = 1; i < pts.length; i++) {
     const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
@@ -1499,7 +1454,6 @@ function sampleEyeShapeNorm(shape, n) {
   return result;
 }
 
-// Parameterically sample pixels along eye shape outline
 function sampleEyeShapePixels(shape, W, H, steps) {
   const x=0,y=0,w=W,h=H,cx=W/2,cy=H/2,rx=W/2,ry=H/2;
   const pts = [];
@@ -1593,9 +1547,6 @@ function sampleEyeShapePixels(shape, W, H, steps) {
   return pts;
 }
 
-// ── Draw custom eye from points ──────────────────────────────────────────────
-
-// FIX 3: isRight → mirror nx horizontally, independent of flip/rotate flags
 function drawEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, eyeRot180) {
   if (!pts || pts.length < 3) return;
   const curveMode = document.getElementById('eyeCurveMode').value;
@@ -1619,7 +1570,6 @@ function drawEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, e
   ctx.restore();
 }
 
-// Clip region using custom points
 function clipToEyeFromPoints(ctx, pts, boxX, boxY, boxW, boxH, isRight, eyeFlip, eyeRot180) {
   if (!pts || pts.length < 3) return false;
   const curveMode = document.getElementById('eyeCurveMode').value;
@@ -1659,14 +1609,11 @@ function catmullRomPath(ctx, pts, closed) {
   if (closed) ctx.closePath();
 }
 
-// ── DOM handles ──────────────────────────────────────────────────────────────
-
 function renderEyePointHandles() {
   removeEyePointHandles();
   if (!eyeCustomPoints.length || !faceInited) return;
   const eyeFlip  = document.getElementById('eyeFlipRight').checked;
   const eyeRot180 = document.getElementById('eyeRotate180').checked;
-  // Use scaled rects so handles appear on the actual drawn shape
   const eSL = applyEyeShapeScaleToBox(_eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
   const eSR = applyEyeShapeScaleToBox(_eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
 
@@ -1677,7 +1624,6 @@ function renderEyePointHandles() {
     lEl.style.left = lp.x + 'px'; lEl.style.top = lp.y + 'px';
     faceWrap.appendChild(lEl);
 
-    // Right eye: always mirror left horizontally
     const rm = mirrorPointForRight(pt, eyeFlip, eyeRot180);
     const rp = eyePtToCanvas(rm.nx, rm.ny, eSR.x, eSR.y, eSR.w, eSR.h);
     const rEl = document.createElement('div');
@@ -1711,8 +1657,6 @@ function updateEyePointHandlePositions() {
     }
   });
 }
-
-// ── Drag system ──────────────────────────────────────────────────────────────
 
 function setupEyePointDrag() {
   let dragging = null;
@@ -1749,7 +1693,6 @@ function setupEyePointDrag() {
     const eyeFlip   = document.getElementById('eyeFlipRight').checked;
     const eyeRot180 = document.getElementById('eyeRotate180').checked;
 
-    // Use scaled rects so drag distance maps correctly to normalised coords
     const eSL = applyEyeShapeScaleToBox(_eyeBoxL.x, _eyeBoxL.y, _eyeBoxL.w, _eyeBoxL.h);
     const eSR = applyEyeShapeScaleToBox(_eyeBoxR.x, _eyeBoxR.y, _eyeBoxR.w, _eyeBoxR.h);
 
@@ -1760,29 +1703,17 @@ function setupEyePointDrag() {
       eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, startNx + dnx));
       eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, startNy + dny));
     } else {
-      // Dragging right handle → compute delta in scaled right-eye space,
-      // then invert the mirror to get the left-eye delta.
       const box = eSR;
       const dnx = (pos.x - startPx) / box.w;
       const dny = (pos.y - startPy) / box.h;
-
-      // The right eye point position is: mirrorPointForRight(leftPt)
-      // mirrorPointForRight: nx_r = (eyeFlip && eyeRot180) ? ... complex
-      // Simpler: d(right_nx)/d(left_nx) = derivative of mirror transform
-      // mirror: nx_r = 1 - nx_l  (base mirror, ignoring rot180 and flip for delta)
-      // rot180 adds: nx_r = 1-(1-nx_l) = nx_l → sign flips again
-      // flip adds: nx_r = 1-(1-nx_l) = nx_l → sign flips again
-      // Net: if (rot180 XOR flip), delta_left_nx = +delta_right_nx else -delta_right_nx
       const mirrorFlips = (eyeRot180 ? 1 : 0) + (eyeFlip ? 1 : 0);
       const signX = (mirrorFlips % 2 === 1) ? 1 : -1;
-      // For ny: rot180 flips y; flip does not
       const signY = eyeRot180 ? -1 : 1;
 
       eyeCustomPoints[idx].nx = Math.max(0, Math.min(1, startNx + dnx * signX));
       eyeCustomPoints[idx].ny = Math.max(0, Math.min(1, startNy + dny * signY));
     }
 
-    // Also update eyeBasePoints to reflect manual drag (so transform stays in sync)
     if (eyeBasePoints[idx]) {
       eyeBasePoints[idx].nx = eyeCustomPoints[idx].nx;
       eyeBasePoints[idx].ny = eyeCustomPoints[idx].ny;
@@ -1795,7 +1726,6 @@ function setupEyePointDrag() {
   function onEyePtEnd() { dragging = null; }
 }
 
-// Module-level eye box geometry
 let _eyeBoxL = { x:0,y:0,w:1,h:1 }, _eyeBoxR = { x:0,y:0,w:1,h:1 };
 
 function initShapePickers() {
@@ -1804,8 +1734,6 @@ function initShapePickers() {
   buildShapePicker('noseSideShapePicker','noseSideShape',NOSE_SIDE_SHAPES,'nose-side',48,42);
   buildShapePicker('mouthShapePicker','mouthShape',MOUTH_SHAPES,'mouth',56,28);
 }
-
-// ─── Shape drawing functions ───────────────────────────────────────────────
 
 function drawEyeShape(ctx, shape, x, y, w, h, flipped, rotate180) {
   const cx=x+w/2, cy=y+h/2, rx=w/2, ry=h/2;
@@ -2158,7 +2086,6 @@ function drawBrow(ctx, shape, x, y, w, h, rotation) {
   ctx.restore();
 }
 
-// ─── drawFace ─────────────────────────────────────────────────────────────
 const FACE_THEME_DARK = {
   bg:'#161618', grid:'rgba(255,255,255,0.08)', box:'rgba(255,255,255,0.25)',
   headCurve:'rgba(255,255,255,0.7)', hairline:'rgba(255,80,80,0.7)', hairlineTxt:'rgba(255,100,100,0.7)',
@@ -2281,23 +2208,21 @@ function drawFace(theme) {
   const eyeFlip=document.getElementById('eyeFlipRight').checked;
   const eyeRot180=document.getElementById('eyeRotate180').checked;
   const eyePtsOn = document.getElementById('eyePointsEnabled').checked && eyeCustomPoints.length >= 3;
-  // Eye box (full area defined by proportions)
   _eyeBoxL = { x:innerLeft, y:eyeTopY, w:eyeW, h:eyeH };
   _eyeBoxR = { x:rBrowX,   y:eyeTopY, w:eyeW, h:eyeH };
-  // Scaled/offset draw rect within the eye box (always active)
   const eSL = applyEyeShapeScaleToBox(innerLeft, eyeTopY, eyeW, eyeH);
   const eSR = applyEyeShapeScaleToBox(rBrowX,   eyeTopY, eyeW, eyeH);
   ctx.strokeStyle=T.eyeBox; ctx.lineWidth=1;
   ctx.strokeRect(innerLeft,eyeTopY,eyeW,eyeH);
   ctx.strokeRect(rBrowX,eyeTopY,eyeW,eyeH);
   ctx.strokeStyle=T.eye; ctx.lineWidth=1.5;
-  // Left eye
-  ctx.save();ctx.beginPath();ctx.rect(innerLeft,eyeTopY,eyeW,eyeH);ctx.clip();
+  // Left eye — no clip needed since shape drawing is self-contained
+  ctx.save();ctx.beginPath();ctx.rect(innerLeft-eyeW,eyeTopY-eyeH,eyeW*3,eyeH*3);ctx.clip();
   if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,eSL.x,eSL.y,eSL.w,eSL.h,false,eyeFlip,eyeRot180);
   else drawEyeShape(ctx,eyeShapeV,eSL.x,eSL.y,eSL.w,eSL.h,false,eyeRot180);
   ctx.restore();
   // Right eye
-  ctx.save();ctx.beginPath();ctx.rect(rBrowX,eyeTopY,eyeW,eyeH);ctx.clip();
+  ctx.save();ctx.beginPath();ctx.rect(rBrowX-eyeW,eyeTopY-eyeH,eyeW*3,eyeH*3);ctx.clip();
   if (eyePtsOn) drawEyeFromPoints(ctx,eyeCustomPoints,eSR.x,eSR.y,eSR.w,eSR.h,true,eyeFlip,eyeRot180);
   else drawEyeShape(ctx,eyeShapeV,eSR.x,eSR.y,eSR.w,eSR.h,eyeFlip,eyeRot180);
   ctx.restore();
@@ -2329,7 +2254,6 @@ function drawFace(theme) {
   ctx.save();ctx.translate(headX-8,headY+headH/2);ctx.rotate(-Math.PI/2);ctx.fillText('6H',-8,0);ctx.restore();
 }
 
-// ─── FIX 3: drawChin with curvature support ───────────────────────────────
 function drawChin(ctx, T) {
   if (!T) T = FACE_THEME_DARK;
   if (chinHandles.length===0) return;
@@ -2352,48 +2276,33 @@ function drawChin(ctx, T) {
       if (seg==='straight' || curvature === 0) {
         ctx.lineTo(B.x,B.y);
       } else {
-        // curvature=1 → original Catmull-Rom / default bezier
-        // curvature=0 → straight line
-        // We parameterise control point "pull" by curvature
         if (pts.length===2){
-          // 1 chin point: two-segment curve passing through an invisible mid-point
-          // placed at the bottom-left 1/3 of the side — i.e. 1/3 across and 2/3 down
-          // from A toward B, pushed outward.
           const isLeft = (A.x <= B.x);
           const dy = B.y - A.y;
           const dx = B.x - A.x;
-          // Invisible waypoint: 1/3 along horizontally, 2/3 down vertically, pushed outward
           const midX = isLeft
             ? A.x + dx * 0.55 - headW * 0.12 * curvature
             : A.x + dx * 0.55 + headW * 0.12 * curvature;
           const midY = A.y + dy * 0.67;
           const mid = { x: midX, y: midY };
-
-          // Segment 1: A → mid (Catmull-Rom with phantom prev=A, next=B)
           const t = 0.5 * curvature;
-          // P0=A(phantom), P1=A, P2=mid, P3=B
           let s1cp1x = A.x + (mid.x - A.x)*t/3;
           let s1cp1y = A.y + (mid.y - A.y)*t/3;
           let s1cp2x = mid.x - (B.x - A.x)*t/3;
           let s1cp2y = mid.y - (B.y - A.y)*t/3;
           ctx.bezierCurveTo(s1cp1x, s1cp1y, s1cp2x, s1cp2y, mid.x, mid.y);
-
-          // Segment 2: mid → B (Catmull-Rom with prev=A, next=B(phantom))
           let s2cp1x = mid.x + (B.x - A.x)*t/3;
           let s2cp1y = mid.y + (B.y - A.y)*t/3;
           let s2cp2x = B.x - (B.x - mid.x)*t/3;
           let s2cp2y = B.y - (B.y - mid.y)*t/3;
           ctx.bezierCurveTo(s2cp1x, s2cp1y, s2cp2x, s2cp2y, B.x, B.y);
         } else {
-          // Catmull-Rom → bezier: use neighbour tangents, clamped to segment length
           const P0=pts[Math.max(0,i-1)], P1=A, P2=B, P3=pts[Math.min(pts.length-1,i+2)];
           const segDx=P2.x-P1.x, segDy=P2.y-P1.y;
           const segLen=Math.sqrt(segDx*segDx+segDy*segDy)||1;
           const t = 0.5 * curvature;
-          // Raw Catmull-Rom tangent vectors
           let cp1x=P1.x+(P2.x-P0.x)*t/3, cp1y=P1.y+(P2.y-P0.y)*t/3;
           let cp2x=P2.x-(P3.x-P1.x)*t/3, cp2y=P2.y-(P3.y-P1.y)*t/3;
-          // Clamp control point distance from anchor to at most 0.6× segment length
           const maxCP = segLen * 0.6;
           const d1=Math.sqrt((cp1x-P1.x)**2+(cp1y-P1.y)**2)||1;
           const d2=Math.sqrt((cp2x-P2.x)**2+(cp2y-P2.y)**2)||1;
@@ -2404,7 +2313,6 @@ function drawChin(ctx, T) {
       }
       ctx.stroke();
 
-      // Draw a small clickable indicator dot at the midpoint of curved segments
       if (seg === 'curved') {
         const midX=(A.x+B.x)/2, midY=(A.y+B.y)/2;
         const isSelected = selectedCurveSegIdx === i;
@@ -2498,9 +2406,6 @@ function downloadFacePng(bw) {
   if(btn){btn.textContent=origText;btn.disabled=false;}
 }
 
-// ═══════════════════════════════════════
-// FACE SECTION NAV
-// ═══════════════════════════════════════
 function faceNavTo(id) {
   const el = document.getElementById(id); if (!el) return;
   el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -2525,9 +2430,6 @@ function initFaceNavObserver() {
   sections.forEach(id => { const el=document.getElementById(id); if(el) observer.observe(el); });
 }
 
-// ═══════════════════════════════════════
-// FACE EXCEL EXPORT / IMPORT
-// ═══════════════════════════════════════
 function exportFaceExcel() {
   if (!faceInited){alert('Open the Face tab first!');return;}
   const chinPts=parseInt(document.getElementById('chinPoints').value)||2;
@@ -2635,7 +2537,6 @@ function importFaceExcel(event) {
       const curveMode=getStr('Eye Curve Mode','smooth');
       const curveSel=document.getElementById('eyeCurveMode'); if(curveSel){const o=[...curveSel.options].find(o=>o.value===curveMode);if(o)curveSel.value=curveMode;}
       const ptCount=getNum('Eye Pt Count',8); document.getElementById('eyePointCount').value=Math.max(3,Math.min(20,ptCount));
-      // Restore eye pt scale/offset
       const sxEl=document.getElementById('eyePtScaleX'),syEl=document.getElementById('eyePtScaleY');
       const oxEl=document.getElementById('eyePtOffsetX'),oyEl=document.getElementById('eyePtOffsetY');
       const sxV=getNum('Eye Pt Scale X',100),syV=getNum('Eye Pt Scale Y',100);
@@ -2644,7 +2545,6 @@ function importFaceExcel(event) {
       if(syEl){syEl.value=syV;document.getElementById('eyePtScaleYVal').textContent=syV;}
       if(oxEl){oxEl.value=oxV;document.getElementById('eyePtOffsetXVal').textContent=oxV;}
       if(oyEl){oyEl.value=oyV;document.getElementById('eyePtOffsetYVal').textContent=oyV;}
-      // Restore eye shape scale/offset
       const ssxEl=document.getElementById('eyeShapeScaleX'),ssyEl=document.getElementById('eyeShapeScaleY');
       const soxEl=document.getElementById('eyeShapeOffsetX'),soyEl=document.getElementById('eyeShapeOffsetY');
       const ssxV=getNum('Eye Shape Scale X',100),ssyV=getNum('Eye Shape Scale Y',100);
@@ -2673,9 +2573,7 @@ function importFaceExcel(event) {
       if (!faceInited) initFace();
       chinHandles=buildDefaultChinHandles(chinPts); buildSegmentSelectors(chinPts);
       const segLabels=['Anchor→P1','P1→P2','P2→P3','P3→Bottom'];
-      // Restore segment shapes
       for(let i=0;i<chinPts;i++){const shape=getStr(`Seg [${segLabels[i]}] Shape`,'curved');const sel=document.getElementById(`segShape-${i}`);if(sel){const opt=[...sel.options].find(o=>o.value===shape);if(opt)sel.value=shape;}}
-      // Restore segment curvatures
       segCurvatures = Array(chinPts).fill(100);
       for(let i=0;i<chinPts;i++){const cv=getNum(`Seg [${segLabels[i]}] Curvature`,100);segCurvatures[i]=cv;}
       const pointLabels=['P2','P3','P4'];
@@ -2688,7 +2586,6 @@ function importFaceExcel(event) {
         if(hRight){hRight.x=(headX+headW)-normX*headW;hRight.y=headY+normY*headH;}
       });
       drawFace(); renderChinHandles();
-      // Restore eye custom points
       const eyePtsEnabledVal=getNum('Eye Pts Enabled',0);
       const EYE_PT_MAX=20;
       const loadedPts=[];
@@ -2707,7 +2604,6 @@ function importFaceExcel(event) {
         eyeCustomPoints=[]; eyeBasePoints=[]; eyePtsCb.checked=false; eyePtControls.style.display='none';
         removeEyePointHandles();
       }
-      // Restore iris layers
       const IRIS_MAX=5;
       irisLayers=[]; irisLayerCounter=0;
       document.getElementById('irisLayersContainer').innerHTML='';
