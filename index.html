@@ -1014,12 +1014,12 @@
             </div>
           </div>
           <div class="ctrl-group">
-            <span class="ctrl-label">Lobe depth <span id="earLobeVal">30</span>%</span>
+            <span class="ctrl-label">Horiz pos <span id="earHorizPosVal">0</span>%</span>
             <div class="ctrl-val-row">
-              <input type="range" id="earLobeSlider" min="0" max="60" value="30" step="2"
-                oninput="document.getElementById('earLobeVal').textContent=this.value;document.getElementById('earLobe').value=this.value;drawFace()"/>
-              <input type="number" class="ctrl-numbox" id="earLobe" value="30" min="0" max="60"
-                oninput="document.getElementById('earLobeVal').textContent=this.value;document.getElementById('earLobeSlider').value=this.value;drawFace()"/>
+              <input type="range" id="earHorizPosSlider" min="-50" max="50" value="0" step="1"
+                oninput="document.getElementById('earHorizPosVal').textContent=this.value;document.getElementById('earHorizPos').value=this.value;drawFace()"/>
+              <input type="number" class="ctrl-numbox" id="earHorizPos" value="0" min="-50" max="50"
+                oninput="document.getElementById('earHorizPosVal').textContent=this.value;document.getElementById('earHorizPosSlider').value=this.value;drawFace()"/>
             </div>
           </div>
           <div class="ctrl-group">
@@ -3724,108 +3724,78 @@ const EAR_SHAPES = [
   {v:'large',l:'Large'},{v:'small',l:'Small'},
 ];
 
-function drawEarShape(ctx, shape, x, y, w, h, isRight, lobePct, rotationDeg) {
-  const lobe = Math.max(0, Math.min(60, lobePct || 0)) / 100; // 0–0.6
-  const rot  = (rotationDeg || 0) * Math.PI / 180;
+function drawEarShape(ctx, shape, x, y, w, h, isRight, rotationDeg) {
+  const rot = (rotationDeg || 0) * Math.PI / 180;
   const cx = x + w/2, cy = y + h/2, rx = w/2, ry = h/2;
-
   ctx.save();
-  // Apply rotation around ear centre, then mirror for right ear
   ctx.translate(cx, cy);
-  if (isRight) ctx.scale(-1, 1);
   ctx.rotate(rot);
+  if (isRight) ctx.scale(-1, 1);
   ctx.translate(-cx, -cy);
-
   ctx.beginPath();
   switch(shape) {
-    case 'round': {
+    case 'round':
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
-      // lobe: bulge at bottom
-      if (lobe > 0) {
-        const lobeR = ry * 0.4 * (1 + lobe);
-        ctx.moveTo(cx + lobeR, cy + ry*0.55);
-        ctx.ellipse(cx, cy + ry*0.55 + lobeR*0.15, lobeR, lobeR*0.75, 0, 0, Math.PI*2);
-      }
-      // inner bowl
       ctx.moveTo(cx+rx*0.6, cy-ry*0.2);
       ctx.bezierCurveTo(cx+rx*0.5, cy-ry*0.5, cx-rx*0.1, cy-ry*0.55, cx-rx*0.2, cy-ry*0.1);
       ctx.bezierCurveTo(cx-rx*0.3, cy+ry*0.3, cx+rx*0.1, cy+ry*0.5, cx+rx*0.4, cy+ry*0.35);
       break;
-    }
-    case 'pointed': {
+    case 'pointed':
       ctx.moveTo(cx, y);
       ctx.bezierCurveTo(x+w, y+h*0.1, x+w, cy, x+w, cy+ry*0.5);
-      const lobeBot = y+h + h*lobe*0.5;
-      ctx.bezierCurveTo(x+w*0.85, lobeBot, x+w*0.15, lobeBot, x, cy+ry*0.5);
+      ctx.bezierCurveTo(x+w*0.85, y+h, x+w*0.15, y+h, x, cy+ry*0.5);
       ctx.bezierCurveTo(x, cy, x, y+h*0.1, cx, y);
       ctx.moveTo(cx, y+h*0.15);
       ctx.bezierCurveTo(cx+rx*0.5, y+h*0.25, cx+rx*0.55, cy, cx+rx*0.4, cy+ry*0.3);
       ctx.bezierCurveTo(cx+rx*0.2, cy+ry*0.6, cx-rx*0.1, cy+ry*0.55, cx-rx*0.15, cy+ry*0.2);
       break;
-    }
-    case 'squared': {
-      const lobeH = h * lobe * 0.4;
-      ctx.roundRect(x, y+h*0.05, w, h*0.9 + lobeH, [rx*0.2, rx*0.5, rx*0.4 + lobeH*0.5, rx*0.2 + lobeH*0.5]);
+    case 'squared':
+      ctx.roundRect(x, y+h*0.05, w, h*0.9, [rx*0.2, rx*0.5, rx*0.4, rx*0.2]);
       ctx.moveTo(cx+rx*0.5, cy-ry*0.3);
       ctx.bezierCurveTo(cx+rx*0.4, cy-ry*0.55, cx-rx*0.15, cy-ry*0.5, cx-rx*0.2, cy-ry*0.05);
       ctx.bezierCurveTo(cx-rx*0.25, cy+ry*0.4, cx+rx*0.15, cy+ry*0.5, cx+rx*0.45, cy+ry*0.3);
       break;
-    }
-    case 'flat': {
+    case 'flat':
       ctx.moveTo(cx, y+h*0.08);
       ctx.bezierCurveTo(x+w*0.85, y, x+w, y+h*0.2, x+w, cy);
-      const lobeBot2 = y+h + h*lobe*0.45;
-      ctx.bezierCurveTo(x+w, cy+ry*0.6, x+w*0.85, lobeBot2, cx, lobeBot2);
-      ctx.bezierCurveTo(x+w*0.2, lobeBot2, x, cy+ry*0.6, x, cy);
+      ctx.bezierCurveTo(x+w, cy+ry*0.6, x+w*0.85, y+h, cx, y+h);
+      ctx.bezierCurveTo(x+w*0.2, y+h, x, cy+ry*0.6, x, cy);
       ctx.bezierCurveTo(x, y+h*0.3, cx*0.3+x*0.7, y+h*0.12, cx, y+h*0.08);
       break;
-    }
-    case 'elf': {
+    case 'elf':
       ctx.moveTo(cx-rx*0.3, y);
       ctx.bezierCurveTo(cx+rx*0.1, y-ry*0.35, cx+rx*0.6, y-ry*0.1, cx+rx*0.5, y+ry*0.15);
       ctx.bezierCurveTo(x+w, y+h*0.2, x+w, cy+ry*0.4, x+w*0.9, cy+ry*0.7);
-      const lobeBot3 = y+h + h*lobe*0.4;
-      ctx.bezierCurveTo(x+w*0.8, lobeBot3, x+w*0.2, lobeBot3, x+w*0.15, cy+ry*0.7);
+      ctx.bezierCurveTo(x+w*0.8, y+h, x+w*0.2, y+h, x+w*0.15, cy+ry*0.7);
       ctx.bezierCurveTo(x, cy, x, y+h*0.2, cx-rx*0.3, y);
       ctx.moveTo(cx-rx*0.1, y+h*0.15);
       ctx.bezierCurveTo(cx+rx*0.4, y+h*0.2, cx+rx*0.5, cy, cx+rx*0.35, cy+ry*0.4);
       ctx.bezierCurveTo(cx+rx*0.15, cy+ry*0.65, cx-rx*0.2, cy+ry*0.5, cx-rx*0.15, cy+ry*0.1);
       break;
-    }
-    case 'cauliflower': {
+    case 'cauliflower':
       for (let i=0; i<5; i++) {
         const a = (i/5)*Math.PI*2 - Math.PI/2;
         const bx = cx + Math.cos(a)*rx*0.65, by = cy + Math.sin(a)*ry*0.65;
         ctx.moveTo(bx+rx*0.22, by);
-        ctx.ellipse(bx, by, rx*(0.28+lobe*0.2), ry*(0.28+lobe*0.2), a, 0, Math.PI*2);
+        ctx.ellipse(bx, by, rx*0.28, ry*0.28, a, 0, Math.PI*2);
       }
       ctx.moveTo(cx+rx*0.18, cy); ctx.ellipse(cx, cy, rx*0.22, ry*0.22, 0, 0, Math.PI*2);
       break;
-    }
-    case 'large': {
+    case 'large':
       ctx.ellipse(cx, cy+ry*0.05, rx, ry*0.95, 0, 0, Math.PI*2);
       ctx.moveTo(cx+rx*0.65, cy-ry*0.25);
       ctx.bezierCurveTo(cx+rx*0.5, cy-ry*0.6, cx-rx*0.15, cy-ry*0.6, cx-rx*0.2, cy-ry*0.15);
       ctx.bezierCurveTo(cx-rx*0.3, cy+ry*0.35, cx, cy+ry*0.55, cx+rx*0.5, cy+ry*0.35);
-      // lobe bulge — grows with lobePct
-      const lobeScale = 0.45 + lobe * 0.8;
-      ctx.moveTo(cx-rx*0.15, cy+ry*lobeScale);
-      ctx.bezierCurveTo(cx-rx*0.4, cy+ry*(lobeScale+0.25), cx-rx*0.25, cy+ry*(lobeScale+0.6), cx+rx*0.1, cy+ry*(lobeScale+0.55));
-      ctx.bezierCurveTo(cx+rx*0.45, cy+ry*(lobeScale+0.5), cx+rx*0.5, cy+ry*(lobeScale+0.2), cx+rx*0.3, cy+ry*lobeScale);
+      ctx.moveTo(cx-rx*0.15, cy+ry*0.45);
+      ctx.bezierCurveTo(cx-rx*0.35, cy+ry*0.65, cx-rx*0.2, cy+ry*0.9, cx+rx*0.1, cy+ry*0.85);
+      ctx.bezierCurveTo(cx+rx*0.4, cy+ry*0.8, cx+rx*0.45, cy+ry*0.55, cx+rx*0.3, cy+ry*0.45);
       break;
-    }
-    case 'small': {
+    case 'small':
       ctx.ellipse(cx, cy, rx*0.75, ry*0.72, 0, 0, Math.PI*2);
-      if (lobe > 0.05) {
-        const lobeR2 = ry * 0.25 * (1 + lobe*1.5);
-        ctx.moveTo(cx + lobeR2, cy + ry*0.4);
-        ctx.ellipse(cx, cy + ry*0.4 + lobeR2*0.5, lobeR2, lobeR2*0.65, 0, 0, Math.PI*2);
-      }
       ctx.moveTo(cx+rx*0.45, cy-ry*0.15);
       ctx.bezierCurveTo(cx+rx*0.35, cy-ry*0.4, cx-rx*0.1, cy-ry*0.38, cx-rx*0.12, cy-ry*0.05);
       ctx.bezierCurveTo(cx-rx*0.2, cy+ry*0.25, cx+rx*0.08, cy+ry*0.38, cx+rx*0.32, cy+ry*0.25);
       break;
-    }
     default:
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
   }
@@ -3836,21 +3806,23 @@ function drawEarShape(ctx, shape, x, y, w, h, isRight, lobePct, rotationDeg) {
 function drawEars(ctx, T) {
   const earVisEl = document.getElementById('earVisible');
   if (!earVisEl || !earVisEl.checked) return;
-  const earShape   = document.getElementById('earShape')?.value || 'round';
-  const earWpct    = (parseFloat(document.getElementById('earWidth')?.value)    || 60)  / 100;
-  const earHpct    = (parseFloat(document.getElementById('earHeight')?.value)   || 100) / 100;
-  const earVpct    = (parseFloat(document.getElementById('earVertPos')?.value)  || 50)  / 100;
-  const earLobePct = parseFloat(document.getElementById('earLobe')?.value)      || 0;
-  const earRot     = parseFloat(document.getElementById('earRotation')?.value)  || 0;
+  const earShape    = document.getElementById('earShape')?.value || 'round';
+  const earWpct     = (parseFloat(document.getElementById('earWidth')?.value)    || 60)  / 100;
+  const earHpct     = (parseFloat(document.getElementById('earHeight')?.value)   || 100) / 100;
+  const earVpct     = (parseFloat(document.getElementById('earVertPos')?.value)  || 50)  / 100;
+  const earHorizPct = (parseFloat(document.getElementById('earHorizPos')?.value) || 0)   / 100;
+  const earRot      = parseFloat(document.getElementById('earRotation')?.value)  || 0;
+  const earMirror   = document.getElementById('earMirror')?.checked !== false;
   const eH = headH * (1/3) * earHpct;
   const eW = eH * 0.55 * earWpct;
   const eY = headY + headH * 0.15 + (headH * 0.7 - eH) * earVpct;
-  const leftX  = headX - eW * 0.6;
-  const rightX = headX + headW - eW * 0.4;
+  const horizShift = eW * earHorizPct;
+  const leftX  = headX - eW * 0.6 + horizShift;
+  const rightX = headX + headW - eW * 0.4 - horizShift;
   ctx.strokeStyle = T.box || 'rgba(255,255,255,0.5)';
   ctx.lineWidth = 1.5; ctx.setLineDash([]);
-  drawEarShape(ctx, earShape, leftX,  eY, eW, eH, false, earLobePct,  earRot);
-  drawEarShape(ctx, earShape, rightX, eY, eW, eH, true,  earLobePct, -earRot);
+  drawEarShape(ctx, earShape, leftX,  eY, eW, eH, false,     earRot);
+  drawEarShape(ctx, earShape, rightX, eY, eW, eH, earMirror, -earRot);
 }
 
 function buildEarShapePicker() {
@@ -3881,7 +3853,7 @@ function buildEarShapePicker() {
       ctx.strokeStyle='rgba(200,200,220,0.85)'; ctx.lineWidth=1.5*dpr2;
       ctx.scale(dpr2, dpr2);
       const pad = 4;
-      drawEarShape(ctx, v, pad, pad, tW-pad*2, tH-pad*2, false, 30, 0);
+      drawEarShape(ctx, v, pad, pad, tW-pad*2, tH-pad*2, false, 0);
       ctx.setTransform(1,0,0,1,0,0);
     });
   });
@@ -3995,7 +3967,7 @@ function collectFaceState() {
       customPoints: eyeCustomPoints.map(p=>({nx:+p.nx.toFixed(5),ny:+p.ny.toFixed(5)})) },
     ears:{ shape:document.getElementById('earShape')?.value||'round', width:parseFloat(document.getElementById('earWidth')?.value)||60,
       height:parseFloat(document.getElementById('earHeight')?.value)||100, vertPos:parseFloat(document.getElementById('earVertPos')?.value)||50,
-      lobe:parseFloat(document.getElementById('earLobe')?.value)||0, rotation:parseFloat(document.getElementById('earRotation')?.value)||0,
+      horizPos:parseFloat(document.getElementById('earHorizPos')?.value)||0, rotation:parseFloat(document.getElementById('earRotation')?.value)||0,
       visible:document.getElementById('earVisible')?.checked!==false },
     iris:{ widthRatio:parseFloat(document.getElementById('irisWidthRatio').value)||3, layers:irisLayers.map(l=>({...l})) },
     mouth:{ shape:document.getElementById('mouthShape').value, offsetY:parseFloat(document.getElementById('mouthOffsetY').value)||0,
@@ -4029,7 +4001,7 @@ function importFaceJSON(event) {
       if(s.nose){setV('noseWidthRatio',s.nose.widthRatio);setV('noseHeightRatio',s.nose.heightRatio);setV('noseShapeWidth',s.nose.shapeWidth);setV('noseShapeHeight',s.nose.shapeHeight);setV('noseOffsetX',s.nose.offsetX);setV('noseOffsetY',s.nose.offsetY);setShape('noseShapePicker','noseShape',s.nose.shape);setV('noseSideWidthRatio',s.nose.sideWidthRatio);setV('noseSideTipX',s.nose.sideTipX);setV('noseSideTipY',s.nose.sideTipY);setShape('noseSideShapePicker','noseSideShape',s.nose.sideShape);}
       if(s.brow){setShape('browShapePickerNew','browShape',s.brow.shape);setShape('browShapePickerNew','browShapeHidden',s.brow.shape);setV('browRotation',s.brow.rotation);setV('browThickness',s.brow.thickness);}
       if(s.eyes){setShape('eyeShapePicker','eyeShape',s.eyes.shape);setV('eyeHeightRatio',s.eyes.heightRatio);setCb('eyeFlipRight',s.eyes.flipRight);setCb('eyeRotate180',s.eyes.rotate180);const esxEl=document.getElementById('eyeShapeScaleX');if(esxEl){esxEl.value=s.eyes.scaleX;document.getElementById('eyeShapeScaleXVal').textContent=s.eyes.scaleX;}const esyEl=document.getElementById('eyeShapeScaleY');if(esyEl){esyEl.value=s.eyes.scaleY;document.getElementById('eyeShapeScaleYVal').textContent=s.eyes.scaleY;}const eoxEl=document.getElementById('eyeShapeOffsetX');if(eoxEl){eoxEl.value=s.eyes.offsetX;document.getElementById('eyeShapeOffsetXVal').textContent=s.eyes.offsetX;}const eoyEl=document.getElementById('eyeShapeOffsetY');if(eoyEl){eoyEl.value=s.eyes.offsetY;document.getElementById('eyeShapeOffsetYVal').textContent=s.eyes.offsetY;}setV('eyePointCount',s.eyes.ptCount);const cmEl=document.getElementById('eyeCurveMode');if(cmEl)cmEl.value=s.eyes.curveMode;const ptxEl=document.getElementById('eyePtScaleX');if(ptxEl){ptxEl.value=s.eyes.ptScaleX;document.getElementById('eyePtScaleXVal').textContent=s.eyes.ptScaleX;}const ptyEl=document.getElementById('eyePtScaleY');if(ptyEl){ptyEl.value=s.eyes.ptScaleY;document.getElementById('eyePtScaleYVal').textContent=s.eyes.ptScaleY;}const poxEl=document.getElementById('eyePtOffsetX');if(poxEl){poxEl.value=s.eyes.ptOffsetX;document.getElementById('eyePtOffsetXVal').textContent=s.eyes.ptOffsetX;}const poyEl=document.getElementById('eyePtOffsetY');if(poyEl){poyEl.value=s.eyes.ptOffsetY;document.getElementById('eyePtOffsetYVal').textContent=s.eyes.ptOffsetY;}const eyePtsCb=document.getElementById('eyePointsEnabled');const eyePtCtrl=document.getElementById('eyePointControls');if(s.eyes.ptsEnabled&&s.eyes.customPoints&&s.eyes.customPoints.length>=3){eyeBasePoints=s.eyes.customPoints.map(p=>({...p}));eyeCustomPoints=s.eyes.customPoints;eyePtsCb.checked=true;eyePtCtrl.style.display='';renderEyePointHandles();}else{eyeCustomPoints=[];eyeBasePoints=[];eyePtsCb.checked=false;eyePtCtrl.style.display='none';removeEyePointHandles();}}
-      if(s.ears){setShape('earShapePickerNew','earShape',s.ears.shape);setV('earWidth',s.ears.width);document.getElementById('earWidthSlider').value=s.ears.width;document.getElementById('earWidthVal').textContent=s.ears.width;setV('earHeight',s.ears.height);document.getElementById('earHeightSlider').value=s.ears.height;document.getElementById('earHeightVal').textContent=s.ears.height;setV('earVertPos',s.ears.vertPos);document.getElementById('earVertPosSlider').value=s.ears.vertPos;document.getElementById('earVertPosVal').textContent=s.ears.vertPos;setV('earLobe',s.ears.lobe);document.getElementById('earLobeSlider').value=s.ears.lobe;document.getElementById('earLobeVal').textContent=s.ears.lobe;const eRot=s.ears.rotation||0;setV('earRotation',eRot);const erSlider=document.getElementById('earRotSlider');if(erSlider)erSlider.value=eRot;const erVal=document.getElementById('earRotVal');if(erVal)erVal.textContent=eRot;setCb('earVisible',s.ears.visible);}
+      if(s.ears){setShape('earShapePickerNew','earShape',s.ears.shape);setV('earWidth',s.ears.width);document.getElementById('earWidthSlider').value=s.ears.width;document.getElementById('earWidthVal').textContent=s.ears.width;setV('earHeight',s.ears.height);document.getElementById('earHeightSlider').value=s.ears.height;document.getElementById('earHeightVal').textContent=s.ears.height;setV('earVertPos',s.ears.vertPos);document.getElementById('earVertPosSlider').value=s.ears.vertPos;document.getElementById('earVertPosVal').textContent=s.ears.vertPos;const eHz=s.ears.horizPos||0;setV('earHorizPos',eHz);const ehSlider=document.getElementById('earHorizPosSlider');if(ehSlider)ehSlider.value=eHz;const ehVal=document.getElementById('earHorizPosVal');if(ehVal)ehVal.textContent=eHz;const eRot=s.ears.rotation||0;setV('earRotation',eRot);const erSlider=document.getElementById('earRotSlider');if(erSlider)erSlider.value=eRot;const erVal=document.getElementById('earRotVal');if(erVal)erVal.textContent=eRot;setCb('earVisible',s.ears.visible);}
       if(s.iris){setV('irisWidthRatio',s.iris.widthRatio);if(s.iris.layers){irisLayers=[];irisLayerCounter=0;document.getElementById('irisLayersContainer').innerHTML='';s.iris.layers.forEach(l=>{const lay=defaultIrisLayer();Object.assign(lay,l);lay.id=++irisLayerCounter;irisLayers.push(lay);renderIrisLayerUI(lay);});}}
       if(s.mouth){setShape('mouthShapePicker','mouthShape',s.mouth.shape);setV('mouthOffsetY',s.mouth.offsetY);setV('mouthWidthPct',s.mouth.widthPct);}
       if(s.chin){const chinPts=Math.max(1,Math.min(4,s.chinPoints||2));setV('chinPoints',chinPts);chinHandles=buildDefaultChinHandles(chinPts);buildSegmentSelectors(chinPts);if(s.chin.segShapes)s.chin.segShapes.forEach((sh,i)=>{const sel=document.getElementById(`segShape-${i}`);if(sel)sel.value=sh;});segCurvatures=s.chin.segCurvatures||Array(chinPts).fill(100);if(s.chin.handles)s.chin.handles.forEach(hd=>{const labels=['P2','P3','P4'];const idx=labels.indexOf(hd.label);if(idx>=0){const pid=`p${idx+2}`;const hLeft=chinHandles.find(h=>h.id===`${pid}-left`);const hRight=chinHandles.find(h=>h.id===`${pid}-right`);if(hLeft){hLeft.x=headX+hd.nx*headW;hLeft.y=headY+hd.ny*headH;}if(hRight){hRight.x=(headX+headW)-hd.nx*headW;hRight.y=headY+hd.ny*headH;}}});drawFace();renderChinHandles();}
