@@ -11,24 +11,28 @@
 // Called from index.html:
 //   - generateHeight() calls buildBody3D() at the end of every Generate
 //   - switchBodyView('3d'|'2d') toggles the #preview / #preview3D containers
-//   - depth sliders call updateHeadDepth(value) / updateBodyDepth(value)
+//   - depth sliders call updateHeadDepth(value) / updateBodyDepth(value) /
+//     updateWaistlinePct(value)
 //   - the Recenter button calls recenterBody3D()
 // ═══════════════════════════════════════════════════════════════
 const CM_PER_PX_3D = 1 / (PX_PER_CM * SCALE_FACTOR);
-// Depth is anchored to the head's own width, not each part's own width — so a
-// wider torso/shoulder setting doesn't balloon the torso's front-to-back depth.
-// Head depth = headDepthMult × head's own width. Every other part's depth =
-// (bodyDepthMult × head's width) + 0.25 × that part's own width, so wider
-// boxes get proportionally more depth. Feet are a special case: real feet are
-// much longer (front-to-back) than they are wide, so foot depth is boosted to
-// ~2.5× the foot's own width, and — since a foot's heel/ankle sits at the
-// back, not the center — only the *extra* depth beyond the normal formula is
-// added forward, keeping the heel aligned with the leg above it.
+// Depth is anchored to the head's own width for most parts, not each part's
+// own width — so a wider torso/shoulder setting doesn't balloon the torso's
+// front-to-back depth. Head depth = headDepthMult × head's own width. Torso,
+// waist/hip box & legs = (bodyDepthMult × head's width) + 0.25 × that part's
+// own width. Neck, arms & hands are pinned to their OWN width instead
+// (1.2×) — a thick torso shouldn't inflate a thin neck, arm or hand. Feet are
+// boosted further to ~2.5× their own width (real feet are much longer than
+// wide), with only the *extra* depth pushed forward so the heel stays
+// aligned with the leg above it. See computeBodyDepth3D().
 let headDepthMult = 1.1, bodyDepthMult = 1.2;
+// % of the waist/hip box's own width used as the pinch point when the
+// hourglass waistline split is drawn (100% = no pinch, a straight box).
+let waistlinePct = 100;
 let headWidthCm3D = 0;
 const groupColor3D = {
   head:0xf0c040, neck:0xf0c040, torso:0xffff99, waistbox:0xff9db9,
-  arms:0x9fc4ff, hands:0x9fc4ff, legs:0xc9c9d4, feet:0xc9c9d4
+  arms:0x9fc4ff, hands:0x9fc4ff, legs:0xc9c9d4, feet:0xc9c9d4, joint:0xf2f2f2
 };
 let scene3D=null, camera3D=null, renderer3D=null, controls3D=null, bodyGroup3D=null;
 let sceneInited3D=false, animating3D=false;
@@ -40,13 +44,16 @@ const deg2rad = d => d * Math.PI / 180;
 // browsers restore stale <input type=range> values from a previous session,
 // which otherwise makes it look like the "default" depth silently drifted.
 function resetDepthSlidersToDefault() {
-  headDepthMult = 1.1; bodyDepthMult = 1.2;
+  headDepthMult = 1.1; bodyDepthMult = 1.2; waistlinePct = 100;
   const headSlider = document.getElementById('depth-head'), headVal = document.getElementById('depth-head-val');
   const bodySlider = document.getElementById('depth-body'), bodyVal = document.getElementById('depth-body-val');
+  const waistSlider = document.getElementById('waistline-pct'), waistVal = document.getElementById('waistline-pct-val');
   if (headSlider) headSlider.value = '1.1';
   if (headVal) headVal.textContent = '1.1×';
   if (bodySlider) bodySlider.value = '1.2';
   if (bodyVal) bodyVal.textContent = '1.2×';
+  if (waistSlider) waistSlider.value = '100';
+  if (waistVal) waistVal.textContent = '100%';
 }
 resetDepthSlidersToDefault();
 
@@ -175,12 +182,45 @@ function makeBoxMesh(b, depthCm) {
   return mesh;
 }
 
+// A trapezoidal prism: width tapers linearly from bottomWidthCm (at local
+// y=0) to topWidthCm (at local y=heightCm); depth (z) is constant. Centered
+// on its own local origin exactly like BoxGeometry, so it drops into the
+// same mesh.position.set(x,y,z) flow. Used for the hourglass waistline split.
+function makeTrapezoidMesh(topWidthCm, bottomWidthCm, heightCm, depthCm, colorHex) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-bottomWidthCm/2, 0);
+  shape.lineTo(bottomWidthCm/2, 0);
+  shape.lineTo(topWidthCm/2, heightCm);
+  shape.lineTo(-topWidthCm/2, heightCm);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: depthCm, bevelEnabled: false, curveSegments: 1 });
+  geo.translate(0, -heightCm/2, -depthCm/2);
+  const mat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.6, metalness: 0.05, transparent: true, opacity: 0.92 });
+  const mesh = new THREE.Mesh(geo, mat);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:0.35 }));
+  mesh.add(edges);
+  return mesh;
+}
+
+// A joint sphere, diameter matched to the depth of the part(s) it connects.
+function makeJointSphere(diameterCm) {
+  const geo = new THREE.SphereGeometry(Math.max(diameterCm, 0.01) / 2, 16, 12);
+  const mat = new THREE.MeshStandardMaterial({ color: groupColor3D.joint, roughness: 0.5, metalness: 0.05, transparent: true, opacity: 0.95 });
+  const mesh = new THREE.Mesh(geo, mat);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:0.2 }));
+  mesh.add(edges);
+  return mesh;
+}
+
 // Feet get boosted to ~this multiple of their own width for front-to-back depth.
 const FOOT_DEPTH_WIDTH_MULT = 2.5;
 
 // Depth (and, for feet, the forward z-shift needed to keep the heel aligned
-// with the leg above it) for any non-head box, given the current sliders.
+// with the leg above it) for a body box, given the current sliders. Neck and
+// arms are pinned to their OWN width — a thick torso/shoulder setting
+// shouldn't inflate a thin neck's or arm's depth.
 function computeBodyDepth3D(b) {
+  if (b.group === 'neck' || b.group === 'arms' || b.group === 'hands') return { depthCm: 1.2 * b.wCm, zOffset: 0 };
   const normalDepthCm = bodyDepthMult * headWidthCm3D + 0.25 * b.wCm;
   if (b.group !== 'feet') return { depthCm: normalDepthCm, zOffset: 0 };
   const footDepthCm = FOOT_DEPTH_WIDTH_MULT * b.wCm;
@@ -189,7 +229,7 @@ function computeBodyDepth3D(b) {
 }
 
 // (Re)builds every box mesh from the current 2D layout. Called automatically
-// every time "Generate" runs, and whenever a depth slider changes group multiplier.
+// every time "Generate" runs, and whenever a depth or waistline slider changes.
 function buildBody3D() {
   if (!sceneInited3D) initScene3D();
   while (bodyGroup3D.children.length) {
@@ -198,6 +238,8 @@ function buildBody3D() {
   meshRecords3D = [];
   const { boxes, leftPivot, rightPivot, armRotated } = collectBodyBoxData3D();
   if (!boxes.length) return;
+
+  const gender = document.getElementById('genderSelect')?.value === 'female' ? 'female' : 'male';
 
   // Arms/hands rotate as a rigid unit around the shoulder pivot, exactly like
   // the 2D "Rotate Arms Out 15°" option — mirrored sign because CSS rotation
@@ -217,11 +259,52 @@ function buildBody3D() {
   const headBox = boxes.find(b => b.group === 'head');
   headWidthCm3D = headBox ? headBox.wCm : (boxes[0] ? boxes[0].wCm : 1);
 
+  const torsoBox = boxes.find(b => b.group === 'torso');
+  const waistBox = boxes.find(b => b.group === 'waistbox');
+  const waistRefWidthCm = waistBox ? waistBox.wCm : headWidthCm3D;
+  const pinchWidthCm = (waistlinePct / 100) * waistRefWidthCm;
+
   let minY=Infinity, maxY=-Infinity;
+  const noteY = (b) => { minY = Math.min(minY, b.bottomCm); maxY = Math.max(maxY, b.bottomCm + b.hCm); };
+
+  // ---- Torso & hip/waist box: a plain rectangular box, or an hourglass
+  // split into two trapezoids (pinched at the box's own vertical midpoint)
+  // for whichever box matches the current gender. ----
+  function addTorsoOrWaistBox(box, splitIt) {
+    if (!box) return;
+    const { depthCm, zOffset } = computeBodyDepth3D(box);
+    if (!splitIt) {
+      const mesh = makeBoxMesh(box, depthCm);
+      mesh.position.set(box.xCm, box.bottomCm + box.hCm/2, zOffset);
+      bodyGroup3D.add(mesh);
+      meshRecords3D.push({ mesh, group: box.group, wCm: box.wCm, hCm: box.hCm });
+      noteY(box);
+      return;
+    }
+    const halfH = box.hCm / 2;
+    const color = groupColor3D[box.group] || 0xaaaaaa;
+    // Lower half: full width at the box's own bottom edge, pinched at the middle.
+    const lower = makeTrapezoidMesh(pinchWidthCm, box.wCm, halfH, depthCm, color);
+    lower.position.set(box.xCm, box.bottomCm + halfH/2, zOffset);
+    bodyGroup3D.add(lower);
+    meshRecords3D.push({ mesh: lower, group: box.group, wCm: box.wCm, hCm: halfH });
+    // Upper half: full width at the box's own top edge, pinched at the middle.
+    const upper = makeTrapezoidMesh(box.wCm, pinchWidthCm, halfH, depthCm, color);
+    upper.position.set(box.xCm, box.bottomCm + halfH + halfH/2, zOffset);
+    bodyGroup3D.add(upper);
+    meshRecords3D.push({ mesh: upper, group: box.group, wCm: box.wCm, hCm: halfH });
+    noteY(box);
+  }
+  addTorsoOrWaistBox(torsoBox, gender === 'male');
+  addTorsoOrWaistBox(waistBox, gender === 'female');
+
+  // ---- Everything else — head, neck, hands, feet. Arms & legs are handled
+  // below separately so they can carry their joints. ----
   boxes.forEach(b => {
-    const { depthCm, zOffset } = b.group === 'head'
-      ? { depthCm: headDepthMult * b.wCm, zOffset: 0 }
-      : computeBodyDepth3D(b);
+    if (b.group === 'torso' || b.group === 'waistbox' || b.group === 'arms' || b.group === 'legs') return;
+    let depthCm, zOffset = 0;
+    if (b.group === 'head') { depthCm = headDepthMult * b.wCm; }
+    else { const r = computeBodyDepth3D(b); depthCm = r.depthCm; zOffset = r.zOffset; }
     const mesh = makeBoxMesh(b, depthCm);
     const yCenter = b.bottomCm + b.hCm/2;
 
@@ -236,8 +319,94 @@ function buildBody3D() {
       bodyGroup3D.add(mesh);
     }
     meshRecords3D.push({ mesh, group: b.group, wCm: b.wCm, hCm: b.hCm });
-    minY = Math.min(minY, b.bottomCm); maxY = Math.max(maxY, b.bottomCm + b.hCm);
+    noteY(b);
   });
+
+  // ---- Arms: split into upper arm / forearm at the elbow, plus a shoulder
+  // joint (at the pivot) and an elbow joint. All built in the arm group's
+  // local frame, where y=0 is the shoulder and the arm hangs downward (-y). ----
+  function buildArmSide(group, pivot, side) {
+    if (!pivot) return;
+    const armBox = boxes.find(b => b.side === side && b.group === 'arms');
+    if (!armBox) return;
+    const handBox = boxes.find(b => b.side === side && b.group === 'hands');
+    const armDepthCm = computeBodyDepth3D(armBox).depthCm;
+    const armLocalX = armBox.xCm - pivot.xCm;
+    const handHcm = handBox ? handBox.hCm : 0;
+    // Elbow sits at (arm + hand length − half the hand length) ÷ 2 below the shoulder.
+    const elbowOffsetCm = (armBox.hCm + handHcm/2) / 2;
+    const elbowLocalY = -elbowOffsetCm;
+
+    const upperH = elbowOffsetCm;
+    const upper = makeBoxMesh({ wCm: armBox.wCm, hCm: upperH, group: 'arms' }, armDepthCm);
+    upper.position.set(armLocalX, -upperH/2, 0);
+    group.add(upper);
+    meshRecords3D.push({ mesh: upper, group: 'arms', wCm: armBox.wCm, hCm: upperH });
+
+    const lowerH = armBox.hCm - upperH;
+    const lower = makeBoxMesh({ wCm: armBox.wCm, hCm: lowerH, group: 'arms' }, armDepthCm);
+    lower.position.set(armLocalX, elbowLocalY - lowerH/2, 0);
+    group.add(lower);
+    meshRecords3D.push({ mesh: lower, group: 'arms', wCm: armBox.wCm, hCm: lowerH });
+
+    const shoulderJoint = makeJointSphere(armDepthCm);
+    shoulderJoint.position.set(armLocalX, 0, 0);
+    group.add(shoulderJoint);
+    meshRecords3D.push({ mesh: shoulderJoint, group: 'joint', wCm: armDepthCm, hCm: armDepthCm });
+
+    const elbowJoint = makeJointSphere(armDepthCm);
+    elbowJoint.position.set(armLocalX, elbowLocalY, 0);
+    group.add(elbowJoint);
+    meshRecords3D.push({ mesh: elbowJoint, group: 'joint', wCm: armDepthCm, hCm: armDepthCm });
+
+    noteY(armBox);
+  }
+  buildArmSide(leftArmGroup, leftPivot, 'left');
+  buildArmSide(rightArmGroup, rightPivot, 'right');
+
+  // ---- Legs: split at the knee (the exact vertical midpoint of the leg
+  // box — this already matches where the 2D "Knee line" is drawn), plus
+  // hip, knee & ankle joints. Legs aren't in a pivot group, so everything
+  // here is in absolute (bodyGroup3D) coordinates. ----
+  function buildLeg(legBox) {
+    const legDepthCm = computeBodyDepth3D(legBox).depthCm;
+    const halfH = legBox.hCm / 2;
+    const kneeY = legBox.bottomCm + halfH;
+    const hipY = legBox.bottomCm + legBox.hCm;
+
+    const thigh = makeBoxMesh({ wCm: legBox.wCm, hCm: halfH, group: 'legs' }, legDepthCm);
+    thigh.position.set(legBox.xCm, kneeY + halfH/2, 0);
+    bodyGroup3D.add(thigh);
+    meshRecords3D.push({ mesh: thigh, group: 'legs', wCm: legBox.wCm, hCm: halfH });
+
+    const shank = makeBoxMesh({ wCm: legBox.wCm, hCm: halfH, group: 'legs' }, legDepthCm);
+    shank.position.set(legBox.xCm, legBox.bottomCm + halfH/2, 0);
+    bodyGroup3D.add(shank);
+    meshRecords3D.push({ mesh: shank, group: 'legs', wCm: legBox.wCm, hCm: halfH });
+
+    const knee = makeJointSphere(legDepthCm);
+    knee.position.set(legBox.xCm, kneeY, 0);
+    bodyGroup3D.add(knee);
+    meshRecords3D.push({ mesh: knee, group: 'joint', wCm: legDepthCm, hCm: legDepthCm });
+
+    // Hip joint: at the hip line (top of the leg box), at this leg's own x —
+    // i.e. the side of the bottom of the waist/hip box.
+    const hip = makeJointSphere(legDepthCm);
+    hip.position.set(legBox.xCm, hipY, 0);
+    bodyGroup3D.add(hip);
+    meshRecords3D.push({ mesh: hip, group: 'joint', wCm: legDepthCm, hCm: legDepthCm });
+
+    // Ankle joint: at the top of the matching foot box (same side, by x sign).
+    const footBox = boxes.find(b => b.group === 'feet' && Math.sign(b.xCm) === Math.sign(legBox.xCm));
+    if (footBox) {
+      const ankle = makeJointSphere(legDepthCm);
+      ankle.position.set(legBox.xCm, footBox.bottomCm + footBox.hCm, 0);
+      bodyGroup3D.add(ankle);
+      meshRecords3D.push({ mesh: ankle, group: 'joint', wCm: legDepthCm, hCm: legDepthCm });
+    }
+    noteY(legBox);
+  }
+  boxes.filter(b => b.group === 'legs').forEach(buildLeg);
 
   const centerY = (minY + maxY) / 2, totalHeight = maxY - minY;
   controls3D.target.set(0, centerY, 0);
@@ -248,39 +417,40 @@ function buildBody3D() {
   controls3D.update();
 }
 
-function resizeMeshDepth(rec, newDepthCm, newZOffset = rec.mesh.position.z) {
-  rec.mesh.geometry.dispose();
-  rec.mesh.geometry = new THREE.BoxGeometry(rec.wCm, rec.hCm, newDepthCm);
-  rec.mesh.children.forEach(c => {
-    if (c.geometry) { c.geometry.dispose(); c.geometry = new THREE.EdgesGeometry(rec.mesh.geometry); }
-  });
-  rec.mesh.position.z = newZOffset;
-}
-
 // Head depth is relative to the head's own width — never the 2D width/height.
+// (Head is always a plain box, so an in-place geometry resize is safe here.)
 function updateHeadDepth(value) {
   headDepthMult = parseFloat(value);
   const valEl = document.getElementById('depth-head-val');
   if (valEl) valEl.textContent = headDepthMult.toFixed(1) + '×';
   meshRecords3D.forEach(rec => {
     if (rec.group !== 'head') return;
-    resizeMeshDepth(rec, headDepthMult * rec.wCm);
+    rec.mesh.geometry.dispose();
+    rec.mesh.geometry = new THREE.BoxGeometry(rec.wCm, rec.hCm, headDepthMult * rec.wCm);
+    rec.mesh.children.forEach(c => {
+      if (c.geometry) { c.geometry.dispose(); c.geometry = new THREE.EdgesGeometry(rec.mesh.geometry); }
+    });
   });
 }
 
-// Body depth base is one flat value, relative to the head's width — so
-// widening the shoulders/waist never changes it — but each part then adds
-// 0.25× its own width on top. Feet get boosted further (see
-// computeBodyDepth3D) and shifted forward so the heel stays put.
+// Body depth affects torso/waist/legs/feet (and, via the hourglass
+// split, tapers into trapezoid meshes rather than plain boxes) — a mix of
+// geometry types that can't all be resized in place, so this just rebuilds
+// the whole model from the current 2D layout.
 function updateBodyDepth(value) {
   bodyDepthMult = parseFloat(value);
   const valEl = document.getElementById('depth-body-val');
   if (valEl) valEl.textContent = bodyDepthMult.toFixed(1) + '×';
-  meshRecords3D.forEach(rec => {
-    if (rec.group === 'head') return;
-    const { depthCm, zOffset } = computeBodyDepth3D(rec);
-    resizeMeshDepth(rec, depthCm, zOffset);
-  });
+  buildBody3D();
+}
+
+// Hourglass pinch amount, as a % of the waist/hip box's own width. Rebuilds
+// for the same reason as updateBodyDepth (trapezoid geometry, not a resize).
+function updateWaistlinePct(value) {
+  waistlinePct = parseFloat(value);
+  const valEl = document.getElementById('waistline-pct-val');
+  if (valEl) valEl.textContent = Math.round(waistlinePct) + '%';
+  buildBody3D();
 }
 
 function recenterBody3D() {
