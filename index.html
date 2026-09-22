@@ -7,6 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -72,6 +74,46 @@
     background: transparent; border: none; padding: 0;
   }
   .curve-popup .curve-val { text-align: center; font-size: 11px; color: var(--accent-gold); margin-top: 4px; }
+
+  /* ── Body 2D/3D sub-nav ── */
+  .body-view-nav {
+    display: flex; gap: 0; width: 100%;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .body-view-btn {
+    flex: 1; padding: 10px 8px; border: none; background: transparent;
+    color: var(--muted); font-family: 'Space Mono', monospace;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    border-right: 1px solid var(--border);
+  }
+  .body-view-btn:last-child { border-right: none; }
+  .body-view-btn:hover:not(.active) { background: rgba(255,255,255,0.04); color: var(--text); }
+  .body-view-btn.active { background: rgba(240,192,64,0.12); color: var(--accent-gold); }
+
+  #preview3D {
+    width: 100%; height: 520px; position: relative;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; touch-action: none;
+  }
+  #preview3D canvas { display: block; width: 100%; height: 100%; }
+  #body3DHint {
+    position: absolute; bottom: 8px; left: 0; right: 0; text-align: center;
+    font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none;
+  }
+  .depth-row {
+    display: grid; grid-template-columns: 70px 1fr 34px; align-items: center;
+    gap: 10px; margin-bottom: 10px;
+  }
+  .depth-row label {
+    font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .depth-row input[type=range] { width: 100%; accent-color: var(--accent-gold); cursor: pointer; }
+  .depth-row .depth-val { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--accent-gold); text-align: right; }
 
   /* ── Character Creator Tab Nav ── */
   .cc-nav {
@@ -600,11 +642,31 @@
     <button class="btn-secondary" onclick="resetDefaults()">Reset</button>
   </div>
   </div>
+  <div class="body-view-nav">
+    <button class="body-view-btn active" id="view2DBtn" onclick="switchBodyView('2d')">📐 2D Guides</button>
+    <button class="body-view-btn" id="view3DBtn" onclick="switchBodyView('3d')">🧊 3D Model</button>
+  </div>
   <div class="preview-wrapper" id="preview">
     <div class="empty-state" id="emptyState">
       <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="10" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M10 34 L10 20 L30 20 L30 34" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M20 20 L20 34" stroke="currentColor" stroke-width="1.5"/><path d="M4 20 L10 20" stroke="currentColor" stroke-width="1.5"/><path d="M30 20 L36 20" stroke="currentColor" stroke-width="1.5"/></svg>
       Enter height and hit Generate
     </div>
+  </div>
+  <div id="preview3D" style="display:none;">
+    <canvas id="body3DCanvas"></canvas>
+    <div id="body3DHint">Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan</div>
+  </div>
+  <div class="panel" style="width:100%; display:none;" id="depthPanel">
+    <div class="panel-title">3D Depth (× shortest side, per group)</div>
+    <div class="depth-row"><label>Head</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-head" oninput="updateGroupDepth('head', this.value)"><span class="depth-val" id="depth-head-val">1.5×</span></div>
+    <div class="depth-row"><label>Neck</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-neck" oninput="updateGroupDepth('neck', this.value)"><span class="depth-val" id="depth-neck-val">1.5×</span></div>
+    <div class="depth-row"><label>Torso</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-torso" oninput="updateGroupDepth('torso', this.value)"><span class="depth-val" id="depth-torso-val">1.5×</span></div>
+    <div class="depth-row"><label>Waist</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-waistbox" oninput="updateGroupDepth('waistbox', this.value)"><span class="depth-val" id="depth-waistbox-val">1.5×</span></div>
+    <div class="depth-row"><label>Arms</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-arms" oninput="updateGroupDepth('arms', this.value)"><span class="depth-val" id="depth-arms-val">1.5×</span></div>
+    <div class="depth-row"><label>Hands</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-hands" oninput="updateGroupDepth('hands', this.value)"><span class="depth-val" id="depth-hands-val">1.5×</span></div>
+    <div class="depth-row"><label>Legs</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-legs" oninput="updateGroupDepth('legs', this.value)"><span class="depth-val" id="depth-legs-val">1.5×</span></div>
+    <div class="depth-row"><label>Feet</label><input type="range" min="0.2" max="4" step="0.1" value="1.5" id="depth-feet" oninput="updateGroupDepth('feet', this.value)"><span class="depth-val" id="depth-feet-val">1.5×</span></div>
+    <button class="btn-secondary" style="width:100%;" onclick="recenterBody3D()">⌖ Recenter Camera</button>
   </div>
   <div class="panel vis-panel" style="width:100%;">
     <div class="panel-title">Visibility</div>
@@ -1505,7 +1567,9 @@ function generateHeight() {
     if (cb && !cb.checked) el.style.display='none';
   });
   applyArmRotation();
+  if (typeof buildBody3D === 'function') buildBody3D();
 }
+
 function getBodyFilename() { return (document.getElementById('bodyFilename')?.value.trim()||'Character Sheet Guides').replace(/[\\/:*?"<>|]/g,'_'); }
 function getFaceFilename() { return (document.getElementById('faceFilename')?.value.trim()||'Face Proportion').replace(/[\\/:*?"<>|]/g,'_'); }
 
@@ -4438,5 +4502,6 @@ function importFaceExcel(event) {
   reader.readAsArrayBuffer(file);
 }
 </script>
+<script src="3d_character.js"></script>
 </body>
 </html>
