@@ -4,20 +4,28 @@
 // into a real, orbit-able 3D model using Three.js.
 //
 // Depends on globals defined in index.html's inline script, which must load
-// BEFORE this file: PX_PER_CM, SCALE_FACTOR, preview (the #preview element).
+// BEFORE this file: PX_PER_CM, SCALE_FACTOR, preview (the #preview element),
+// leftArmWrap, rightArmWrap.
 // Also depends on THREE and THREE.OrbitControls being loaded first.
 //
 // Called from index.html:
 //   - generateHeight() calls buildBody3D() at the end of every Generate
 //   - switchBodyView('3d'|'2d') toggles the #preview / #preview3D containers
-//   - depth sliders call updateGroupDepth(group, value)
+//   - depth sliders call updateHeadDepth(value) / updateBodyDepth(value)
 //   - the Recenter button calls recenterBody3D()
 // ═══════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════
-// BODY 3D VIEW — extrudes the 2D boxes into a real 3D model
-// ═══════════════════════════════════════
 const CM_PER_PX_3D = 1 / (PX_PER_CM * SCALE_FACTOR);
-const groupDepthMult = { head:1.5, neck:1.5, torso:1.5, waistbox:1.5, arms:1.5, hands:1.5, legs:1.5, feet:1.5 };
+// Depth is anchored to the head's own width, not each part's own width — so a
+// wider torso/shoulder setting doesn't balloon the torso's front-to-back depth.
+// Head depth = headDepthMult × head's own width. Every other part's depth =
+// (bodyDepthMult × head's width) + 0.25 × that part's own width, so wider
+// boxes get proportionally more depth. Feet are a special case: real feet are
+// much longer (front-to-back) than they are wide, so foot depth is boosted to
+// ~2.5× the foot's own width, and — since a foot's heel/ankle sits at the
+// back, not the center — only the *extra* depth beyond the normal formula is
+// added forward, keeping the heel aligned with the leg above it.
+let headDepthMult = 1.1, bodyDepthMult = 1.2;
+let headWidthCm3D = 0;
 const groupColor3D = {
   head:0xf0c040, neck:0xf0c040, torso:0xffff99, waistbox:0xff9db9,
   arms:0x9fc4ff, hands:0x9fc4ff, legs:0xc9c9d4, feet:0xc9c9d4
@@ -26,23 +34,68 @@ let scene3D=null, camera3D=null, renderer3D=null, controls3D=null, bodyGroup3D=n
 let sceneInited3D=false, animating3D=false;
 let meshRecords3D=[]; // {mesh, group, wCm, hCm}
 
+const deg2rad = d => d * Math.PI / 180;
+
+// Force the depth sliders back to their real defaults on every load — some
+// browsers restore stale <input type=range> values from a previous session,
+// which otherwise makes it look like the "default" depth silently drifted.
+function resetDepthSlidersToDefault() {
+  headDepthMult = 1.1; bodyDepthMult = 1.2;
+  const headSlider = document.getElementById('depth-head'), headVal = document.getElementById('depth-head-val');
+  const bodySlider = document.getElementById('depth-body'), bodyVal = document.getElementById('depth-body-val');
+  if (headSlider) headSlider.value = '1.1';
+  if (headVal) headVal.textContent = '1.1×';
+  if (bodySlider) bodySlider.value = '1.2';
+  if (bodyVal) bodyVal.textContent = '1.2×';
+}
+resetDepthSlidersToDefault();
+
 // Pull the exact rendered geometry of every generated box (in cm, centered on the
-// character's vertical midline, y=0 at the ground/PADDING_PX baseline).
+// character's vertical midline, y=0 at the ground/PADDING_PX baseline). Also
+// returns the shoulder pivot points and current arm-rotation state, measured
+// with the arm rotation temporarily neutralized so widths/heights are the true,
+// unrotated box sizes (not the larger diagonal bounding box of a rotated div).
 function collectBodyBoxData3D() {
+  // #preview must actually be laid out (not display:none) for
+  // getBoundingClientRect() to return real sizes — unhide it for the
+  // measurement if the 3D tab is the one currently showing.
+  const wasPreviewHidden = preview.style.display === 'none';
+  if (wasPreviewHidden) preview.style.display = 'flex';
+
+  const savedLeftT = leftArmWrap ? leftArmWrap.style.transform : null;
+  const savedRightT = rightArmWrap ? rightArmWrap.style.transform : null;
+  if (leftArmWrap) leftArmWrap.style.transform = 'rotate(0deg)';
+  if (rightArmWrap) rightArmWrap.style.transform = 'rotate(0deg)';
+
   const previewRect = preview.getBoundingClientRect();
+  const toCm = (r) => ({
+    xCm: (r.left - previewRect.left + r.width/2 - previewRect.width/2) * CM_PER_PX_3D,
+    bottomCm: (previewRect.bottom - r.bottom) * CM_PER_PX_3D,
+    wCm: r.width * CM_PER_PX_3D,
+    hCm: r.height * CM_PER_PX_3D
+  });
+
   const boxEls = preview.querySelectorAll('.head-box, .neck-box, .torso-box, .waist-box, .leg-box');
   const boxes = [];
   boxEls.forEach(el => {
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return; // skip the zero-width divider div
     const group = el.dataset.group || 'other';
-    const xCm = (r.left - previewRect.left + r.width/2 - previewRect.width/2) * CM_PER_PX_3D;
-    const bottomCm = (previewRect.bottom - r.bottom) * CM_PER_PX_3D;
-    const wCm = r.width * CM_PER_PX_3D;
-    const hCm = r.height * CM_PER_PX_3D;
-    boxes.push({ group, xCm, bottomCm, wCm, hCm });
+    const side = leftArmWrap && leftArmWrap.contains(el) ? 'left'
+               : rightArmWrap && rightArmWrap.contains(el) ? 'right' : null;
+    boxes.push({ group, side, ...toCm(r) });
   });
-  return boxes;
+
+  // Shoulder pivot points — the wrap is a 0×0 div, so its rect is just a point.
+  const leftPivot = leftArmWrap ? toCm(leftArmWrap.getBoundingClientRect()) : null;
+  const rightPivot = rightArmWrap ? toCm(rightArmWrap.getBoundingClientRect()) : null;
+
+  if (leftArmWrap) leftArmWrap.style.transform = savedLeftT;
+  if (rightArmWrap) rightArmWrap.style.transform = savedRightT;
+  if (wasPreviewHidden) preview.style.display = 'none';
+
+  const armRotated = document.getElementById('opt-armrotate')?.checked || false;
+  return { boxes, leftPivot, rightPivot, armRotated };
 }
 
 function initScene3D() {
@@ -99,32 +152,89 @@ function animate3D() {
   renderer3D.render(scene3D, camera3D);
 }
 
+// Recursively frees GPU resources for a mesh/group tree before it's discarded.
+function disposeObject3D(obj) {
+  obj.traverse(child => {
+    if (child.geometry) child.geometry.dispose();
+    if (child.material) {
+      if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+      else child.material.dispose();
+    }
+  });
+}
+
+function makeBoxMesh(b, depthCm) {
+  const geo = new THREE.BoxGeometry(b.wCm, b.hCm, depthCm);
+  const mat = new THREE.MeshStandardMaterial({
+    color: groupColor3D[b.group] || 0xaaaaaa, roughness: 0.6, metalness: 0.05,
+    transparent: true, opacity: 0.92
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:0.35 }));
+  mesh.add(edges);
+  return mesh;
+}
+
+// Feet get boosted to ~this multiple of their own width for front-to-back depth.
+const FOOT_DEPTH_WIDTH_MULT = 2.5;
+
+// Depth (and, for feet, the forward z-shift needed to keep the heel aligned
+// with the leg above it) for any non-head box, given the current sliders.
+function computeBodyDepth3D(b) {
+  const normalDepthCm = bodyDepthMult * headWidthCm3D + 0.25 * b.wCm;
+  if (b.group !== 'feet') return { depthCm: normalDepthCm, zOffset: 0 };
+  const footDepthCm = FOOT_DEPTH_WIDTH_MULT * b.wCm;
+  const depthCm = Math.max(normalDepthCm, footDepthCm);
+  return { depthCm, zOffset: (depthCm - normalDepthCm) / 2 };
+}
+
 // (Re)builds every box mesh from the current 2D layout. Called automatically
 // every time "Generate" runs, and whenever a depth slider changes group multiplier.
 function buildBody3D() {
   if (!sceneInited3D) initScene3D();
   while (bodyGroup3D.children.length) {
-    const m = bodyGroup3D.children.pop();
-    m.geometry.dispose(); m.material.dispose();
+    disposeObject3D(bodyGroup3D.children.pop());
   }
   meshRecords3D = [];
-  const boxes = collectBodyBoxData3D();
+  const { boxes, leftPivot, rightPivot, armRotated } = collectBodyBoxData3D();
   if (!boxes.length) return;
+
+  // Arms/hands rotate as a rigid unit around the shoulder pivot, exactly like
+  // the 2D "Rotate Arms Out 15°" option — mirrored sign because CSS rotation
+  // is measured in a Y-down frame while our 3D scene is Y-up.
+  const leftArmGroup = new THREE.Group();
+  const rightArmGroup = new THREE.Group();
+  if (leftPivot) {
+    leftArmGroup.position.set(leftPivot.xCm, leftPivot.bottomCm, 0);
+    leftArmGroup.rotation.z = deg2rad(armRotated ? -15 : 0);
+  }
+  if (rightPivot) {
+    rightArmGroup.position.set(rightPivot.xCm, rightPivot.bottomCm, 0);
+    rightArmGroup.rotation.z = deg2rad(armRotated ? 15 : 0);
+  }
+  bodyGroup3D.add(leftArmGroup, rightArmGroup);
+
+  const headBox = boxes.find(b => b.group === 'head');
+  headWidthCm3D = headBox ? headBox.wCm : (boxes[0] ? boxes[0].wCm : 1);
 
   let minY=Infinity, maxY=-Infinity;
   boxes.forEach(b => {
-    const depthCm = groupDepthMult[b.group] * Math.min(b.wCm, b.hCm);
-    const geo = new THREE.BoxGeometry(b.wCm, b.hCm, depthCm);
-    const mat = new THREE.MeshStandardMaterial({
-      color: groupColor3D[b.group] || 0xaaaaaa, roughness: 0.6, metalness: 0.05,
-      transparent: true, opacity: 0.92
-    });
-    const mesh = new THREE.Mesh(geo, mat);
+    const { depthCm, zOffset } = b.group === 'head'
+      ? { depthCm: headDepthMult * b.wCm, zOffset: 0 }
+      : computeBodyDepth3D(b);
+    const mesh = makeBoxMesh(b, depthCm);
     const yCenter = b.bottomCm + b.hCm/2;
-    mesh.position.set(b.xCm, yCenter, 0);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color:0x000000, transparent:true, opacity:0.35 }));
-    mesh.add(edges);
-    bodyGroup3D.add(mesh);
+
+    if (b.side === 'left' && leftPivot) {
+      mesh.position.set(b.xCm - leftPivot.xCm, yCenter - leftPivot.bottomCm, zOffset);
+      leftArmGroup.add(mesh);
+    } else if (b.side === 'right' && rightPivot) {
+      mesh.position.set(b.xCm - rightPivot.xCm, yCenter - rightPivot.bottomCm, zOffset);
+      rightArmGroup.add(mesh);
+    } else {
+      mesh.position.set(b.xCm, yCenter, zOffset);
+      bodyGroup3D.add(mesh);
+    }
     meshRecords3D.push({ mesh, group: b.group, wCm: b.wCm, hCm: b.hCm });
     minY = Math.min(minY, b.bottomCm); maxY = Math.max(maxY, b.bottomCm + b.hCm);
   });
@@ -138,26 +248,51 @@ function buildBody3D() {
   controls3D.update();
 }
 
-// Only touches the z-depth of a group's boxes — never the 2D width/height.
-function updateGroupDepth(group, value) {
-  const mult = parseFloat(value);
-  groupDepthMult[group] = mult;
-  const valEl = document.getElementById(`depth-${group}-val`);
-  if (valEl) valEl.textContent = mult.toFixed(1) + '×';
+function resizeMeshDepth(rec, newDepthCm, newZOffset = rec.mesh.position.z) {
+  rec.mesh.geometry.dispose();
+  rec.mesh.geometry = new THREE.BoxGeometry(rec.wCm, rec.hCm, newDepthCm);
+  rec.mesh.children.forEach(c => {
+    if (c.geometry) { c.geometry.dispose(); c.geometry = new THREE.EdgesGeometry(rec.mesh.geometry); }
+  });
+  rec.mesh.position.z = newZOffset;
+}
+
+// Head depth is relative to the head's own width — never the 2D width/height.
+function updateHeadDepth(value) {
+  headDepthMult = parseFloat(value);
+  const valEl = document.getElementById('depth-head-val');
+  if (valEl) valEl.textContent = headDepthMult.toFixed(1) + '×';
   meshRecords3D.forEach(rec => {
-    if (rec.group !== group) return;
-    const newDepth = mult * Math.min(rec.wCm, rec.hCm);
-    rec.mesh.geometry.dispose();
-    rec.mesh.geometry = new THREE.BoxGeometry(rec.wCm, rec.hCm, newDepth);
-    rec.mesh.children.forEach(c => { c.geometry.dispose(); c.geometry = new THREE.EdgesGeometry(rec.mesh.geometry); });
+    if (rec.group !== 'head') return;
+    resizeMeshDepth(rec, headDepthMult * rec.wCm);
+  });
+}
+
+// Body depth base is one flat value, relative to the head's width — so
+// widening the shoulders/waist never changes it — but each part then adds
+// 0.25× its own width on top. Feet get boosted further (see
+// computeBodyDepth3D) and shifted forward so the heel stays put.
+function updateBodyDepth(value) {
+  bodyDepthMult = parseFloat(value);
+  const valEl = document.getElementById('depth-body-val');
+  if (valEl) valEl.textContent = bodyDepthMult.toFixed(1) + '×';
+  meshRecords3D.forEach(rec => {
+    if (rec.group === 'head') return;
+    const { depthCm, zOffset } = computeBodyDepth3D(rec);
+    resizeMeshDepth(rec, depthCm, zOffset);
   });
 }
 
 function recenterBody3D() {
   if (!sceneInited3D || !meshRecords3D.length) return;
   buildBody3D._hasFramed = false;
+  const worldPos = new THREE.Vector3();
   let minY=Infinity, maxY=-Infinity;
-  meshRecords3D.forEach(rec => { minY = Math.min(minY, rec.mesh.position.y - rec.hCm/2); maxY = Math.max(maxY, rec.mesh.position.y + rec.hCm/2); });
+  meshRecords3D.forEach(rec => {
+    rec.mesh.getWorldPosition(worldPos);
+    minY = Math.min(minY, worldPos.y - rec.hCm/2);
+    maxY = Math.max(maxY, worldPos.y + rec.hCm/2);
+  });
   const centerY = (minY+maxY)/2, totalHeight = maxY-minY;
   camera3D.position.set(0, centerY, totalHeight * 1.6 + 60);
   controls3D.target.set(0, centerY, 0);
