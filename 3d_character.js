@@ -264,15 +264,15 @@ function buildBody3D() {
 
   const torsoBox = boxes.find(b => b.group === 'torso');
   const waistBox = boxes.find(b => b.group === 'waistbox');
-  const waistRefWidthCm = waistBox ? waistBox.wCm : headWidthCm3D;
-  const pinchWidthCm = (waistlinePct / 100) * waistRefWidthCm;
 
   let minY=Infinity, maxY=-Infinity;
   const noteY = (b) => { minY = Math.min(minY, b.bottomCm); maxY = Math.max(maxY, b.bottomCm + b.hCm); };
 
   // ---- Torso & hip/waist box: a plain rectangular box, or an hourglass
   // split into two trapezoids (pinched at the box's own vertical midpoint)
-  // for whichever box matches the current gender. ----
+  // for whichever box matches the current gender. The pinch width is a % of
+  // THAT box's own width, so 100% always reproduces the box's real width
+  // (no pinch) regardless of how the torso and waist box widths compare. ----
   function addTorsoOrWaistBox(box, splitIt) {
     if (!box) return;
     const { depthCm, zOffset } = computeBodyDepth3D(box);
@@ -284,6 +284,7 @@ function buildBody3D() {
       noteY(box);
       return;
     }
+    const pinchWidthCm = (waistlinePct / 100) * box.wCm;
     const halfH = box.hCm / 2;
     const color = groupColor3D[box.group] || 0xaaaaaa;
     // Lower half: full width at the box's own bottom edge, pinched at the middle.
@@ -397,10 +398,14 @@ function buildBody3D() {
     bodyGroup3D.add(knee);
     meshRecords3D.push({ mesh: knee, group: 'joint', wCm: legJointCm, hCm: legJointCm });
 
-    // Hip joint: at the hip line (top of the leg box), at this leg's own x —
-    // i.e. the side of the bottom of the waist/hip box.
+    // Hip joint: at the hip line (top of the leg box), positioned at the
+    // SIDE EDGE of the waist/hip box (not the leg's own, narrower x) so it
+    // sits right on the hip's silhouette. Its center sits exactly on that
+    // edge, so roughly half the sphere pokes out past the box's side.
+    const sideSign = Math.sign(legBox.xCm) || 1;
+    const hipX = waistBox ? waistBox.xCm + sideSign * (waistBox.wCm / 2) : legBox.xCm;
     const hip = makeJointSphere(hipJointCm);
-    hip.position.set(legBox.xCm, hipY, 0);
+    hip.position.set(hipX, hipY, 0);
     bodyGroup3D.add(hip);
     meshRecords3D.push({ mesh: hip, group: 'joint', wCm: hipJointCm, hCm: hipJointCm });
 
