@@ -659,10 +659,10 @@
   <div class="panel" style="width:100%; display:none;" id="depthPanel">
     <div class="panel-title">3D Depth (relative to head width)</div>
     <div class="depth-row"><label>Head</label><input type="range" autocomplete="off" min="0.2" max="4" step="0.1" value="1.1" id="depth-head" oninput="updateHeadDepth(this.value)"><span class="depth-val" id="depth-head-val">1.1×</span></div>
-    <div class="depth-row"><label>Body</label><input type="range" autocomplete="off" min="0.2" max="4" step="0.1" value="1.2" id="depth-body" oninput="updateBodyDepth(this.value)"><span class="depth-val" id="depth-body-val">1.2×</span></div>
+    <div class="depth-row"><label>Body</label><input type="range" autocomplete="off" min="0.2" max="4" step="0.1" value="0.6" id="depth-body" oninput="updateBodyDepth(this.value)"><span class="depth-val" id="depth-body-val">0.6×</span></div>
     <div class="depth-row"><label>Waistline</label><input type="range" autocomplete="off" min="40" max="100" step="1" value="100" id="waistline-pct" oninput="updateWaistlinePct(this.value)"><span class="depth-val" id="waistline-pct-val">100%</span></div>
     <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:2px 0 12px;line-height:1.5;">
-      "Body" sets one flat depth shared by torso, waist &amp; legs — so widening the shoulders or waist never changes depth, only the head's own width does. Neck, arms &amp; hands instead follow 1.2× their own width. "Waistline" pinches the torso (male) or hip box (female) into an hourglass, as a % of the waist box's own width — 100% is a straight box, lower values pinch in more.
+      "Body" sets one flat depth shared by torso, waist &amp; legs — so widening the shoulders or waist never changes depth, only the head's own width does. Neck &amp; arms instead follow 1.2× their own width, and hands follow 0.5× their own width (flatter). "Waistline" pinches the torso (male) or hip box (female) into an hourglass, as a % of the waist box's own width — 100% is a straight box, lower values pinch in more.
     </p>
     <button class="btn-secondary" style="width:100%;" onclick="recenterBody3D()">⌖ Recenter Camera</button>
   </div>

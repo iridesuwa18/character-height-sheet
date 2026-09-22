@@ -20,12 +20,13 @@ const CM_PER_PX_3D = 1 / (PX_PER_CM * SCALE_FACTOR);
 // own width — so a wider torso/shoulder setting doesn't balloon the torso's
 // front-to-back depth. Head depth = headDepthMult × head's own width. Torso,
 // waist/hip box & legs = (bodyDepthMult × head's width) + 0.25 × that part's
-// own width. Neck, arms & hands are pinned to their OWN width instead
-// (1.2×) — a thick torso shouldn't inflate a thin neck, arm or hand. Feet are
-// boosted further to ~2.5× their own width (real feet are much longer than
-// wide), with only the *extra* depth pushed forward so the heel stays
-// aligned with the leg above it. See computeBodyDepth3D().
-let headDepthMult = 1.1, bodyDepthMult = 1.2;
+// own width. Neck & arms are pinned to their OWN width instead (1.2×) — a
+// thick torso shouldn't inflate a thin neck or arm. Hands are pinned to
+// their own width too but flatter (0.5×). Feet are boosted further to ~2×
+// their own width (real feet are longer than wide), with only the *extra*
+// depth pushed forward so the heel stays aligned with the leg above it.
+// See computeBodyDepth3D().
+let headDepthMult = 1.1, bodyDepthMult = 0.6;
 // % of the waist/hip box's own width used as the pinch point when the
 // hourglass waistline split is drawn (100% = no pinch, a straight box).
 let waistlinePct = 100;
@@ -44,7 +45,7 @@ const deg2rad = d => d * Math.PI / 180;
 // browsers restore stale <input type=range> values from a previous session,
 // which otherwise makes it look like the "default" depth silently drifted.
 function resetDepthSlidersToDefault() {
-  headDepthMult = 1.1; bodyDepthMult = 1.2; waistlinePct = 100;
+  headDepthMult = 1.1; bodyDepthMult = 0.6; waistlinePct = 100;
   const headSlider = document.getElementById('depth-head'), headVal = document.getElementById('depth-head-val');
   const bodySlider = document.getElementById('depth-body'), bodyVal = document.getElementById('depth-body-val');
   const waistSlider = document.getElementById('waistline-pct'), waistVal = document.getElementById('waistline-pct-val');
@@ -213,14 +214,16 @@ function makeJointSphere(diameterCm) {
 }
 
 // Feet get boosted to ~this multiple of their own width for front-to-back depth.
-const FOOT_DEPTH_WIDTH_MULT = 2.5;
+const FOOT_DEPTH_WIDTH_MULT = 2;
 
 // Depth (and, for feet, the forward z-shift needed to keep the heel aligned
 // with the leg above it) for a body box, given the current sliders. Neck and
 // arms are pinned to their OWN width — a thick torso/shoulder setting
-// shouldn't inflate a thin neck's or arm's depth.
+// shouldn't inflate a thin neck's or arm's depth. Hands are pinned to their
+// own width too, but flatter — half their width — since a hand is a flat shape.
 function computeBodyDepth3D(b) {
-  if (b.group === 'neck' || b.group === 'arms' || b.group === 'hands') return { depthCm: 1.2 * b.wCm, zOffset: 0 };
+  if (b.group === 'neck' || b.group === 'arms') return { depthCm: 1.2 * b.wCm, zOffset: 0 };
+  if (b.group === 'hands') return { depthCm: 0.5 * b.wCm, zOffset: 0 };
   const normalDepthCm = bodyDepthMult * headWidthCm3D + 0.25 * b.wCm;
   if (b.group !== 'feet') return { depthCm: normalDepthCm, zOffset: 0 };
   const footDepthCm = FOOT_DEPTH_WIDTH_MULT * b.wCm;
@@ -370,6 +373,11 @@ function buildBody3D() {
   // here is in absolute (bodyGroup3D) coordinates. ----
   function buildLeg(legBox) {
     const legDepthCm = computeBodyDepth3D(legBox).depthCm;
+    // Knee & ankle joints are sized off the leg box's own WIDTH, not its
+    // depth — the old depth-matched spheres were oversized.
+    const legJointCm = legBox.wCm;
+    // Hip joint is sized off half the DEPTH of the waist/hip box.
+    const hipJointCm = 0.5 * (waistBox ? computeBodyDepth3D(waistBox).depthCm : legDepthCm);
     const halfH = legBox.hCm / 2;
     const kneeY = legBox.bottomCm + halfH;
     const hipY = legBox.bottomCm + legBox.hCm;
@@ -384,25 +392,25 @@ function buildBody3D() {
     bodyGroup3D.add(shank);
     meshRecords3D.push({ mesh: shank, group: 'legs', wCm: legBox.wCm, hCm: halfH });
 
-    const knee = makeJointSphere(legDepthCm);
+    const knee = makeJointSphere(legJointCm);
     knee.position.set(legBox.xCm, kneeY, 0);
     bodyGroup3D.add(knee);
-    meshRecords3D.push({ mesh: knee, group: 'joint', wCm: legDepthCm, hCm: legDepthCm });
+    meshRecords3D.push({ mesh: knee, group: 'joint', wCm: legJointCm, hCm: legJointCm });
 
     // Hip joint: at the hip line (top of the leg box), at this leg's own x —
     // i.e. the side of the bottom of the waist/hip box.
-    const hip = makeJointSphere(legDepthCm);
+    const hip = makeJointSphere(hipJointCm);
     hip.position.set(legBox.xCm, hipY, 0);
     bodyGroup3D.add(hip);
-    meshRecords3D.push({ mesh: hip, group: 'joint', wCm: legDepthCm, hCm: legDepthCm });
+    meshRecords3D.push({ mesh: hip, group: 'joint', wCm: hipJointCm, hCm: hipJointCm });
 
     // Ankle joint: at the top of the matching foot box (same side, by x sign).
     const footBox = boxes.find(b => b.group === 'feet' && Math.sign(b.xCm) === Math.sign(legBox.xCm));
     if (footBox) {
-      const ankle = makeJointSphere(legDepthCm);
+      const ankle = makeJointSphere(legJointCm);
       ankle.position.set(legBox.xCm, footBox.bottomCm + footBox.hCm, 0);
       bodyGroup3D.add(ankle);
-      meshRecords3D.push({ mesh: ankle, group: 'joint', wCm: legDepthCm, hCm: legDepthCm });
+      meshRecords3D.push({ mesh: ankle, group: 'joint', wCm: legJointCm, hCm: legJointCm });
     }
     noteY(legBox);
   }
