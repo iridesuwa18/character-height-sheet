@@ -14,6 +14,7 @@
 //   - depth sliders call updateHeadDepth(value) / updateBodyDepth(value) /
 //     updateWaistlinePct(value)
 //   - the Recenter button calls recenterBody3D()
+//   - the Pose panel buttons call setPose3D('pose-key') (see POSES3D below)
 // ═══════════════════════════════════════════════════════════════
 const CM_PER_PX_3D = 1 / (PX_PER_CM * SCALE_FACTOR);
 // Depth is anchored to the head's own width for most parts, not each part's
@@ -35,11 +36,39 @@ const groupColor3D = {
   head:0xf0c040, neck:0xf0c040, torso:0xffff99, waistbox:0xff9db9,
   arms:0x9fc4ff, hands:0x9fc4ff, legs:0xc9c9d4, feet:0xc9c9d4, joint:0xf2f2f2
 };
-let scene3D=null, camera3D=null, renderer3D=null, controls3D=null, bodyGroup3D=null;
+let scene3D=null, camera3D=null, renderer3D=null, controls3D=null, bodyGroup3D=null, poseRootGroup3D=null;
 let sceneInited3D=false, animating3D=false;
 let meshRecords3D=[]; // {mesh, group, wCm, hCm}
+let rig3D={}; // pivot groups from the last build: leftHip/rightHip, leftKnee/rightKnee,
+              // leftAnkle/rightAnkle, leftShoulder/rightShoulder, leftElbow/rightElbow
 
 const deg2rad = d => d * Math.PI / 180;
+
+// ---- Poses ----------------------------------------------------------------
+// Every joint angle is in degrees and describes how far THAT joint bends
+// relative to its own parent segment (hip relative to the fixed pelvis, knee
+// relative to the thigh, ankle relative to the shin, elbow relative to the
+// upper arm). NEGATIVE hip/shoulder swings the limb FORWARD (toward the
+// camera, +Z); positive swings it back. Because each child pivot inherits
+// its parent's rotation, a knee value that's the exact opposite of the hip
+// value cancels it out and leaves the shin hanging straight down again —
+// that's how "shin stays vertical, foot stays flat" seated poses are built
+// from two opposite numbers (e.g. hip:-90, knee:90). currentPose3D remembers
+// the active pose so slider tweaks (which rebuild the whole mesh) can
+// silently re-apply it instead of snapping back to a T-pose.
+let currentPose3D = 'stand-relaxed';
+const POSES3D = {
+  'stand-relaxed':  { section:'Standing',             label:'Relaxed',           hip:0,   knee:0,   ankle:0,  shoulder:0,   elbow:0,   root:0 },
+  'stand-arms-out': { section:'Standing',             label:'Arms Raised',       hip:0,   knee:0,   ankle:0,  shoulder:-85, elbow:0,   root:0 },
+  'sit-chair':      { section:'Sitting',              label:'On a Chair',        hip:-90, knee:90,  ankle:0,  shoulder:-10, elbow:-40, root:0 },
+  'sit-perch':      { section:'Sitting on Something',  label:'On a Stool/Ledge', hip:-75, knee:70,  ankle:5,  shoulder:-15, elbow:-35, root:0 },
+  'sit-floor':      { section:'Sitting on the Floor',  label:'Legs Out Front',   hip:-90, knee:0,   ankle:90, shoulder:-20, elbow:-30, root:0 },
+  'squat':          { section:'Squatting',            label:'Squat',             hip:-70, knee:45,  ankle:25, shoulder:-70, elbow:-40, root:0 },
+  'squat-low':      { section:'Squatting',            label:'Deep/Resting Squat',hip:-95, knee:60,  ankle:35, shoulder:-60, elbow:-50, root:0 },
+  'lie-back':       { section:'Lying Down',           label:'On Back',           hip:0,   knee:0,   ankle:0,  shoulder:-10, elbow:0,   root:-90 },
+  'lie-front':      { section:'Lying Down',           label:'On Front',          hip:0,   knee:0,   ankle:0,  shoulder:-10, elbow:0,   root:90 },
+};
+
 
 // Force the depth sliders back to their real defaults on every load — some
 // browsers restore stale <input type=range> values from a previous session,
@@ -136,7 +165,9 @@ function initScene3D() {
   scene3D.add(dirLight2);
 
   bodyGroup3D = new THREE.Group();
-  scene3D.add(bodyGroup3D);
+  poseRootGroup3D = new THREE.Group();
+  poseRootGroup3D.add(bodyGroup3D);
+  scene3D.add(poseRootGroup3D);
 
   window.addEventListener('resize', resizeBody3D);
   sceneInited3D = true;
@@ -239,6 +270,7 @@ function buildBody3D() {
     disposeObject3D(bodyGroup3D.children.pop());
   }
   meshRecords3D = [];
+  rig3D = {};
   const { boxes, leftPivot, rightPivot, armRotated } = collectBodyBoxData3D();
   if (!boxes.length) return;
 
@@ -258,6 +290,8 @@ function buildBody3D() {
     rightArmGroup.rotation.z = deg2rad(armRotated ? 15 : 0);
   }
   bodyGroup3D.add(leftArmGroup, rightArmGroup);
+  rig3D.leftShoulder = leftArmGroup;
+  rig3D.rightShoulder = rightArmGroup;
 
   const headBox = boxes.find(b => b.group === 'head');
   headWidthCm3D = headBox ? headBox.wCm : (boxes[0] ? boxes[0].wCm : 1);
@@ -302,10 +336,11 @@ function buildBody3D() {
   addTorsoOrWaistBox(torsoBox, gender === 'male');
   addTorsoOrWaistBox(waistBox, gender === 'female');
 
-  // ---- Everything else — head, neck, hands, feet. Arms & legs are handled
-  // below separately so they can carry their joints. ----
+  // ---- Everything else — just head & neck now. Arms/hands and legs/feet
+  // are handled below separately so they can carry their joints and bend. ----
   boxes.forEach(b => {
-    if (b.group === 'torso' || b.group === 'waistbox' || b.group === 'arms' || b.group === 'legs') return;
+    if (b.group === 'torso' || b.group === 'waistbox' || b.group === 'arms' || b.group === 'legs'
+      || b.group === 'hands' || b.group === 'feet') return;
     let depthCm, zOffset = 0;
     if (b.group === 'head') { depthCm = headDepthMult * b.wCm; }
     else { const r = computeBodyDepth3D(b); depthCm = r.depthCm; zOffset = r.zOffset; }
@@ -326,9 +361,10 @@ function buildBody3D() {
     noteY(b);
   });
 
-  // ---- Arms: split into upper arm / forearm at the elbow, plus a shoulder
-  // joint (at the pivot) and an elbow joint. All built in the arm group's
-  // local frame, where y=0 is the shoulder and the arm hangs downward (-y). ----
+  // ---- Arms: split into upper arm / forearm at the elbow. The upper arm
+  // sits directly in the shoulder-pivot group; the forearm AND hand sit in
+  // a nested elbow-pivot group, so the elbow can bend independently of the
+  // shoulder and the hand just follows along without bending on its own. ----
   function buildArmSide(group, pivot, side) {
     if (!pivot) return;
     const armBox = boxes.find(b => b.side === side && b.group === 'arms');
@@ -339,39 +375,55 @@ function buildBody3D() {
     const handHcm = handBox ? handBox.hCm : 0;
     // Elbow sits at (arm + hand length − half the hand length) ÷ 2 below the shoulder.
     const elbowOffsetCm = (armBox.hCm + handHcm/2) / 2;
-    const elbowLocalY = -elbowOffsetCm;
-
     const upperH = elbowOffsetCm;
+    const lowerH = armBox.hCm - upperH;
+
     const upper = makeBoxMesh({ wCm: armBox.wCm, hCm: upperH, group: 'arms' }, armDepthCm);
     upper.position.set(armLocalX, -upperH/2, 0);
     group.add(upper);
     meshRecords3D.push({ mesh: upper, group: 'arms', wCm: armBox.wCm, hCm: upperH });
-
-    const lowerH = armBox.hCm - upperH;
-    const lower = makeBoxMesh({ wCm: armBox.wCm, hCm: lowerH, group: 'arms' }, armDepthCm);
-    lower.position.set(armLocalX, elbowLocalY - lowerH/2, 0);
-    group.add(lower);
-    meshRecords3D.push({ mesh: lower, group: 'arms', wCm: armBox.wCm, hCm: lowerH });
 
     const shoulderJoint = makeJointSphere(armDepthCm);
     shoulderJoint.position.set(armLocalX, 0, 0);
     group.add(shoulderJoint);
     meshRecords3D.push({ mesh: shoulderJoint, group: 'joint', wCm: armDepthCm, hCm: armDepthCm });
 
+    // Elbow pivot: forearm + hand hang from here, in their own local frame
+    // (y=0 at the elbow), so a pose can bend the elbow on top of whatever
+    // the shoulder is doing.
+    const elbowGroup = new THREE.Group();
+    elbowGroup.position.set(armLocalX, -upperH, 0);
+    group.add(elbowGroup);
+
+    const lower = makeBoxMesh({ wCm: armBox.wCm, hCm: lowerH, group: 'arms' }, armDepthCm);
+    lower.position.set(0, -lowerH/2, 0);
+    elbowGroup.add(lower);
+    meshRecords3D.push({ mesh: lower, group: 'arms', wCm: armBox.wCm, hCm: lowerH });
+
     const elbowJoint = makeJointSphere(armDepthCm);
-    elbowJoint.position.set(armLocalX, elbowLocalY, 0);
-    group.add(elbowJoint);
+    elbowJoint.position.set(0, 0, 0);
+    elbowGroup.add(elbowJoint);
     meshRecords3D.push({ mesh: elbowJoint, group: 'joint', wCm: armDepthCm, hCm: armDepthCm });
 
+    if (handBox) {
+      const handDepthCm = computeBodyDepth3D(handBox).depthCm;
+      const hand = makeBoxMesh({ wCm: handBox.wCm, hCm: handBox.hCm, group: 'hands' }, handDepthCm);
+      hand.position.set(0, -lowerH - handBox.hCm/2, 0);
+      elbowGroup.add(hand);
+      meshRecords3D.push({ mesh: hand, group: 'hands', wCm: handBox.wCm, hCm: handBox.hCm });
+    }
+
     noteY(armBox);
+    rig3D[side + 'Elbow'] = elbowGroup;
   }
   buildArmSide(leftArmGroup, leftPivot, 'left');
   buildArmSide(rightArmGroup, rightPivot, 'right');
 
   // ---- Legs: split at the knee (the exact vertical midpoint of the leg
-  // box — this already matches where the 2D "Knee line" is drawn), plus
-  // hip, knee & ankle joints. Legs aren't in a pivot group, so everything
-  // here is in absolute (bodyGroup3D) coordinates. ----
+  // box — this already matches where the 2D "Knee line" is drawn). Thigh
+  // hangs from a hip pivot; shin hangs from a knee pivot nested inside the
+  // hip pivot; the foot hangs from an ankle pivot nested inside the knee
+  // pivot — so each joint can bend independently for poses. ----
   function buildLeg(legBox) {
     const legDepthCm = computeBodyDepth3D(legBox).depthCm;
     // Knee & ankle joints are sized off the leg box's own WIDTH, not its
@@ -379,44 +431,71 @@ function buildBody3D() {
     const legJointCm = legBox.wCm;
     // Hip joint is sized off half the DEPTH of the waist/hip box.
     const hipJointCm = 0.5 * (waistBox ? computeBodyDepth3D(waistBox).depthCm : legDepthCm);
-    const halfH = legBox.hCm / 2;
-    const kneeY = legBox.bottomCm + halfH;
+    const halfH = legBox.hCm / 2; // thigh height == shin height
     const hipY = legBox.bottomCm + legBox.hCm;
+    const side = legBox.xCm < 0 ? 'left' : 'right';
+
+    // Hip pivot: thigh + knee + shin + ankle + foot all hang from here, at
+    // the leg's own (narrower) centerline, so the whole leg swings as a unit.
+    const hipGroup = new THREE.Group();
+    hipGroup.position.set(legBox.xCm, hipY, 0);
+    bodyGroup3D.add(hipGroup);
+    rig3D[side + 'Hip'] = hipGroup;
 
     const thigh = makeBoxMesh({ wCm: legBox.wCm, hCm: halfH, group: 'legs' }, legDepthCm);
-    thigh.position.set(legBox.xCm, kneeY + halfH/2, 0);
-    bodyGroup3D.add(thigh);
+    thigh.position.set(0, -halfH/2, 0);
+    hipGroup.add(thigh);
     meshRecords3D.push({ mesh: thigh, group: 'legs', wCm: legBox.wCm, hCm: halfH });
 
-    const shank = makeBoxMesh({ wCm: legBox.wCm, hCm: halfH, group: 'legs' }, legDepthCm);
-    shank.position.set(legBox.xCm, legBox.bottomCm + halfH/2, 0);
-    bodyGroup3D.add(shank);
-    meshRecords3D.push({ mesh: shank, group: 'legs', wCm: legBox.wCm, hCm: halfH });
-
-    const knee = makeJointSphere(legJointCm);
-    knee.position.set(legBox.xCm, kneeY, 0);
-    bodyGroup3D.add(knee);
-    meshRecords3D.push({ mesh: knee, group: 'joint', wCm: legJointCm, hCm: legJointCm });
-
-    // Hip joint: at the hip line (top of the leg box), positioned at the
-    // SIDE EDGE of the waist/hip box (not the leg's own, narrower x) so it
-    // sits right on the hip's silhouette. Its center sits exactly on that
-    // edge, so roughly half the sphere pokes out past the box's side.
+    // Hip joint sphere: fixed to the pelvis (NOT the hip pivot), sitting on
+    // the waist/hip box's own side edge, so it stays put in its socket while
+    // the leg swings beneath it. Its center sits exactly on that edge, so
+    // roughly half the sphere pokes out past the box's side.
     const sideSign = Math.sign(legBox.xCm) || 1;
-    const hipX = waistBox ? waistBox.xCm + sideSign * (waistBox.wCm / 2) : legBox.xCm;
+    const hipSphereX = waistBox ? waistBox.xCm + sideSign * (waistBox.wCm / 2) : legBox.xCm;
     const hip = makeJointSphere(hipJointCm);
-    hip.position.set(hipX, hipY, 0);
+    hip.position.set(hipSphereX, hipY, 0);
     bodyGroup3D.add(hip);
     meshRecords3D.push({ mesh: hip, group: 'joint', wCm: hipJointCm, hCm: hipJointCm });
 
-    // Ankle joint: at the top of the matching foot box (same side, by x sign).
+    // Knee pivot: shin + ankle + foot hang from here, local y=0 at the knee.
+    const kneeGroup = new THREE.Group();
+    kneeGroup.position.set(0, -halfH, 0);
+    hipGroup.add(kneeGroup);
+    rig3D[side + 'Knee'] = kneeGroup;
+
+    const shin = makeBoxMesh({ wCm: legBox.wCm, hCm: halfH, group: 'legs' }, legDepthCm);
+    shin.position.set(0, -halfH/2, 0);
+    kneeGroup.add(shin);
+    meshRecords3D.push({ mesh: shin, group: 'legs', wCm: legBox.wCm, hCm: halfH });
+
+    const knee = makeJointSphere(legJointCm);
+    knee.position.set(0, 0, 0);
+    kneeGroup.add(knee);
+    meshRecords3D.push({ mesh: knee, group: 'joint', wCm: legJointCm, hCm: legJointCm });
+
+    // Ankle pivot: the foot hangs from here, local y=0 at the ankle.
+    const ankleGroup = new THREE.Group();
+    ankleGroup.position.set(0, -halfH, 0);
+    kneeGroup.add(ankleGroup);
+    rig3D[side + 'Ankle'] = ankleGroup;
+
+    const ankle = makeJointSphere(legJointCm);
+    ankle.position.set(0, 0, 0);
+    ankleGroup.add(ankle);
+    meshRecords3D.push({ mesh: ankle, group: 'joint', wCm: legJointCm, hCm: legJointCm });
+
     const footBox = boxes.find(b => b.group === 'feet' && Math.sign(b.xCm) === Math.sign(legBox.xCm));
     if (footBox) {
-      const ankle = makeJointSphere(legJointCm);
-      ankle.position.set(legBox.xCm, footBox.bottomCm + footBox.hCm, 0);
-      bodyGroup3D.add(ankle);
-      meshRecords3D.push({ mesh: ankle, group: 'joint', wCm: legJointCm, hCm: legJointCm });
+      const { depthCm: footDepthCm, zOffset: footZOffset } = computeBodyDepth3D(footBox);
+      const foot = makeBoxMesh({ wCm: footBox.wCm, hCm: footBox.hCm, group: 'feet' }, footDepthCm);
+      // Foot's top sits at the ankle; it hangs straight down from there by
+      // default, pushed forward the same way it always was.
+      foot.position.set(0, -footBox.hCm/2, footZOffset);
+      ankleGroup.add(foot);
+      meshRecords3D.push({ mesh: foot, group: 'feet', wCm: footBox.wCm, hCm: footBox.hCm });
     }
+
     noteY(legBox);
   }
   boxes.filter(b => b.group === 'legs').forEach(buildLeg);
@@ -428,7 +507,89 @@ function buildBody3D() {
     buildBody3D._hasFramed = true;
   }
   controls3D.update();
+
+  // Rebuilding wipes every pivot's rotation back to 0, so silently
+  // re-apply whichever pose was active (without yanking the camera —
+  // that only happens when the person explicitly picks a pose).
+  applyPose3D(currentPose3D, { reframe: false });
 }
+
+// Sets every joint pivot's rotation from a POSES3D entry, tilts the whole
+// body for lying poses, and re-grounds the model so its lowest point always
+// rests at y=0 (the floor) — whichever part that turns out to be (feet for
+// a standing/seated pose, the back of the torso for lying down, etc). Pass
+// { reframe:true } to also re-fit the camera to the new silhouette, which
+// setPose3D() does for an explicit pose pick; buildBody3D()'s automatic
+// re-apply after a rebuild does not, so it doesn't disturb the camera.
+function applyPose3D(poseName, { reframe = false } = {}) {
+  const pose = POSES3D[poseName] || POSES3D['stand-relaxed'];
+  currentPose3D = POSES3D[poseName] ? poseName : 'stand-relaxed';
+  const setX = (grp, deg) => { if (grp) grp.rotation.x = deg2rad(deg || 0); };
+  setX(rig3D.leftHip, pose.hip);     setX(rig3D.rightHip, pose.hip);
+  setX(rig3D.leftKnee, pose.knee);   setX(rig3D.rightKnee, pose.knee);
+  setX(rig3D.leftAnkle, pose.ankle); setX(rig3D.rightAnkle, pose.ankle);
+  setX(rig3D.leftShoulder, pose.shoulder); setX(rig3D.rightShoulder, pose.shoulder);
+  setX(rig3D.leftElbow, pose.elbow);       setX(rig3D.rightElbow, pose.elbow);
+  if (poseRootGroup3D) poseRootGroup3D.rotation.x = deg2rad(pose.root || 0);
+  groundBody3D(reframe);
+}
+
+// Re-grounds the posed model (translates poseRootGroup3D vertically so the
+// model's lowest point touches y=0, whatever part that is for the current
+// pose) using a real world-space bounding box — robust to any combination
+// of joint and root rotation, unlike a per-box half-height estimate.
+// Optionally also re-fits the camera to the new silhouette.
+function groundBody3D(reframe) {
+  if (!poseRootGroup3D || !bodyGroup3D || !meshRecords3D.length) return;
+  poseRootGroup3D.position.y = 0;
+  poseRootGroup3D.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(bodyGroup3D);
+  if (!isFinite(box.min.y)) return;
+  poseRootGroup3D.position.y = -box.min.y;
+  poseRootGroup3D.updateMatrixWorld(true);
+  if (reframe) {
+    const box2 = new THREE.Box3().setFromObject(bodyGroup3D);
+    const center = box2.getCenter(new THREE.Vector3());
+    const size = box2.getSize(new THREE.Vector3());
+    const dist = Math.max(size.x, size.y, size.z) * 1.6 + 60;
+    controls3D.target.set(center.x, center.y, center.z);
+    camera3D.position.set(center.x, center.y, center.z + dist);
+    controls3D.update();
+  }
+}
+
+// Builds the Pose panel's buttons from POSES3D, grouped into the labeled
+// sections each entry declares (Standing, Sitting, Squatting, etc) — add a
+// new pose to POSES3D and it shows up here automatically, no HTML to touch.
+function renderPosePanel3D() {
+  const container = document.getElementById('poseSections');
+  if (!container) return;
+  const sections = {};
+  Object.keys(POSES3D).forEach(key => {
+    const pose = POSES3D[key];
+    (sections[pose.section] = sections[pose.section] || []).push({ key, ...pose });
+  });
+  container.innerHTML = Object.keys(sections).map(sectionName => `
+    <div class="pose-section">
+      <div class="pose-section-title">${sectionName}</div>
+      <div class="pose-btn-row">
+        ${sections[sectionName].map(p => `<button type="button" class="pose-btn${p.key === currentPose3D ? ' active' : ''}" data-pose="${p.key}" onclick="setPose3D('${p.key}')">${p.label}</button>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+renderPosePanel3D();
+
+// Called from the Pose panel buttons: switches to a named pose, snaps it to
+// the floor, and re-frames the camera to the new silhouette.
+function setPose3D(poseName) {
+  if (!sceneInited3D || !meshRecords3D.length) return;
+  applyPose3D(poseName, { reframe: true });
+  document.querySelectorAll('.pose-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.pose === currentPose3D);
+  });
+}
+
 
 // Head depth is relative to the head's own width — never the 2D width/height.
 // (Head is always a plain box, so an in-place geometry resize is safe here.)
@@ -469,30 +630,23 @@ function updateWaistlinePct(value) {
 function recenterBody3D() {
   if (!sceneInited3D || !meshRecords3D.length) return;
   buildBody3D._hasFramed = false;
-  const worldPos = new THREE.Vector3();
-  let minY=Infinity, maxY=-Infinity;
-  meshRecords3D.forEach(rec => {
-    rec.mesh.getWorldPosition(worldPos);
-    minY = Math.min(minY, worldPos.y - rec.hCm/2);
-    maxY = Math.max(maxY, worldPos.y + rec.hCm/2);
-  });
-  const centerY = (minY+maxY)/2, totalHeight = maxY-minY;
-  camera3D.position.set(0, centerY, totalHeight * 1.6 + 60);
-  controls3D.target.set(0, centerY, 0);
-  controls3D.update();
+  groundBody3D(true);
 }
 
 function switchBodyView(view) {
   const el2D = document.getElementById('preview'), el3D = document.getElementById('preview3D');
   const btn2D = document.getElementById('view2DBtn'), btn3D = document.getElementById('view3DBtn');
   const depthPanel = document.getElementById('depthPanel');
+  const posePanel = document.getElementById('posePanel');
   if (view === '3d') {
     el2D.style.display = 'none'; el3D.style.display = 'block'; depthPanel.style.display = 'block';
+    if (posePanel) posePanel.style.display = 'block';
     btn2D.classList.remove('active'); btn3D.classList.add('active');
     if (!sceneInited3D) { initScene3D(); buildBody3D(); }
     requestAnimationFrame(resizeBody3D);
   } else {
     el2D.style.display = 'flex'; el3D.style.display = 'none'; depthPanel.style.display = 'none';
+    if (posePanel) posePanel.style.display = 'none';
     btn3D.classList.remove('active'); btn2D.classList.add('active');
   }
 }

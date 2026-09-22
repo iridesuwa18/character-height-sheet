@@ -115,6 +115,21 @@
   .depth-row input[type=range] { width: 100%; accent-color: var(--accent-gold); cursor: pointer; }
   .depth-row .depth-val { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--accent-gold); text-align: right; }
 
+  /* ── 3D Pose Panel ── */
+  .pose-section { margin-bottom: 12px; }
+  .pose-section-title {
+    font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;
+  }
+  .pose-btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pose-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    font-family: 'Space Mono', monospace; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.04em; padding: 7px 10px; border-radius: 5px; cursor: pointer;
+  }
+  .pose-btn:hover:not(.active) { border-color: var(--text); color: var(--text); }
+  .pose-btn.active { background: rgba(240,192,64,0.12); border-color: var(--accent-gold); color: var(--accent-gold); }
+
   /* ── Character Creator Tab Nav ── */
   .cc-nav {
     display: flex; gap: 0; width: 100%;
@@ -665,6 +680,10 @@
       "Body" sets one flat depth shared by torso, waist &amp; legs — so widening the shoulders or waist never changes depth, only the head's own width does. Neck &amp; arms instead follow 1.2× their own width, and hands follow 0.5× their own width (flatter). "Waistline" pinches the torso (male) or hip box (female) into an hourglass, as a % of the waist box's own width — 100% is a straight box, lower values pinch in more.
     </p>
     <button class="btn-secondary" style="width:100%;" onclick="recenterBody3D()">⌖ Recenter Camera</button>
+  </div>
+  <div class="panel" style="width:100%; display:none;" id="posePanel">
+    <div class="panel-title">Pose</div>
+    <div id="poseSections"></div>
   </div>
   <div class="panel vis-panel" style="width:100%;">
     <div class="panel-title">Visibility</div>
