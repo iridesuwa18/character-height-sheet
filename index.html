@@ -643,6 +643,34 @@
       ⬆ Load Excel<input type="file" id="excelUpload" accept=".xlsx" style="display:none;" onchange="importExcel(event)">
     </label>
   </div>
+
+  <div class="panel" style="width:100%;">
+    <div class="panel-title">GitHub Presets</div>
+    <div class="field-grid">
+      <div class="field"><label>Owner</label><input type="text" id="ghBodyOwner" placeholder="username" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
+      <div class="field"><label>Repo</label><input type="text" id="ghBodyRepo" placeholder="my-repo" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
+      <div class="field"><label>Branch</label><input type="text" id="ghBodyBranch" placeholder="main" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
+      <div class="field"><label>Token</label><input type="password" id="ghBodyToken" placeholder="ghp_…" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
+    </div>
+    <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:8px 0 12px;line-height:1.5;">
+      Saved to this browser only. Presets sync to <b>presets/body/</b> in the repo above. Token needs "repo" (contents) access.
+    </p>
+    <div class="field-grid" style="margin-bottom:10px;">
+      <div class="field" style="grid-column:1/-1;"><label>Preset Name</label><input type="text" id="ghBodyPresetName" placeholder="e.g. tall-male"/></div>
+    </div>
+    <button class="btn-primary" id="ghBodySaveBtn" style="width:100%;margin-bottom:10px;" onclick="ghSavePreset('body')">⬆ Save to GitHub</button>
+    <div class="field-grid" style="margin-bottom:10px;">
+      <div class="field" style="grid-column:1/-1;"><label>Load Preset</label>
+        <select id="ghBodyPresetList" onfocus="ghRefreshPresetList('body')">
+          <option value="">— Click to load list —</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn-secondary" style="flex:1;" onclick="ghRefreshPresetList('body')">⟳ Refresh</button>
+      <button class="btn-secondary" style="flex:1;" onclick="ghLoadPreset('body')">⬇ Load Selected</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════════════ FACE TAB ═══════════════════════════════════════ -->
@@ -743,8 +771,12 @@
           </div>
         </div>
         <div id="chinShapeSelectors" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div class="ctrl-row cols-1" style="margin-top:14px;margin-bottom:4px;">
+          <span class="ctrl-label" style="margin-bottom:2px;">Point Position (% of head box)</span>
+        </div>
+        <div id="chinPointInputs" style="display:flex;flex-direction:column;gap:6px;"></div>
         <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin-top:10px;line-height:1.5;text-transform:uppercase;letter-spacing:0.06em;">
-          Drag gold handles · Click segment dot to adjust curve
+          Drag gold handles or type X/Y · Click segment dot to adjust curve
         </p>
       </div>
     </div>
@@ -1262,6 +1294,53 @@
       </div>
     </div>
 
+    <div class="cc-section">
+      <div class="cc-section-head open" onclick="toggleCcSection(this)">
+        <span class="cc-section-title">GitHub Presets</span>
+        <span class="cc-section-arrow">▼</span>
+      </div>
+      <div class="cc-section-body open">
+        <div class="ctrl-row cols-2" style="margin-bottom:8px;">
+          <div class="ctrl-group"><span class="ctrl-label">Owner</span>
+            <input type="text" id="ghFaceOwner" placeholder="username" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
+          </div>
+          <div class="ctrl-group"><span class="ctrl-label">Repo</span>
+            <input type="text" id="ghFaceRepo" placeholder="my-repo" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
+          </div>
+        </div>
+        <div class="ctrl-row cols-2" style="margin-bottom:8px;">
+          <div class="ctrl-group"><span class="ctrl-label">Branch</span>
+            <input type="text" id="ghFaceBranch" placeholder="main" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
+          </div>
+          <div class="ctrl-group"><span class="ctrl-label">Token</span>
+            <input type="password" id="ghFaceToken" placeholder="ghp_…" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
+          </div>
+        </div>
+        <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:10px;line-height:1.5;">
+          Saved to this browser only. Presets sync to <b>presets/face/</b> in the repo above. Token needs "repo" (contents) access.
+        </p>
+        <div class="ctrl-row cols-1" style="margin-bottom:8px;">
+          <div class="ctrl-group">
+            <span class="ctrl-label">Preset Name</span>
+            <input type="text" id="ghFacePresetName" placeholder="e.g. hero-face" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
+          </div>
+        </div>
+        <button class="btn-xs primary full" id="ghFaceSaveBtn" style="width:100%;margin-bottom:10px;" onclick="ghSavePreset('face')">⬆ Save to GitHub</button>
+        <div class="ctrl-row cols-1" style="margin-bottom:8px;">
+          <div class="ctrl-group">
+            <span class="ctrl-label">Load Preset</span>
+            <select id="ghFacePresetList" onfocus="ghRefreshPresetList('face')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;">
+              <option value="">— Click to load list —</option>
+            </select>
+          </div>
+        </div>
+        <div class="export-grid">
+          <button class="btn-xs" onclick="ghRefreshPresetList('face')">⟳ Refresh</button>
+          <button class="btn-xs" onclick="ghLoadPreset('face')">⬇ Load Selected</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Hidden legacy section IDs so scrollIntoView doesn't break -->
     <div id="sec-head" style="height:0;overflow:hidden;"></div>
     <div id="sec-nose" style="height:0;overflow:hidden;"></div>
@@ -1530,6 +1609,137 @@ function importExcel(event) {
 }
 createGrid();
 
+function collectBodyState() {
+  const vis={};
+  ['head','neck','torso','waistbox','arms','hands','legs','feet','lines','labels','grid'].forEach(k=>{
+    const el=document.getElementById(`vis-${k}`); if (el) vis[k]=el.checked;
+  });
+  return {
+    heightCm: parseFloat(document.getElementById('heightInput').value)||null,
+    gender: document.getElementById('genderSelect').value,
+    shoulderWidthCm: document.getElementById('shoulderWidthInput').value!==''?parseFloat(document.getElementById('shoulderWidthInput').value):null,
+    waistWidthCm: document.getElementById('waistWidthInput').value!==''?parseFloat(document.getElementById('waistWidthInput').value):null,
+    visibility: vis,
+    armRotate: document.getElementById('opt-armrotate')?.checked||false,
+  };
+}
+function applyBodyState(s) {
+  if (!s) return;
+  if (s.heightCm!=null) document.getElementById('heightInput').value=s.heightCm;
+  if (s.gender) document.getElementById('genderSelect').value=s.gender;
+  document.getElementById('shoulderWidthInput').value = (s.shoulderWidthCm!=null)?s.shoulderWidthCm:'';
+  document.getElementById('waistWidthInput').value = (s.waistWidthCm!=null)?s.waistWidthCm:'';
+  if (s.visibility) {
+    Object.keys(s.visibility).forEach(k=>{
+      const el=document.getElementById(`vis-${k}`);
+      if (el) { el.checked=!!s.visibility[k]; if (k==='grid') toggleGrid(); else toggleGroup(k); }
+    });
+  }
+  const armCb=document.getElementById('opt-armrotate');
+  if (armCb) { armCb.checked=!!s.armRotate; applyArmRotation(); }
+  generateHeight();
+}
+
+// ═══════════════════════════════════════
+// GITHUB PRESET SYNC
+// ═══════════════════════════════════════
+function ghGetSettings() {
+  return {
+    token: localStorage.getItem('ghToken')||'',
+    owner: localStorage.getItem('ghOwner')||'',
+    repo: localStorage.getItem('ghRepo')||'',
+    branch: localStorage.getItem('ghBranch')||'main',
+    bodyFolder: localStorage.getItem('ghBodyFolder')||'presets/body',
+    faceFolder: localStorage.getItem('ghFaceFolder')||'presets/face',
+  };
+}
+function ghSaveSettingsFromUI(prefix) {
+  const token=document.getElementById(`${prefix}Token`)?.value.trim()||'';
+  const owner=document.getElementById(`${prefix}Owner`)?.value.trim()||'';
+  const repo=document.getElementById(`${prefix}Repo`)?.value.trim()||'';
+  const branch=document.getElementById(`${prefix}Branch`)?.value.trim()||'main';
+  localStorage.setItem('ghToken',token);
+  localStorage.setItem('ghOwner',owner);
+  localStorage.setItem('ghRepo',repo);
+  localStorage.setItem('ghBranch',branch);
+  ghSyncSettingsUI();
+}
+function ghSyncSettingsUI() {
+  const s=ghGetSettings();
+  ['ghBodyToken','ghFaceToken'].forEach(id=>{const el=document.getElementById(id); if(el) el.value=s.token;});
+  ['ghBodyOwner','ghFaceOwner'].forEach(id=>{const el=document.getElementById(id); if(el) el.value=s.owner;});
+  ['ghBodyRepo','ghFaceRepo'].forEach(id=>{const el=document.getElementById(id); if(el) el.value=s.repo;});
+  ['ghBodyBranch','ghFaceBranch'].forEach(id=>{const el=document.getElementById(id); if(el) el.value=s.branch;});
+}
+function ghHeaders(token) {
+  return { 'Authorization':`token ${token}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' };
+}
+function ghUtf8ToB64(str) { return btoa(unescape(encodeURIComponent(str))); }
+function ghB64ToUtf8(b64) { return decodeURIComponent(escape(atob((b64||'').replace(/\n/g,'')))); }
+function ghFolderFor(kind) { const s=ghGetSettings(); return kind==='body'?s.bodyFolder:s.faceFolder; }
+async function ghSavePreset(kind) {
+  const s=ghGetSettings();
+  if (!s.token||!s.owner||!s.repo) { alert('Enter your GitHub token, owner and repo first.'); return; }
+  const nameInput=document.getElementById(kind==='body'?'ghBodyPresetName':'ghFacePresetName');
+  let name=(nameInput?.value||'').trim();
+  if (!name) { alert('Enter a preset name.'); return; }
+  name=name.replace(/[\\/:*?"<>|]/g,'_');
+  const state = kind==='body'?collectBodyState():collectFaceState();
+  const folder=ghFolderFor(kind);
+  const path=`${folder}/${name}.json`;
+  const btn=document.getElementById(kind==='body'?'ghBodySaveBtn':'ghFaceSaveBtn');
+  if (btn){btn.disabled=true;btn.textContent='Saving…';}
+  try {
+    const apiUrl=`https://api.github.com/repos/${s.owner}/${s.repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+    let sha;
+    const getResp=await fetch(`${apiUrl}?ref=${encodeURIComponent(s.branch)}`,{headers:ghHeaders(s.token)});
+    if (getResp.ok) { const j=await getResp.json(); sha=j.sha; }
+    const body={ message:`Save ${kind} preset: ${name}`, content:ghUtf8ToB64(JSON.stringify(state,null,2)), branch:s.branch };
+    if (sha) body.sha=sha;
+    const putResp=await fetch(apiUrl,{method:'PUT',headers:ghHeaders(s.token),body:JSON.stringify(body)});
+    if (!putResp.ok) { const errj=await putResp.json().catch(()=>({})); throw new Error(errj.message||putResp.statusText); }
+    await ghRefreshPresetList(kind);
+    alert(`Saved "${name}" to GitHub (${folder}).`);
+  } catch(err) { alert('GitHub save failed: '+err.message); }
+  if (btn){btn.disabled=false;btn.textContent='⬆ Save to GitHub';}
+}
+async function ghRefreshPresetList(kind) {
+  const s=ghGetSettings();
+  const sel=document.getElementById(kind==='body'?'ghBodyPresetList':'ghFacePresetList');
+  if (!sel) return;
+  if (!s.token||!s.owner||!s.repo) { sel.innerHTML='<option value="">(enter GitHub settings)</option>'; return; }
+  const folder=ghFolderFor(kind);
+  const apiUrl=`https://api.github.com/repos/${s.owner}/${s.repo}/contents/${folder.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(s.branch)}`;
+  sel.innerHTML='<option value="">Loading…</option>';
+  try {
+    const resp=await fetch(apiUrl,{headers:ghHeaders(s.token)});
+    if (resp.status===404) { sel.innerHTML='<option value="">(no presets yet)</option>'; return; }
+    if (!resp.ok) throw new Error(resp.statusText);
+    const files=await resp.json();
+    const jsonFiles=(Array.isArray(files)?files:[]).filter(f=>f.type==='file'&&f.name.endsWith('.json'));
+    if (!jsonFiles.length) { sel.innerHTML='<option value="">(no presets yet)</option>'; return; }
+    sel.innerHTML='<option value="">— Choose preset —</option>'+jsonFiles.map(f=>`<option value="${f.path}">${f.name.replace(/\.json$/,'')}</option>`).join('');
+  } catch(err) { sel.innerHTML='<option value="">(error loading — check settings)</option>'; console.error(err); }
+}
+async function ghLoadPreset(kind) {
+  const s=ghGetSettings();
+  const sel=document.getElementById(kind==='body'?'ghBodyPresetList':'ghFacePresetList');
+  const path=sel?.value;
+  if (!path) { alert('Choose a preset to load.'); return; }
+  if (!s.token||!s.owner||!s.repo) { alert('Enter your GitHub token, owner and repo first.'); return; }
+  try {
+    const apiUrl=`https://api.github.com/repos/${s.owner}/${s.repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(s.branch)}`;
+    const resp=await fetch(apiUrl,{headers:ghHeaders(s.token)});
+    if (!resp.ok) throw new Error(resp.statusText);
+    const j=await resp.json();
+    const text=ghB64ToUtf8(j.content);
+    const state=JSON.parse(text);
+    if (kind==='body') applyBodyState(state); else applyFaceState(state);
+    alert('Preset loaded.');
+  } catch(err) { alert('GitHub load failed: '+err.message); }
+}
+ghSyncSettingsUI();
+
 // ═══════════════════════════════════════
 // TAB SWITCHING
 // ═══════════════════════════════════════
@@ -1660,6 +1870,53 @@ function buildSegmentSelectors(segCount) {
     const span=document.createElement('span'); span.style.flex='1'; span.textContent=label;
     row.appendChild(span); row.appendChild(sel); container.appendChild(row);
   }
+  buildChinPointInputs(segCount);
+}
+function buildChinPointInputs(pts) {
+  const container = document.getElementById('chinPointInputs');
+  if (!container || !headW || !headH) return;
+  container.innerHTML = '';
+  const labels = ['P2','P3','P4'];
+  for (let i = 0; i < pts - 1; i++) {
+    const pid = `p${i+2}`;
+    const hLeft = chinHandles.find(h => h.id === `${pid}-left`);
+    if (!hLeft) continue;
+    const label = labels[i] || `Pt ${i+2}`;
+    const nx = +(((hLeft.x-headX)/headW)*100).toFixed(1);
+    const ny = +(((hLeft.y-headY)/headH)*100).toFixed(1);
+    const row = document.createElement('div');
+    row.style.cssText='display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);font-family:"Space Mono",monospace;text-transform:uppercase;letter-spacing:0.06em;';
+    row.innerHTML = `
+      <span style="flex:0 0 34px;">${label}</span>
+      <span style="flex:0 0 12px;">X</span>
+      <input type="number" class="ctrl-numbox chin-pt-input" data-chin-id="${pid}" data-axis="x" value="${nx}" min="0" max="50" step="0.5"
+        style="width:100%;flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;padding:5px 6px;"/>
+      <span style="flex:0 0 12px;">Y</span>
+      <input type="number" class="ctrl-numbox chin-pt-input" data-chin-id="${pid}" data-axis="y" value="${ny}" min="40" max="100" step="0.5"
+        style="width:100%;flex:1;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;padding:5px 6px;"/>
+    `;
+    container.appendChild(row);
+  }
+  container.querySelectorAll('.chin-pt-input').forEach(inp => {
+    inp.addEventListener('input', onChinPointInputChange);
+  });
+}
+function onChinPointInputChange(e) {
+  const pid = e.target.dataset.chinId, axis = e.target.dataset.axis;
+  const hLeft = chinHandles.find(h => h.id === `${pid}-left`);
+  const hRight = chinHandles.find(h => h.id === `${pid}-right`);
+  if (!hLeft) return;
+  let v = parseFloat(e.target.value);
+  if (isNaN(v)) return;
+  if (axis === 'x') {
+    v = Math.max(0, Math.min(50, v));
+    hLeft.x = headX + (v/100)*headW;
+  } else {
+    v = Math.max(40, Math.min(100, v));
+    hLeft.y = headY + (v/100)*headH;
+  }
+  if (hRight) { hRight.x = (headX+headW)-(hLeft.x-headX); hRight.y = hLeft.y; }
+  drawFace(); renderChinHandles();
 }
 function generateFace() {
   if (!faceCtx) return;
@@ -1821,11 +2078,11 @@ const EYE_SHAPES = [
 const NOSE_FRONT_SHAPES = [
   {v:'nostrils',l:'Nostrils'},{v:'button',l:'Button'},{v:'wide',l:'Wide'},{v:'slim',l:'Slim'},
   {v:'bulb',l:'Bulb'},{v:'hawk',l:'Hawk'},{v:'snub-front',l:'Snub'},
-  {v:'dot',l:'Dot'},{v:'triangle',l:'Triangle'},{v:'heart',l:'Heart'},{v:'water-droplet',l:'Droplet'},
+  {v:'dot',l:'Dot'},{v:'triangle',l:'Triangle'},{v:'water-droplet',l:'Droplet'},
 ];
 const NOSE_SIDE_SHAPES = [
   {v:'straight-bridge',l:'Straight'},{v:'curved-bridge',l:'Curved'},{v:'concave',l:'Concave'},
-  {v:'convex',l:'Convex'},{v:'round-tip',l:'Round Tip'},{v:'upturned',l:'Upturned'},{v:'hooked',l:'Hooked'},
+  {v:'round-tip',l:'Round Tip'},{v:'upturned',l:'Upturned'},{v:'hooked',l:'Hooked'},
 ];
 const IRIS_SHAPES = [
   {v:'circle',l:'Circle'},{v:'oval-tall',l:'Oval Tall'},{v:'cat-slit',l:'Cat Slit'},{v:'dilated',l:'Dilated'},
@@ -2764,12 +3021,6 @@ function drawNoseFront(ctx, shape, x, y, w, h) {
       ctx.bezierCurveTo(cx-w*0.25,y+h, cx-w*0.5,y+h*0.82, cx-w*0.48,y+h*0.5); break;
     case 'dot': ctx.ellipse(cx,cy+h*0.15,Math.min(w,h)*0.28,Math.min(w,h)*0.28,0,0,Math.PI*2); break;
     case 'triangle': ctx.moveTo(cx,y);ctx.lineTo(x+w,y+h);ctx.lineTo(x,y+h);ctx.closePath(); break;
-    case 'heart':
-      ctx.moveTo(cx,cy+h*0.25);
-      ctx.bezierCurveTo(cx,cy-h*0.05, x,cy-h*0.05, x,cy-h*0.22);
-      ctx.bezierCurveTo(x,cy-h*0.55, cx,cy-h*0.55, cx,cy-h*0.22);
-      ctx.bezierCurveTo(cx,cy-h*0.55, x+w,cy-h*0.55, x+w,cy-h*0.22);
-      ctx.bezierCurveTo(x+w,cy-h*0.05, cx,cy-h*0.05, cx,cy+h*0.25); break;
     case 'water-droplet':
       ctx.moveTo(cx,y);
       ctx.bezierCurveTo(cx+w*0.08,y+h*0.25, cx+w*0.45,y+h*0.45, cx+w*0.5,y+h*0.65);
@@ -2801,12 +3052,6 @@ function drawNoseSide(ctx, shape, x, y, w, h, tipX, tipY) {
       ctx.bezierCurveTo(x+w*0.05, y+h*0.2, x-w*0.08, blend(tipYpx,y,0.1), blend(tipXpx,x,0.3), blend(tipYpx,y,0.05));
       ctx.bezierCurveTo(tipXpx, blend(tipYpx,y,0), tipXpx, blend(tipYpx,y,0.3), tipXpx, tipYpx);
       ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.3), blend(tipXpx,x,0.5), y+h, x, y+h);
-      ctx.closePath(); break;
-    case 'convex':
-      ctx.moveTo(x, y);
-      ctx.bezierCurveTo(x+w*0.15, y+h*0.08, blend(tipXpx,x,0.1), blend(tipYpx,y,0.6), blend(tipXpx,x,0.18), blend(tipYpx,y,0.45));
-      ctx.bezierCurveTo(blend(tipXpx,x,0.28), blend(tipYpx,y,0.3), blend(tipXpx,x,0.35), blend(tipYpx,y,0.2), tipXpx, tipYpx);
-      ctx.bezierCurveTo(tipXpx, blend(tipYpx,y+h,0.4), blend(tipXpx,x,0.45), y+h, x, y+h);
       ctx.closePath(); break;
     case 'round-tip':
       ctx.moveTo(x, y);
@@ -3200,6 +3445,11 @@ function setupChinDrag() {
     hLeft.x=clampedX; hLeft.y=clampedY;
     if (hRight){hRight.x=(headX+headW)-(clampedX-headX);hRight.y=clampedY;}
     faceWrap.querySelectorAll('.chin-handle').forEach(el=>{const hh=chinHandles.find(h=>h.id===el.dataset.id);if(hh){el.style.left=hh.x+'px';el.style.top=hh.y+'px';}});
+    const pid=leftId.replace('-left','');
+    const xInp=document.querySelector(`.chin-pt-input[data-chin-id="${pid}"][data-axis="x"]`);
+    const yInp=document.querySelector(`.chin-pt-input[data-chin-id="${pid}"][data-axis="y"]`);
+    if (xInp) xInp.value=(((clampedX-headX)/headW)*100).toFixed(1);
+    if (yInp) yInp.value=(((clampedY-headY)/headH)*100).toFixed(1);
     drawFace();
   }
   function onEnd(){dragging=null;}
@@ -3720,8 +3970,7 @@ function initFaceNavObserver() { }
 // ═══════════════════════════════════════
 const EAR_SHAPES = [
   {v:'round',l:'Round'},{v:'pointed',l:'Pointed'},{v:'squared',l:'Squared'},
-  {v:'flat',l:'Flat'},{v:'elf',l:'Elf'},{v:'cauliflower',l:'Cauliflower'},
-  {v:'large',l:'Large'},{v:'small',l:'Small'},
+  {v:'flat',l:'Flat'},{v:'elf',l:'Elf'},
 ];
 
 function drawEarShape(ctx, shape, x, y, w, h, isRight, rotationDeg) {
@@ -3771,30 +4020,6 @@ function drawEarShape(ctx, shape, x, y, w, h, isRight, rotationDeg) {
       ctx.moveTo(cx-rx*0.1, y+h*0.15);
       ctx.bezierCurveTo(cx+rx*0.4, y+h*0.2, cx+rx*0.5, cy, cx+rx*0.35, cy+ry*0.4);
       ctx.bezierCurveTo(cx+rx*0.15, cy+ry*0.65, cx-rx*0.2, cy+ry*0.5, cx-rx*0.15, cy+ry*0.1);
-      break;
-    case 'cauliflower':
-      for (let i=0; i<5; i++) {
-        const a = (i/5)*Math.PI*2 - Math.PI/2;
-        const bx = cx + Math.cos(a)*rx*0.65, by = cy + Math.sin(a)*ry*0.65;
-        ctx.moveTo(bx+rx*0.22, by);
-        ctx.ellipse(bx, by, rx*0.28, ry*0.28, a, 0, Math.PI*2);
-      }
-      ctx.moveTo(cx+rx*0.18, cy); ctx.ellipse(cx, cy, rx*0.22, ry*0.22, 0, 0, Math.PI*2);
-      break;
-    case 'large':
-      ctx.ellipse(cx, cy+ry*0.05, rx, ry*0.95, 0, 0, Math.PI*2);
-      ctx.moveTo(cx+rx*0.65, cy-ry*0.25);
-      ctx.bezierCurveTo(cx+rx*0.5, cy-ry*0.6, cx-rx*0.15, cy-ry*0.6, cx-rx*0.2, cy-ry*0.15);
-      ctx.bezierCurveTo(cx-rx*0.3, cy+ry*0.35, cx, cy+ry*0.55, cx+rx*0.5, cy+ry*0.35);
-      ctx.moveTo(cx-rx*0.15, cy+ry*0.45);
-      ctx.bezierCurveTo(cx-rx*0.35, cy+ry*0.65, cx-rx*0.2, cy+ry*0.9, cx+rx*0.1, cy+ry*0.85);
-      ctx.bezierCurveTo(cx+rx*0.4, cy+ry*0.8, cx+rx*0.45, cy+ry*0.55, cx+rx*0.3, cy+ry*0.45);
-      break;
-    case 'small':
-      ctx.ellipse(cx, cy, rx*0.75, ry*0.72, 0, 0, Math.PI*2);
-      ctx.moveTo(cx+rx*0.45, cy-ry*0.15);
-      ctx.bezierCurveTo(cx+rx*0.35, cy-ry*0.4, cx-rx*0.1, cy-ry*0.38, cx-rx*0.12, cy-ry*0.05);
-      ctx.bezierCurveTo(cx-rx*0.2, cy+ry*0.25, cx+rx*0.08, cy+ry*0.38, cx+rx*0.32, cy+ry*0.25);
       break;
     default:
       ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2);
@@ -3989,7 +4214,13 @@ function importFaceJSON(event) {
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      const s = JSON.parse(e.target.result);
+      applyFaceState(JSON.parse(e.target.result));
+    } catch(err){alert('JSON import failed: '+err.message);}
+    event.target.value='';
+  };
+  reader.readAsText(file);
+}
+function applyFaceState(s) {
       if (!faceInited) initFace();
       const setV = (id,v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.value=v; };
       const setCb = (id,v) => { const el=document.getElementById(id); if(el&&v!==undefined) el.checked=!!v; };
@@ -4004,12 +4235,8 @@ function importFaceJSON(event) {
       if(s.ears){setShape('earShapePickerNew','earShape',s.ears.shape);setV('earWidth',s.ears.width);document.getElementById('earWidthSlider').value=s.ears.width;document.getElementById('earWidthVal').textContent=s.ears.width;setV('earHeight',s.ears.height);document.getElementById('earHeightSlider').value=s.ears.height;document.getElementById('earHeightVal').textContent=s.ears.height;setV('earVertPos',s.ears.vertPos);document.getElementById('earVertPosSlider').value=s.ears.vertPos;document.getElementById('earVertPosVal').textContent=s.ears.vertPos;const eHz=s.ears.horizPos||0;setV('earHorizPos',eHz);const ehSlider=document.getElementById('earHorizPosSlider');if(ehSlider)ehSlider.value=eHz;const ehVal=document.getElementById('earHorizPosVal');if(ehVal)ehVal.textContent=eHz;const eRot=s.ears.rotation||0;setV('earRotation',eRot);const erSlider=document.getElementById('earRotSlider');if(erSlider)erSlider.value=eRot;const erVal=document.getElementById('earRotVal');if(erVal)erVal.textContent=eRot;setCb('earVisible',s.ears.visible);}
       if(s.iris){setV('irisWidthRatio',s.iris.widthRatio);if(s.iris.layers){irisLayers=[];irisLayerCounter=0;document.getElementById('irisLayersContainer').innerHTML='';s.iris.layers.forEach(l=>{const lay=defaultIrisLayer();Object.assign(lay,l);lay.id=++irisLayerCounter;irisLayers.push(lay);renderIrisLayerUI(lay);});}}
       if(s.mouth){setShape('mouthShapePicker','mouthShape',s.mouth.shape);setV('mouthOffsetY',s.mouth.offsetY);setV('mouthWidthPct',s.mouth.widthPct);}
-      if(s.chin){const chinPts=Math.max(1,Math.min(4,s.chinPoints||2));setV('chinPoints',chinPts);chinHandles=buildDefaultChinHandles(chinPts);buildSegmentSelectors(chinPts);if(s.chin.segShapes)s.chin.segShapes.forEach((sh,i)=>{const sel=document.getElementById(`segShape-${i}`);if(sel)sel.value=sh;});segCurvatures=s.chin.segCurvatures||Array(chinPts).fill(100);if(s.chin.handles)s.chin.handles.forEach(hd=>{const labels=['P2','P3','P4'];const idx=labels.indexOf(hd.label);if(idx>=0){const pid=`p${idx+2}`;const hLeft=chinHandles.find(h=>h.id===`${pid}-left`);const hRight=chinHandles.find(h=>h.id===`${pid}-right`);if(hLeft){hLeft.x=headX+hd.nx*headW;hLeft.y=headY+hd.ny*headH;}if(hRight){hRight.x=(headX+headW)-hd.nx*headW;hRight.y=headY+hd.ny*headH;}}});drawFace();renderChinHandles();}
+      if(s.chin){const chinPts=Math.max(1,Math.min(4,s.chinPoints||2));setV('chinPoints',chinPts);chinHandles=buildDefaultChinHandles(chinPts);buildSegmentSelectors(chinPts);if(s.chin.segShapes)s.chin.segShapes.forEach((sh,i)=>{const sel=document.getElementById(`segShape-${i}`);if(sel)sel.value=sh;});segCurvatures=s.chin.segCurvatures||Array(chinPts).fill(100);if(s.chin.handles)s.chin.handles.forEach(hd=>{const labels=['P2','P3','P4'];const idx=labels.indexOf(hd.label);if(idx>=0){const pid=`p${idx+2}`;const hLeft=chinHandles.find(h=>h.id===`${pid}-left`);const hRight=chinHandles.find(h=>h.id===`${pid}-right`);if(hLeft){hLeft.x=headX+hd.nx*headW;hLeft.y=headY+hd.ny*headH;}if(hRight){hRight.x=(headX+headW)-hd.nx*headW;hRight.y=headY+hd.ny*headH;}}});buildChinPointInputs(chinPts);drawFace();renderChinHandles();}
       drawFace();
-    } catch(err){alert('JSON import failed: '+err.message);}
-    event.target.value='';
-  };
-  reader.readAsText(file);
 }
 
 function exportFaceExcel() {
@@ -4170,6 +4397,7 @@ function importFaceExcel(event) {
         hLeft.x=headX+normX*headW; hLeft.y=headY+normY*headH;
         if(hRight){hRight.x=(headX+headW)-normX*headW;hRight.y=headY+normY*headH;}
       });
+      buildChinPointInputs(chinPts);
       drawFace(); renderChinHandles();
       const eyePtsEnabledVal=getNum('Eye Pts Enabled',0);
       const EYE_PT_MAX=20;
