@@ -307,7 +307,7 @@ const POSES3D = {
   'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-weight-shift':    { section:'Standing', label:'Weight on One Hip', spineSide:6, right:{hipAbd:9}, left:{hipAbd:2} },
   'stand-hip-pop':         { section:'Standing', label:'Hip Pop', spineSide:10, right:{hipAbd:15}, left:{hipAbd:-2} },
-  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, thumbFlip:true },
+  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90 },
   'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'stand-look-back':       { section:'Standing', label:'Looking Over Shoulder', spineTwist:35 },
@@ -319,7 +319,7 @@ const POSES3D = {
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, thumbFlip:true} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -1214,14 +1214,14 @@ function buildBody3D() {
       // Thumb: a small block on the hand's edge, near the wrist end, so the
       // hand's facing (which way is palm vs. back, which edge is which) is
       // readable at a glance instead of guessed from a flat rectangle. Sits
-      // on the -x edge for the right hand / +x edge for the left hand by
-      // default (the OPPOSITE of the right:+1/left:-1 side convention used
-      // everywhere else in this file — this is the one exception, matching
-      // anatomy) — unless the current pose sets thumbFlip for this side,
+      // on the +x edge for the right hand / -x edge for the left hand by
+      // default (confirmed against the actual render — this is the edge
+      // that reads correctly, the opposite of what an earlier pass here
+      // assumed) — unless the current pose sets thumbFlip for this side,
       // which sends it to the other edge instead (see the comment on
       // thumbFlipL/R in expandPose3D for when a pose needs this), angled
       // out a little from the hand's own plane to read clearly in 3D.
-      const thumbSign = (side === 'right' ? -1 : 1) * (thumbFlip ? -1 : 1);
+      const thumbSign = (side === 'right' ? 1 : -1) * (thumbFlip ? -1 : 1);
       const thumbW = handBox.wCm * 0.32, thumbH = handBox.hCm * 0.4, thumbD = handDepthCm * 0.8;
       const thumb = makeBoxMesh({ wCm: thumbW, hCm: thumbH, group: 'hands' }, thumbD);
       const thumbPivot = new THREE.Group();
