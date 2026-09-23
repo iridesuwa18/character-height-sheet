@@ -186,7 +186,7 @@ const FOREARM_UNFLIPPED_COLOR = 0x4488ff; // blue = unflipped = dorsum view
 // color for what's actually on screen, this is the one line to flip —
 // it inverts the classification for BOTH hands without touching anything
 // else (the wristTurn ranges/buttons/thumb geometry all stay exactly as-is).
-const FLIP_SENSE_INVERTED = false;
+const FLIP_SENSE_INVERTED = true;
 function isHandFlipped(side, wristTurnDeg) {
   const t = wristTurnDeg || 0;
   const palmSide = side === 'left' ? t < 90 : t > -90;
