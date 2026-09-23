@@ -173,7 +173,7 @@ const POSES3D = {
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-92, shoulderAbd:54, shoulderRoll:-21, elbow:-150, wrist:37, wristTurn:-32} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-75, shoulderAbd:20, shoulderRoll:-21, elbow:-143, wrist:37, wristTurn:-32} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
