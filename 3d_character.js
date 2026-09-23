@@ -161,7 +161,14 @@ const BASELINE_SHOULDER_LENGTH_CM = 21.4;
 // Word-based presets for handRotation/wristRotation (see the comment block
 // above) — coarse degree values an author can reach for instead of tuning
 // wristTurn/wrist by trial and error.
-const HAND_ROTATION_DEG = { front: 0, side: 90, back: 180 };
+// Side-aware: the LEFT hand's dorsum sits at +180°, the RIGHT hand's at
+// -180° (see the canonical convention below) — a single shared table can't
+// express both, so this used to leave the right hand always reading as
+// "palm" no matter which button was pressed (0/90/180 are all >= -90).
+const HAND_ROTATION_DEG = {
+  left:  { front: 0, side: 90,  back: 180 },
+  right: { front: 0, side: -90, back: -180 },
+};
 const WRIST_ROTATION_DEG = { front: 0, up: 60, down: -60 };
 
 // ---- Forearm flip state (palm vs. dorsum) ----------------------------------
@@ -175,9 +182,15 @@ const WRIST_ROTATION_DEG = { front: 0, up: 60, down: -60 };
 // this convention existed still get a reasonable flip/color reading.
 const FOREARM_FLIPPED_COLOR = 0xff4444;   // red  = flipped   = palm view
 const FOREARM_UNFLIPPED_COLOR = 0x4488ff; // blue = unflipped = dorsum view
+// If the default (relaxed, wristTurn=0) forearm ever reads as the wrong
+// color for what's actually on screen, this is the one line to flip —
+// it inverts the classification for BOTH hands without touching anything
+// else (the wristTurn ranges/buttons/thumb geometry all stay exactly as-is).
+const FLIP_SENSE_INVERTED = false;
 function isHandFlipped(side, wristTurnDeg) {
   const t = wristTurnDeg || 0;
-  return side === 'left' ? t < 90 : t > -90;
+  const palmSide = side === 'left' ? t < 90 : t > -90;
+  return FLIP_SENSE_INVERTED ? !palmSide : palmSide;
 }
 
 // Expands a POSES3D entry (shared fields + optional left/right overrides)
@@ -208,8 +221,8 @@ function expandPose3D(pose) {
     elbowL: pick(L, 'elbow'), elbowR: pick(R, 'elbow'),
     wristL: pickWithAlias(L, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
     wristR: pickWithAlias(R, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
-    wristTurnL: pickWithAlias(L, 'wristTurn', 'handRotation', HAND_ROTATION_DEG),
-    wristTurnR: pickWithAlias(R, 'wristTurn', 'handRotation', HAND_ROTATION_DEG),
+    wristTurnL: pickWithAlias(L, 'wristTurn', 'handRotation', HAND_ROTATION_DEG.left),
+    wristTurnR: pickWithAlias(R, 'wristTurn', 'handRotation', HAND_ROTATION_DEG.right),
     spineBend: pose.spineBend || 0, spineSide: pose.spineSide || 0, spineTwist: pose.spineTwist || 0,
     root: pose.root || 0, rootZ: pose.rootZ || 0,
     // Per-pose escape hatch for the thumb's fixed left/right attachment
@@ -1336,8 +1349,8 @@ function applyPose3D(poseName, { reframe = false } = {}) {
 
   // Hand/Wrist Facing panel overrides win over whatever the named pose set,
   // on whichever side(s) have an override active.
-  if (handRotationOverride.left)  p.wristTurnL = HAND_ROTATION_DEG[handRotationOverride.left];
-  if (handRotationOverride.right) p.wristTurnR = HAND_ROTATION_DEG[handRotationOverride.right];
+  if (handRotationOverride.left)  p.wristTurnL = HAND_ROTATION_DEG.left[handRotationOverride.left];
+  if (handRotationOverride.right) p.wristTurnR = HAND_ROTATION_DEG.right[handRotationOverride.right];
   if (wristRotationOverride.left)  p.wristL = WRIST_ROTATION_DEG[wristRotationOverride.left];
   if (wristRotationOverride.right) p.wristR = WRIST_ROTATION_DEG[wristRotationOverride.right];
 
