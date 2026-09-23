@@ -125,12 +125,19 @@
   #pinReticle::after { left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); }
 
   /* ── Joint Editor (tap a wrist/elbow in the 3D view) ── */
-  #jointEditorHint {
-    position: absolute; top: 8px; left: 0; right: 0; text-align: center;
-    font-family: 'Space Mono', monospace; font-size: 9px; color: var(--accent-gold);
-    text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  /* ── Joint Editor (pick a wrist/elbow, then drag or type) ── */
+  #jointPickerBar {
+    position: absolute; top: 8px; left: 8px; right: 8px; z-index: 55;
+    display: flex; gap: 6px;
   }
+  .jp-btn {
+    flex: 1; padding: 9px 4px; background: rgba(22,22,24,0.92); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-family: 'Space Mono', monospace;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    cursor: pointer; min-height: 38px;
+  }
+  .jp-btn.active { background: rgba(240,192,64,0.22); border-color: var(--accent-gold); color: var(--accent-gold); }
+  .je-note { font-size: 9px; color: var(--muted); line-height: 1.5; margin: 0 0 10px; }
   #jointEditorPanel {
     position: absolute; top: 10px; right: 10px; width: 220px; z-index: 60;
     background: rgba(20,20,24,0.97); border: 1px solid var(--accent-gold);
@@ -174,7 +181,7 @@
       max-height: 62vh; border-radius: 16px 16px 0 0; z-index: 200;
       padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
     }
-    .je-mode-btn, .je-select, .je-btn { min-height: 44px; }
+    .je-mode-btn, .je-select, .je-btn, .jp-btn { min-height: 44px; }
     .je-xyz-row input[type=number] { min-height: 40px; font-size: 13px; }
   }
   .depth-row {
@@ -808,9 +815,21 @@
     <canvas id="body3DCanvas"></canvas>
     <div id="pinReticle" style="display:none;"></div>
     <div id="body3DHint">Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan</div>
-    <div id="jointEditorHint">Tap the wrist or elbow to edit it</div>
 
-    <!-- Joint Editor: appears when a wrist or elbow is tapped in the 3D view above -->
+    <!-- Joint picker: direct buttons instead of tap-to-select on the model —
+         a tap on the model can't reliably be told apart from the start of an
+         orbit/pan drag on a touchscreen (same reason the mesh-pin above uses
+         aim-then-confirm rather than tap-to-pick), and unlike a mesh pin we
+         already know exactly where all 4 joints are, so there's nothing to
+         "aim" at — just pick one directly. -->
+    <div id="jointPickerBar">
+      <button type="button" class="jp-btn" data-side="left" data-joint="elbow" onclick="selectJoint3D('left','elbow')">L Elbow</button>
+      <button type="button" class="jp-btn" data-side="right" data-joint="elbow" onclick="selectJoint3D('right','elbow')">R Elbow</button>
+      <button type="button" class="jp-btn" data-side="left" data-joint="wrist" onclick="selectJoint3D('left','wrist')">L Wrist</button>
+      <button type="button" class="jp-btn" data-side="right" data-joint="wrist" onclick="selectJoint3D('right','wrist')">R Wrist</button>
+    </div>
+
+    <!-- Joint Editor: appears once a joint is picked above -->
     <div id="jointEditorPanel" style="display:none;">
       <div class="je-header">
         <span id="jeTitle">Joint</span>
@@ -822,6 +841,7 @@
         <button type="button" class="je-mode-btn active" data-mode="translate" onclick="setGizmoMode3D('translate')">↔ Move</button>
         <button type="button" class="je-mode-btn" data-mode="rotate" onclick="setGizmoMode3D('rotate')">↻ Rotate</button>
       </div>
+      <p class="je-note" id="jeNote">Drag the move handles on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.</p>
 
       <div class="je-section-label">Position (cm from pelvis)</div>
       <div class="je-xyz-row"><span>X</span><input type="number" id="jePosX" step="0.5" oninput="onJointPosInput('x', this.value)"></div>

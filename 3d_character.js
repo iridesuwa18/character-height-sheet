@@ -1032,6 +1032,21 @@ const HAND_LOCK_SIGNATURES = [
   // upper arm — 'stand-arms-crossed', 'sit-arms-crossed', 'model-power', etc.
   { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
     values: [-5, 30, -70, -105, -70, 80], handTarget: 'opposite-shoulder' },
+  // Chin resting in hand — 'stand-thinking', 'sit-thinking', 'sit-chin-elbow',
+  // 'perch-chin-rest' all share this exact right-arm signature.
+  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
+    values: [-40, 0, -22, -155, 10, 65], handTarget: 'chin-rest' },
+  // Saluting hand at the temple — 'stand-salute'.
+  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
+    values: [-65, 55, 40, -155, 15, -115], handTarget: 'head-side-salute' },
+  // Arms behind the back — 'stand-arms-behind'. This one lives on the pose's
+  // TOP-LEVEL (shared, mirrored) fields rather than a per-side sub-object,
+  // so matching it sets pose.handTarget itself, which both arms fall back
+  // to — see the 'behind-back' preset's own comment for why that (rather
+  // than the usual per-side mirroring) is exactly what a real "hands behind
+  // the back" needs.
+  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
+    values: [55, 0, 0, -90, -15, -90], handTarget: 'behind-back' },
 ];
 function signatureMatches3D(obj, sig) {
   return sig.keys.every((k, i) => (obj[k] || 0) === sig.values[i]);
@@ -1324,7 +1339,7 @@ function poleFromAngles3D(side, flexDeg, abdDeg, rollDeg) {
 
 // Named "where the hand should reach for" presets, each returning a target
 // point in the spine's own local frame (the same frame the shoulders and
-// head already live in) so a pose can just say `handTarget: 'head-side'`.
+// head already live in) so a pose can just say `handTarget: 'hip-side'`.
 // These are what make a "locked" hand (see HAND_LOCK_SIGNATURES) stay glued
 // to the right spot on the body regardless of shoulder length or height —
 // the target is always read fresh off the CURRENT mesh, every rebuild.
@@ -1332,44 +1347,87 @@ function poleFromAngles3D(side, flexDeg, abdDeg, rollDeg) {
 // steer the elbow's bend plane; presets without one fall back to a generic
 // forward/outward/down pole in applyArmIK.
 const HAND_TARGET_PRESETS_3D = {
-  // Salute: level with the brow, on the side of the head, pulled forward
-  // just PAST the head's own front surface (zFrac just over 0.5, not deep
-  // into it) — enough to clear the face without demanding more reach than
-  // the arm actually has (an overshoot here is what makes an insufficient-
-  // reach solve fall back to a point that cuts back through the head).
-  'head-side': (side, geom) => {
+  // Salute: the TOP-SIDE corner of the head — near the temple/brow but
+  // pulled up toward the top corner rather than dead-center on the side —
+  // pulled forward just past the head's own front surface so fingers reach
+  // the edge instead of stopping short of it. The normal points out to the
+  // side and up at roughly 45°, which is both the angle the flat hand meets
+  // the head at and the direction the fingertips end up pointing.
+  'head-side-salute': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.headBox, sideSign * 0.44, 0.62, 0.56);
+    const point = boxTargetPoint3D(geom.headBox, sideSign * 0.48, 0.86, 0.52);
+    if (!point) return null;
+    return { point, normal: v3norm({ x: sideSign, y: 0.55, z: 0.4 }) };
   },
-  // Hands on hips: the flare of the hip/waist box, just in front of its own
-  // surface, roughly mid-height on that box. Pelvis-anchored (see
+  // Chin in hand: the underside/front-bottom edge of the head (the chin),
+  // nudged slightly further down and forward than the head box's own
+  // bottom-front corner — an explicit offset so fingertips read as touching
+  // the chin rather than stopping flush at the box's edge. Facing mostly
+  // UP (the palm cups the chin from below) with a little forward lean.
+  'chin-rest': (side, geom) => {
+    const point = boxTargetPoint3D(geom.headBox, 0.06, -0.06, 0.42); // yFrac<0 = the offset below the head box's own bottom face
+    if (!point) return null;
+    return { point, normal: v3norm({ x: 0, y: 1, z: 0.35 }) };
+  },
+  // Hands on hips: the OUTER SIDE face of the hip/waist box (xFrac at the
+  // edge, zFrac near mid-depth — a side face, not the front), at roughly
+  // hip-bone height (0.72 up the box) rather than its vertical middle,
+  // which sits down near the crotch. Pelvis-anchored (see
   // pelvisPointToSpineLocal3D) so a leaning/twisting torso doesn't pull it
-  // off the actual hip.
+  // off the actual hip. Fingers point down along that side face.
   'hip-side': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
     const box = geom.waistBox || geom.torsoBox;
-    const raw = boxTargetPoint3D(box, sideSign * 0.44, 0.5, 0.5);
+    const raw = boxTargetPoint3D(box, sideSign * 0.5, 0.72, 0.1);
     if (!raw) return null;
     const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
-    return pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
+    const point = pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
+    const normal = pelvisPointToSpineLocal3D(v3norm({ x: sideSign * 0.3, y: -1, z: 0.15 }), sd.bend, sd.twist, sd.side);
+    return { point, normal };
   },
-  // Hands/forearms crossed over the chest: each hand lands on the OPPOSITE
-  // upper arm near the shoulder — reads off that side's own actual shoulder
-  // position (ikContext3D.shoulders), so it also tracks a widened/narrowed
-  // shoulder span, not just torso size. Both shoulders live on the SAME
-  // spine pivot as the reaching arm, so — unlike hip-side — no extra frame
-  // correction is needed even when the pose leans/twists the torso.
+  // Hands/forearms crossed over the chest: each hand lands near the
+  // OPPOSITE elbow (roughly one upper-arm-length below that shoulder, and
+  // pulled further out toward where that elbow tucks against the side of
+  // the torso) rather than up near the shoulder itself. Reads off that
+  // side's own actual shoulder position and arm length (ikContext3D), so it
+  // tracks a widened/narrowed or longer/shorter arm, not just torso size.
+  // Both shoulders live on the SAME spine pivot as the reaching arm, so —
+  // unlike hip-side — no extra pelvis-frame correction is needed even when
+  // the pose leans/twists the torso. The hand faces further across the
+  // body, past that elbow, continuing the direction the forearm reaches —
+  // not straight into the ribcage.
   'opposite-shoulder': (side, geom) => {
     const otherSide = side === 'right' ? 'left' : 'right';
     const otherShoulder = geom.shoulders[otherSide];
-    if (!otherShoulder) return null;
+    const lens = geom.armLens[otherSide];
+    if (!otherShoulder || !lens) return null;
     const otherSign = otherSide === 'right' ? 1 : -1;
-    const unit = headWidthCm3D || 1; // proportional size reference, same one depth math uses
-    return {
-      x: otherShoulder.x + otherSign * -0.3 * unit,
-      y: otherShoulder.y - 0.35 * unit,
-      z: 0.35 * unit,
+    const unit = headWidthCm3D || 1;
+    const point = {
+      x: otherShoulder.x + otherSign * 0.55 * unit,
+      y: otherShoulder.y - lens.upper * 0.85,
+      z: 0.4 * unit,
     };
+    const normal = v3norm({ x: otherSign, y: -0.15, z: 0.3 });
+    return { point, normal };
+  },
+  // Arms behind the back: BOTH hands target the exact SAME spot (this
+  // preset ignores `side` and returns an identical point either way) — a
+  // real "hands behind the back" interleaves the two arms (one hand often
+  // resting in/around the other) rather than mirroring them at two separate
+  // points. The point sits behind the pelvis, biased toward the right hip —
+  // where the fixed-angle version this replaces (shoulder:55, elbow:-90,
+  // wrist:-15, wristTurn:-90, mirrored) already happened to land closest.
+  // Facing mostly backward with a slight upward cant, like the backs of
+  // clasped hands.
+  'behind-back': (side, geom) => {
+    const box = geom.waistBox || geom.torsoBox;
+    const raw = boxTargetPoint3D(box, -0.12, 0.6, -0.42);
+    if (!raw) return null;
+    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
+    const point = pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
+    const normal = pelvisPointToSpineLocal3D(v3norm({ x: 0, y: 0.3, z: -1 }), sd.bend, sd.twist, sd.side);
+    return { point, normal };
   },
   // Hand flat on the stomach (e.g. lying on the back). Deliberately reads
   // the TORSO box, not the waist/hip box — the torso already hangs off the
@@ -1389,8 +1447,11 @@ const HAND_TARGET_PRESETS_3D = {
     return boxTargetPoint3D(geom.headBox, sideSign * 0.3, 0.5, 0.55);
   },
 };
+HAND_TARGET_PRESETS_3D['head-side-salute'].poleAngles = { flex: -65, abd: 55, roll: 40 };
+HAND_TARGET_PRESETS_3D['chin-rest'].poleAngles = { flex: -40, abd: 0, roll: -22 };
 HAND_TARGET_PRESETS_3D['hip-side'].poleAngles = { flex: 40, abd: 25, roll: -30 };
 HAND_TARGET_PRESETS_3D['opposite-shoulder'].poleAngles = { flex: -5, abd: 30, roll: -70 };
+HAND_TARGET_PRESETS_3D['behind-back'].poleAngles = { flex: 55, abd: 0, roll: 0 };
 
 // ---- Generic mesh-face pinning ---------------------------------------------
 // The named presets above are hand-tuned one-off spots. This is the general
@@ -1435,8 +1496,14 @@ function resolveHandTarget3D(side, targetSpec, geom) {
   if (typeof targetSpec === 'string') {
     const preset = HAND_TARGET_PRESETS_3D[targetSpec];
     if (!preset) return null;
-    const point = preset(side, geom);
-    return point ? { point, poleAngles: preset.poleAngles } : null;
+    const result = preset(side, geom);
+    if (!result) return null;
+    // Presets historically returned a bare {x,y,z} point. Newer presets can
+    // return {point, normal} instead to also drive automatic hand
+    // orientation (see solveHandOrientationForNormal) — support both.
+    const point = result.point || result;
+    if (!point) return null;
+    return { point, poleAngles: preset.poleAngles, normal: result.normal || null };
   }
   const anchor = MESH_PIN_ANCHORS_3D[targetSpec.box];
   const box = anchor ? anchor.get(geom) : null;
@@ -2081,8 +2148,8 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     // hand's facing (see applyArmIK/solveHandOrientationForNormal) — that
     // wins over whatever wristTurn/wrist the pose itself authored, the same
     // way the position IK above already wins over the pose's fixed shoulder/
-    // elbow numbers. Named presets with no normal (hip-side, head-side...)
-    // leave these fields untouched, same as before.
+    // elbow numbers. Named presets with no normal (stomach, collarbone,
+    // face-cheek...) leave these fields untouched, same as before.
     if (leftIK.orientedWristTurnDeg !== undefined) {
       p.wristTurnL = leftIK.orientedWristTurnDeg;
       p.wristL = leftIK.orientedWristHingeDeg;
@@ -2340,7 +2407,6 @@ let selectedJoint3D = null;            // { side:'left'|'right', jointType:'elbo
 let gizmoMode3D = 'translate';         // 'translate' | 'rotate'
 let transformControls3D = null;
 let gizmoProxy3D = null;               // world-space stand-in TransformControls actually drags in translate mode
-let jointPointerStart3D = null;        // {x,y,t} — lets a tap-to-select be told apart from an orbit/pan drag
 // Per-side manual overrides. null = "use whatever the pose/IK just computed";
 // otherwise a THREE.Quaternion snapshot of that group's LOCAL rotation,
 // re-stamped after every applyPose3D() call (see the hook at its end) so a
@@ -2360,7 +2426,7 @@ function initJointEditor3D() {
   jointEditorInited3D = true;
 
   transformControls3D = new THREE.TransformControls(camera3D, renderer3D.domElement);
-  transformControls3D.setSize(isTouchLikely3D() ? 1.35 : 1.0);
+  transformControls3D.setSize(isTouchLikely3D() ? 1.6 : 1.0);
   transformControls3D.enabled = false;
   transformControls3D.visible = false;
   scene3D.add(transformControls3D);
@@ -2379,63 +2445,13 @@ function initJointEditor3D() {
     if (selectedJoint3D && transformControls3D.dragging) onJointGizmoChange3D();
   });
 
-  const dom = renderer3D.domElement;
-  dom.addEventListener('pointerdown', (e) => {
-    if (transformControls3D.dragging) return;
-    jointPointerStart3D = { x: e.clientX, y: e.clientY, t: Date.now() };
-  });
-  dom.addEventListener('pointerup', (e) => {
-    if (transformControls3D.dragging) return;
-    const start = jointPointerStart3D; jointPointerStart3D = null;
-    if (!start) return;
-    // A real tap, not the end of an orbit/pan gesture (same ambiguity the
-    // crosshair mesh-pin above works around, just solved differently here
-    // with a movement/time threshold instead of aim-then-confirm, since we
-    // DO need true tap-to-select for a Maya-style joint click).
-    const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
-    if (moved > 10 || (Date.now() - start.t) > 600) return;
-    const hit = hitTestJointAtClientXY3D(e.clientX, e.clientY);
-    if (hit) selectJoint3D(hit.side, hit.jointType);
-    else if (selectedJoint3D) deselectJoint3D();
-  });
-}
-
-// Screen-space positions of all 4 candidate joints (both sides × elbow/wrist).
-// Picking in screen space rather than 3D-raycasting the joint spheres is
-// what makes a wrist that's visually buried inside the torso/hip mesh still
-// easy to select — exactly the case called out as hard to click.
-function getJointScreenPositions3D() {
-  if (!renderer3D || !camera3D) return [];
-  const rect = renderer3D.domElement.getBoundingClientRect();
-  const out = [];
-  ['left', 'right'].forEach(side => {
-    [['elbow', side + 'Elbow'], ['wrist', side + 'Wrist']].forEach(([jointType, key]) => {
-      const grp = rig3D[key];
-      if (!grp) return;
-      const world = new THREE.Vector3();
-      grp.getWorldPosition(world);
-      const ndc = world.clone().project(camera3D);
-      out.push({
-        side, jointType,
-        x: (ndc.x * 0.5 + 0.5) * rect.width,
-        y: (-ndc.y * 0.5 + 0.5) * rect.height,
-        z: ndc.z,
-      });
-    });
-  });
-  return out;
-}
-function hitTestJointAtClientXY3D(clientX, clientY) {
-  const rect = renderer3D.domElement.getBoundingClientRect();
-  const px = clientX - rect.left, py = clientY - rect.top;
-  const threshold = isTouchLikely3D() ? 36 : 22; // generous touch target on mobile
-  let best = null, bestDist = threshold;
-  getJointScreenPositions3D().forEach(c => {
-    if (c.z < -1 || c.z > 1) return; // behind the camera
-    const d = Math.hypot(c.x - px, c.y - py);
-    if (d < bestDist) { bestDist = d; best = c; }
-  });
-  return best;
+  // Selection now happens via the always-visible joint-picker buttons
+  // (#jointPickerBar) instead of tapping the model — a tap on the canvas
+  // can't be reliably told apart from the start of an orbit/pan gesture on a
+  // touchscreen, which is exactly the ambiguity the crosshair mesh-pin above
+  // already works around a different way (aim-then-confirm). The gizmo
+  // itself still lives on the canvas and drags normally; only picking WHICH
+  // joint moved off the canvas.
 }
 
 // The rotation that maps a bone's fixed REST local vector (its child
@@ -2461,6 +2477,7 @@ function selectJoint3D(side, jointType) {
   transformControls3D.visible = true;
   attachGizmoToSelection3D();
   highlightSelectedJoint3D();
+  refreshJointPickerButtons3D();
   openJointPanel3D();
 }
 function deselectJoint3D() {
@@ -2470,13 +2487,23 @@ function deselectJoint3D() {
   transformControls3D.enabled = false;
   transformControls3D.visible = false;
   highlightSelectedJoint3D();
+  refreshJointPickerButtons3D();
   closeJointPanel3D();
+}
+function refreshJointPickerButtons3D() {
+  document.querySelectorAll('#jointPickerBar .jp-btn').forEach(b => {
+    b.classList.toggle('active', !!selectedJoint3D && b.dataset.side === selectedJoint3D.side && b.dataset.joint === selectedJoint3D.jointType);
+  });
 }
 function setGizmoMode3D(mode) {
   gizmoMode3D = mode;
   if (selectedJoint3D) attachGizmoToSelection3D();
   const panel = document.getElementById('jointEditorPanel');
   if (panel) panel.querySelectorAll('.je-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  const note = document.getElementById('jeNote');
+  if (note) note.textContent = mode === 'rotate'
+    ? 'Drag the rotate rings on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.'
+    : 'Drag the move handles on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.';
 }
 function attachGizmoToSelection3D() {
   if (!selectedJoint3D) return;
