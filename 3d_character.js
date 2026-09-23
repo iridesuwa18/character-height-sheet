@@ -510,6 +510,12 @@ function armMeshPin(side) {
   if (side === 'both') { alert('Pick Left Hand or Right Hand above (not Both) before pinning to the mesh.'); return; }
   pinArmedSide = pinArmedSide === side ? null : side;
   updatePinModeUI();
+  // Make sure the 3D view is actually the thing sitting behind the shrunk
+  // aim bar, even if the page had scrolled away from it.
+  if (pinArmedSide) {
+    const el3D = document.getElementById('preview3D');
+    if (el3D) el3D.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 function updatePinModeUI() {
   const btn = document.getElementById('pinMeshBtn');
@@ -522,6 +528,29 @@ function updatePinModeUI() {
   if (hint) hint.textContent = pinArmedSide
     ? `Orbit/pinch to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here"`
     : 'Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan';
+
+  // Armed: shrink the popup down to just a small aim bar and let clicks/
+  // touches on the rest of the screen pass through the backdrop, so the 3D
+  // view (never actually hidden behind the popup) is visible and orbitable
+  // instead of being fully blocked by it.
+  const overlay = document.getElementById('poseModalOverlay');
+  const box = document.getElementById('poseModalBox');
+  const mainContent = document.getElementById('poseModalMainContent');
+  const aimBar = document.getElementById('pinAimBar');
+  const aimHint = document.getElementById('pinAimHint');
+  if (overlay) overlay.classList.toggle('pin-armed', !!pinArmedSide);
+  if (box) box.classList.toggle('pin-armed', !!pinArmedSide);
+  if (mainContent) mainContent.style.display = pinArmedSide ? 'none' : '';
+  if (aimBar) aimBar.style.display = pinArmedSide ? 'flex' : 'none';
+  if (aimHint) aimHint.textContent = pinArmedSide
+    ? `Orbit/pinch the 3D view above to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here".`
+    : '';
+}
+// "✕ Cancel" on the aim bar — disarms without pinning, same as tapping
+// "🎯 Aim & Pin" again to toggle it off.
+function cancelMeshPin() {
+  pinArmedSide = null;
+  updatePinModeUI();
 }
 function applyMeshPin3D(side, box, x, y, z) {
   const pose = POSES3D[currentPose3D];

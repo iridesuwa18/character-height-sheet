@@ -92,6 +92,14 @@
   .body-view-btn:last-child { border-right: none; }
   .body-view-btn:hover:not(.active) { background: rgba(255,255,255,0.04); color: var(--text); }
   .body-view-btn.active { background: rgba(240,192,64,0.12); color: var(--accent-gold); }
+  .pose-modal-tab-btn { white-space: nowrap; }
+  .tab-label-short { display: none; }
+  @media (max-width: 420px) {
+    .pose-modal-tab-btn { padding: 10px 4px; font-size: 9px; letter-spacing: 0.02em; }
+    .tab-label-full { display: none; }
+    .tab-label-short { display: inline; }
+    .pose-modal-box { padding: 12px 10px 20px; }
+  }
 
   #preview3D {
     width: 100%; height: 520px; position: relative;
@@ -454,6 +462,22 @@
   .pose-modal-close:hover { border-color: var(--text); color: var(--text); }
   .pose-modal-tab-panel { display: none; }
   .pose-modal-tab-panel.active { display: block; }
+  /* While a pin is armed, the box shrinks to just the aim controls and the
+     backdrop stops blocking clicks, so the 3D view underneath (which never
+     gets hidden — see switchBodyView) stays visible and orbit/pinch-able
+     right behind the modal. */
+  .pose-modal-overlay.pin-armed { background: transparent; pointer-events: none; }
+  .pose-modal-overlay.pin-armed .pose-modal-box { pointer-events: auto; }
+  .pose-modal-box.pin-armed {
+    max-height: none; padding: 12px 16px 16px; gap: 10px;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+  }
+  #pinAimBar { display: none; flex-direction: column; gap: 10px; }
+  #pinAimHint {
+    font-size: 10px; color: var(--muted); font-family: 'Space Mono', monospace;
+    text-align: center; line-height: 1.5;
+  }
+  .pin-aim-row { display: flex; gap: 8px; }
 
   body {
     font-family: 'Space Mono', monospace; background: var(--bg); color: var(--text);
@@ -741,14 +765,15 @@
     <button class="btn-secondary" style="width:100%;" onclick="recenterBody3D()">⌖ Recenter Camera</button>
   </div>
   <div class="pose-modal-overlay" id="poseModalOverlay" onclick="if(event.target===this) closePoseModal()">
-    <div class="pose-modal-box">
+    <div class="pose-modal-box" id="poseModalBox">
+    <div id="poseModalMainContent">
       <div class="pose-modal-header">
         <h2>Pose &amp; Hand Controls</h2>
         <button type="button" class="pose-modal-close" onclick="closePoseModal()">✕</button>
       </div>
-      <div class="body-view-nav">
-        <button class="body-view-btn active" id="poseModalTabPoseBtn" onclick="switchPoseModalTab('pose')">🕺 Pose</button>
-        <button class="body-view-btn" id="poseModalTabHandBtn" onclick="switchPoseModalTab('hand')">✋ Hand / Wrist</button>
+      <div class="body-view-nav pose-modal-tab-nav">
+        <button class="body-view-btn pose-modal-tab-btn active" id="poseModalTabPoseBtn" onclick="switchPoseModalTab('pose')">🕺 <span class="tab-label-full">Pose</span></button>
+        <button class="body-view-btn pose-modal-tab-btn" id="poseModalTabHandBtn" onclick="switchPoseModalTab('hand')">✋ <span class="tab-label-full">Hand / Wrist</span><span class="tab-label-short">Hand</span></button>
       </div>
       <div class="pose-modal-tab-panel active" id="poseModalTabPose">
         <div class="panel" style="width:100%; margin-bottom:0;" id="posePanel">
@@ -797,6 +822,14 @@
           <button class="btn-secondary" style="width:100%;font-size:9px;" onclick="clearAllSavedPoseEdits()">⚠ Clear All Saved Pose Edits (from GitHub)</button>
         </div>
       </div>
+    </div><!-- /poseModalMainContent -->
+    <div id="pinAimBar">
+      <div id="pinAimHint">Orbit/pinch the 3D view above to line the crosshair up, then tap Pin Here.</div>
+      <div class="pin-aim-row">
+        <button type="button" class="pose-btn" onclick="cancelMeshPin()">✕ Cancel</button>
+        <button type="button" class="btn-primary" style="flex:1;" onclick="confirmMeshPinAtCrosshair3D()">📍 Pin Here</button>
+      </div>
+    </div>
     </div>
   </div>
   <div class="panel vis-panel" style="width:100%;">
