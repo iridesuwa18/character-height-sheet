@@ -686,6 +686,27 @@
     <div class="panel-title">Pose</div>
     <div id="poseSections"></div>
   </div>
+  <div class="panel" style="width:100%; display:none;" id="handWristPanel">
+    <div class="panel-title">Hand / Wrist Facing</div>
+    <div class="pose-btn-row" style="margin-bottom:10px;">
+      <button type="button" class="pose-btn hw-side-btn active" data-side="right" onclick="setHandWristTargetSide('right')">Right Hand</button>
+      <button type="button" class="pose-btn hw-side-btn" data-side="left" onclick="setHandWristTargetSide('left')">Left Hand</button>
+      <button type="button" class="pose-btn hw-side-btn" data-side="both" onclick="setHandWristTargetSide('both')">Both</button>
+    </div>
+    <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">HAND ROTATION</div>
+    <div class="pose-btn-row" style="margin-bottom:10px;">
+      <button type="button" class="pose-btn hw-hand-btn" data-value="front" onclick="setHandRotationInput('front')">Front</button>
+      <button type="button" class="pose-btn hw-hand-btn" data-value="side" onclick="setHandRotationInput('side')">Side</button>
+      <button type="button" class="pose-btn hw-hand-btn" data-value="back" onclick="setHandRotationInput('back')">Back</button>
+    </div>
+    <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">WRIST ROTATION</div>
+    <div class="pose-btn-row" style="margin-bottom:10px;">
+      <button type="button" class="pose-btn hw-wrist-btn" data-value="up" onclick="setWristRotationInput('up')">Fingers Up</button>
+      <button type="button" class="pose-btn hw-wrist-btn" data-value="front" onclick="setWristRotationInput('front')">Fingers Front</button>
+      <button type="button" class="pose-btn hw-wrist-btn" data-value="down" onclick="setWristRotationInput('down')">Fingers Down</button>
+    </div>
+    <button class="btn-secondary" style="width:100%;" onclick="clearHandWristOverrides()">↺ Reset to Pose Default</button>
+  </div>
   <div class="panel vis-panel" style="width:100%;">
     <div class="panel-title">Visibility</div>
     <div class="vis-grid">
