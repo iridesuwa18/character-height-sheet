@@ -182,7 +182,7 @@ const WRIST_ROTATION_DEG = { front: 0, up: 60, down: -60 };
 const WRIST_FLIP_COLORS = { palm: 0xdb4437, dorsum: 0x3367d6 }; // red / blue
 let showWristFlipDebugColors = true;
 function wristFlipState(side, wristTurnDeg) {
-  const towardDorsum = side === 'right' ? -(wristTurnDeg || 0) : (wristTurnDeg || 0);
+  const towardDorsum = side === 'left' ? -(wristTurnDeg || 0) : (wristTurnDeg || 0);
   let t = ((towardDorsum % 360) + 360) % 360; // fold into 0..360
   if (t > 180) t = 360 - t;                   // ...then to a 0..180 "distance from palm"
   return t < 90 ? 'palm' : 'dorsum';
