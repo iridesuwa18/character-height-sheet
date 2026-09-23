@@ -290,7 +290,7 @@ const POSES3D = {
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{handTarget:'head-side', handRotation:'side', wrist:40} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, thumbFlip:true} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -519,7 +519,7 @@ function signatureMatches3D(obj, sig) {
 function applyHandLockSignatures3D() {
   Object.values(POSES3D).forEach(pose => {
     [pose, pose.left, pose.right].forEach(side => {
-      if (!side || side.handTarget) return; // already explicit (e.g. salute)
+      if (!side || side.handTarget) return; // already explicit
       const sig = HAND_LOCK_SIGNATURES.find(s => signatureMatches3D(side, s));
       if (sig) side.handTarget = sig.handTarget;
     });
