@@ -145,19 +145,6 @@ const deg2rad = d => d * Math.PI / 180;
 // re-apply it instead of snapping back to a T-pose.
 let currentPose3D = 'stand-relaxed';
 
-// Reference shoulder length (cm) the fixed-angle "hands on hips" / "arms
-// crossed" / etc. poses below were originally hand-tuned against. Fixed
-// joint angles only put the hand in the right real-world spot (on the hip
-// bone, on the opposite arm...) AT that one shoulder width — widen the
-// shoulders and the same angles drift the hand off the body's actual
-// surface. Rather than rescaling angles by this baseline, poses whose hand
-// needs to stay ON a body surface are auto-converted (see
-// HAND_LOCK_SIGNATURES below) to `handTarget`-driven IK instead, which
-// re-solves against a mesh position every rebuild and is therefore correct
-// at ANY shoulder length automatically — this constant is kept only as a
-// documented reference point / for any future baseline-relative tuning.
-const BASELINE_SHOULDER_LENGTH_CM = 21.4;
-
 // Word-based presets for handRotation/wristRotation (see the comment block
 // above) — coarse degree values an author can reach for instead of tuning
 // wristTurn/wrist by trial and error.
@@ -203,13 +190,10 @@ function expandPose3D(pose) {
     thumbFlipL: (L.thumbFlip !== undefined ? L.thumbFlip : (pose.thumbFlip || false)),
     thumbFlipR: (R.thumbFlip !== undefined ? R.thumbFlip : (pose.thumbFlip || false)),
     // "Reach for this mesh" instead of a fixed angle — see the IK block
-    // above applyPose3D uses this. Per-side override wins; a shared
-    // top-level `handTarget` (or one injected automatically by
-    // applyHandLockSignatures) applies to both hands, since symmetric
-    // gestures like "hands on hips" want both hands tracking their own
-    // side's mesh point identically.
-    handTargetL: L.handTarget || pose.handTarget || null,
-    handTargetR: R.handTarget || pose.handTarget || null,
+    // above applyPose3D uses this. Per-side only; no pose-level fallback,
+    // since the two arms virtually never reach for the same preset.
+    handTargetL: L.handTarget || null,
+    handTargetR: R.handTarget || null,
   };
 }
 
@@ -489,44 +473,6 @@ const POSES3D = {
 };
 
 
-// ── Automatic hand-lock detection ───────────────────────────────────────
-// "Does this hand need to stay in position (locked to a body surface), or
-// is it loose (swinging/hovering, free to drift proportionally with the
-// rest of the body)?" — rather than hand-annotating ~150 poses one by one,
-// this recognizes the handful of exact shoulder/elbow/wrist angle
-// combinations this file already reuses across many poses to mean the same
-// real-world locked gesture (hands on hips, arms crossed over the chest...)
-// and swaps them for the matching `handTarget` mesh-lock preset above.
-// Anything NOT matching one of these signatures is left exactly as
-// authored — a plain angle set with nothing to grab onto (an arm swinging
-// at the side, reaching into open air overhead, a stretch) IS the "loose"
-// case, and plain forward-kinematics angles already scale correctly with
-// body size for those (nothing to snap onto means nothing to relock).
-const HAND_LOCK_SIGNATURES = [
-  // Hand flat on the hip (elbow bent back, wrist turned to lay it against
-  // the hip bone) — 'stand-hands-hips', 'model-hands-hips', 'squat-hands-hips',
-  // 'model-fierce-hips', 'model-power-wide', 'model-contrapposto', etc.
-  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
-    values: [40, 25, -30, -80, -25, 35], handTarget: 'hip-side' },
-  // Forearms folded across the chest so the hand lands on the OPPOSITE
-  // upper arm — 'stand-arms-crossed', 'sit-arms-crossed', 'model-power', etc.
-  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
-    values: [-5, 30, -70, -105, -70, 80], handTarget: 'opposite-shoulder' },
-];
-function signatureMatches3D(obj, sig) {
-  return sig.keys.every((k, i) => (obj[k] || 0) === sig.values[i]);
-}
-function applyHandLockSignatures3D() {
-  Object.values(POSES3D).forEach(pose => {
-    [pose, pose.left, pose.right].forEach(side => {
-      if (!side || side.handTarget) return; // already explicit (e.g. salute)
-      const sig = HAND_LOCK_SIGNATURES.find(s => signatureMatches3D(side, s));
-      if (sig) side.handTarget = sig.handTarget;
-    });
-  });
-}
-applyHandLockSignatures3D();
-
 // Force the depth sliders back to their real defaults on every load — some
 // browsers restore stale <input type=range> values from a previous session,
 // which otherwise makes it look like the "default" depth silently drifted.
@@ -745,130 +691,25 @@ function computeBodyDepth3D(b) {
 // ikContext3D is filled in during buildBody3D/buildArmSide with whatever
 // current geometry (shoulder positions, arm segment lengths, head box) an
 // IK-driven pose needs, so it always reflects the body size on screen.
-let ikContext3D = { headBox: null, torsoBox: null, waistBox: null, waistTopY: 0, shoulders: {}, armLens: {}, spineDeg: { bend: 0, twist: 0, side: 0 } };
-
-// Shared helper: a point on/near the front face of a body box (head, torso,
-// waist/hip...), given as fractions of that box's own width/height/depth —
-// xFrac/yFrac measured from the box's own bottom-left-ish origin the same
-// way the box's own geometry is (0.5 = the box's horizontal or vertical
-// center), zFrac as a fraction of the box's own computed depth, where ±0.5
-// is exactly the box's own front/back surface (the box spans z ∈
-// [-depth/2, +depth/2], so anything past ±0.5 is already floating outside
-// it — there's rarely a reason to go further than ~0.55-0.6). Returned in
-// the spine's local frame (waistTopY subtracted out), same frame the
-// shoulders/IK solve already use. Since every input is a fraction of the
-// box's OWN current size, the resulting point automatically tracks that box
-// at any body size — no baseline/rescale math needed.
-function boxTargetPoint3D(box, xFrac, yFrac, zFrac) {
-  if (!box) return null;
-  const depthCm = computeBodyDepth3D(box).depthCm;
-  return {
-    x: box.xCm + xFrac * box.wCm,
-    y: (box.bottomCm + yFrac * box.hCm) - ikContext3D.waistTopY,
-    z: zFrac * depthCm,
-  };
-}
-
-// The waist/hip box hangs directly off the PELVIS (bodyGroup3D) so it stays
-// put while the torso leans/twists — but the reaching shoulder lives on the
-// SPINE pivot (spineGroup), which a pose's spineBend/spineSide/spineTwist
-// rotates. A target read straight off the hip box is therefore in a
-// DIFFERENT frame than the shoulder as soon as any spine rotation is
-// active (which most "hands on hips" poses use, for the model-y lean) —
-// the two silently drift apart and the hand chases the wrong point. This
-// undoes exactly that rotation on a pelvis-anchored point so it lands
-// exactly where it visually should, however much the spine is bent.
-function pelvisPointToSpineLocal3D(pt, bendDeg, twistDeg, sideDeg) {
-  const euler = new THREE.Euler(deg2rad(bendDeg || 0), deg2rad(twistDeg || 0), deg2rad(sideDeg || 0), 'XYZ');
-  const q = new THREE.Quaternion().setFromEuler(euler).invert();
-  const v = new THREE.Vector3(pt.x, pt.y, pt.z).applyQuaternion(q);
-  return { x: v.x, y: v.y, z: v.z };
-}
-
-// Recovers "which way did this gesture's ORIGINAL hand-tuned fixed angles
-// point the upper arm" — used as the IK pole (the "which side does the
-// elbow bend toward" hint) for a converted pose, so the IK solve reproduces
-// the same natural elbow plane the pose was designed with, just re-aimed
-// for exact reach instead of a baked angle. Mirrors setBallJoint's exact
-// math (flex unsigned, abd/roll mirrored by side).
-function poleFromAngles3D(side, flexDeg, abdDeg, rollDeg) {
-  const sideSign = side === 'right' ? 1 : -1;
-  const euler = new THREE.Euler(
-    deg2rad(flexDeg || 0), deg2rad((rollDeg || 0) * sideSign), deg2rad((abdDeg || 0) * sideSign), 'XYZ'
-  );
-  const dir = new THREE.Vector3(0, -1, 0).applyEuler(euler);
-  return { x: dir.x, y: dir.y, z: dir.z };
-}
+let ikContext3D = { headBox: null, waistTopY: 0, shoulders: {}, armLens: {} };
 
 // Named "where the hand should reach for" presets, each returning a target
 // point in the spine's own local frame (the same frame the shoulders and
 // head already live in) so a pose can just say `handTarget: 'head-side'`.
-// These are what make a "locked" hand (see HAND_LOCK_SIGNATURES) stay glued
-// to the right spot on the body regardless of shoulder length or height —
-// the target is always read fresh off the CURRENT mesh, every rebuild.
-// A preset can carry a `.poleAngles` property (see poleFromAngles3D) to
-// steer the elbow's bend plane; presets without one fall back to a generic
-// forward/outward/down pole in applyArmIK.
 const HAND_TARGET_PRESETS_3D = {
-  // Salute: level with the brow, on the side of the head, pulled forward
-  // just PAST the head's own front surface (zFrac just over 0.5, not deep
-  // into it) — enough to clear the face without demanding more reach than
-  // the arm actually has (an overshoot here is what makes an insufficient-
-  // reach solve fall back to a point that cuts back through the head).
+  // Salute: the side of the head, level with the brow, without reaching
+  // forward past the head's own surface (z stays 0, level with the head).
   'head-side': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.headBox, sideSign * 0.44, 0.62, 0.56);
-  },
-  // Hands on hips: the flare of the hip/waist box, just in front of its own
-  // surface, roughly mid-height on that box. Pelvis-anchored (see
-  // pelvisPointToSpineLocal3D) so a leaning/twisting torso doesn't pull it
-  // off the actual hip.
-  'hip-side': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    const box = geom.waistBox || geom.torsoBox;
-    const raw = boxTargetPoint3D(box, sideSign * 0.44, 0.5, 0.5);
-    if (!raw) return null;
-    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
-    return pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
-  },
-  // Hands/forearms crossed over the chest: each hand lands on the OPPOSITE
-  // upper arm near the shoulder — reads off that side's own actual shoulder
-  // position (ikContext3D.shoulders), so it also tracks a widened/narrowed
-  // shoulder span, not just torso size. Both shoulders live on the SAME
-  // spine pivot as the reaching arm, so — unlike hip-side — no extra frame
-  // correction is needed even when the pose leans/twists the torso.
-  'opposite-shoulder': (side, geom) => {
-    const otherSide = side === 'right' ? 'left' : 'right';
-    const otherShoulder = geom.shoulders[otherSide];
-    if (!otherShoulder) return null;
-    const otherSign = otherSide === 'right' ? 1 : -1;
-    const unit = headWidthCm3D || 1; // proportional size reference, same one depth math uses
+    const hb = geom.headBox;
+    if (!hb) return null;
     return {
-      x: otherShoulder.x + otherSign * -0.3 * unit,
-      y: otherShoulder.y - 0.35 * unit,
-      z: 0.35 * unit,
+      x: hb.xCm + sideSign * hb.wCm * 0.45,
+      y: (hb.bottomCm + hb.hCm * 0.62) - geom.waistTopY,
+      z: 0,
     };
   },
-  // Hand flat on the stomach (e.g. lying on the back). Deliberately reads
-  // the TORSO box, not the waist/hip box — the torso already hangs off the
-  // spine pivot, so this needs no pelvis frame correction.
-  'stomach': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.torsoBox, sideSign * 0.15, 0.25, 0.5);
-  },
-  // Hand resting at the chest/collarbone.
-  'collarbone': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.torsoBox, sideSign * 0.18, 0.85, 0.5);
-  },
-  // Hand touching the cheek/side of the face.
-  'face-cheek': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.headBox, sideSign * 0.3, 0.5, 0.55);
-  },
 };
-HAND_TARGET_PRESETS_3D['hip-side'].poleAngles = { flex: 40, abd: 25, roll: -30 };
-HAND_TARGET_PRESETS_3D['opposite-shoulder'].poleAngles = { flex: -5, abd: 30, roll: -70 };
 
 const v3 = (x, y, z) => ({ x, y, z });
 const v3sub = (a, b) => v3(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -916,15 +757,7 @@ function solveArmIK(shoulderPos, target, L1, L2, pole) {
   if (!target) return null;
   const toTarget = v3sub(target, shoulderPos);
   const rawD = v3len(toTarget);
-  const maxReach = L1 + L2;
-  // If the requested reach is longer than the arm's two segments can ever
-  // cover — the "hand's facing position is too long for the elbow/shoulder
-  // to connect" case — clamp the solve distance so the chain still forms a
-  // valid (fully-extended) triangle, and report how far over we were so the
-  // caller can visibly rotate the hand/wrist outward to sell the stretch
-  // instead of just silently snapping the hand short of the real target.
-  const d = Math.max(Math.abs(L1 - L2) + 0.01, Math.min(rawD, maxReach - 0.01));
-  const overreachCm = Math.max(0, rawD - maxReach);
+  const d = Math.max(Math.abs(L1 - L2) + 0.01, Math.min(rawD, L1 + L2 - 0.01));
   const dirToTarget = rawD > 1e-6 ? v3norm(toTarget) : v3(0, -1, 0);
   // Angle at the shoulder between "straight at target" and "where the
   // upper arm actually points" (law of cosines on the S–Elbow–Target
@@ -953,17 +786,11 @@ function solveArmIK(shoulderPos, target, L1, L2, pole) {
   // the target rather than away from it.
   const hingeAxis = v3cross(dirToTarget, p);
   const euler = eulerXYZFromAimAndHinge(upperArmDir, hingeAxis);
-  return { flexRad: euler.flexRad, rollRad: euler.rollRad, zRad: euler.zRad, elbowDeg, overreachCm };
+  return { flexRad: euler.flexRad, rollRad: euler.rollRad, zRad: euler.zRad, elbowDeg };
 }
 
 // Runs the IK above for one arm and applies the result straight to the rig,
 // using whatever the CURRENT body proportions are (from ikContext3D).
-// Returns false if IK couldn't run at all, or an object {wristTurnBoost}
-// on success — wristTurnBoost is 0 for a normal in-reach solve, and a small
-// outward-rotation nudge (degrees, unsigned) when the target was farther
-// than the arm can physically reach, so the caller can add it to the pose's
-// own wristTurn and visibly sell the hand "reaching" rather than the arm
-// silently coming up short of the mesh it was supposed to lock onto.
 function applyArmIK(side, shoulderGrp, elbowGrp, presetName) {
   if (!shoulderGrp || !elbowGrp) return false;
   const preset = HAND_TARGET_PRESETS_3D[presetName];
@@ -974,18 +801,14 @@ function applyArmIK(side, shoulderGrp, elbowGrp, presetName) {
   const target = preset(side, ikContext3D);
   if (!target) return false;
   const sideSign = side === 'right' ? 1 : -1;
-  const pole = preset.poleAngles
-    ? poleFromAngles3D(side, preset.poleAngles.flex, preset.poleAngles.abd, preset.poleAngles.roll)
-    : { x: sideSign * 0.5, y: -0.3, z: 0.8 };
+  const pole = { x: sideSign * 0.5, y: -0.3, z: 0.8 };
   const sol = solveArmIK(shoulderPos, target, lens.upper, lens.lower, pole);
   if (!sol) return false;
   shoulderGrp.rotation.x = sol.flexRad;
   shoulderGrp.rotation.y = sol.rollRad;
   shoulderGrp.rotation.z = sol.zRad;
   elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
-  const maxReach = (lens.upper + lens.lower) || 1;
-  const wristTurnBoost = Math.min(30, (sol.overreachCm / maxReach) * 90);
-  return { wristTurnBoost };
+  return true;
 }
 
 // (Re)builds every box mesh from the current 2D layout. Called automatically
@@ -1022,7 +845,7 @@ function buildBody3D() {
   // Refresh the IK context with this build's actual geometry — any
   // handTarget-driven pose reads current body size from here, never stale
   // numbers from a previous Generate/slider change.
-  ikContext3D = { headBox, torsoBox, waistBox, waistTopY, shoulders: {}, armLens: {}, spineDeg: ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 } };
+  ikContext3D = { headBox, waistTopY, shoulders: {}, armLens: {} };
 
   const spineGroup = new THREE.Group();
   spineGroup.position.set(0, waistTopY, 0);
@@ -1350,25 +1173,12 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   setAnkle(rig3D.rightAnkle, p.ankleR,  p.ankleTurnR);
   // IK-driven arms (pose sets handTarget) reach for a mesh directly and
   // skip the fixed-angle path entirely; everything else still uses the
-  // authored flex/abd/roll/elbow numbers exactly as before. Pelvis-anchored
-  // targets (hip-side) need to know how much the spine is currently
-  // bent/twisted/leaned to stay correctly locked — see
-  // pelvisPointToSpineLocal3D — so stamp that onto ikContext3D right before
-  // solving, using this pose's own spine numbers.
-  ikContext3D.spineDeg = { bend: p.spineBend || 0, twist: p.spineTwist || 0, side: p.spineSide || 0 };
+  // authored flex/abd/roll/elbow numbers exactly as before.
   const leftIK = p.handTargetL ? applyArmIK('left', rig3D.leftShoulder, rig3D.leftElbow, p.handTargetL) : false;
   if (!leftIK) {
     setBallJoint(rig3D.leftShoulder, p.shoulderL, p.shoulderAbdL, -1);
     if (rig3D.leftShoulder) rig3D.leftShoulder.rotation.y = deg2rad((p.shoulderRollL || 0) * -1);
     setHinge(rig3D.leftElbow, p.elbowL);
-  } else if (leftIK.wristTurnBoost) {
-    // Target was farther than the arm can reach — rotate the wrist a bit
-    // further outward on top of whatever the pose authored, instead of
-    // letting the hand quietly stop short of the mesh it's locked onto.
-    // Added the same way other shared "outward" fields (hipAbd/shoulderAbd)
-    // are authored — the per-side ×(-1)/×(+1) mirroring below turns this
-    // single positive number into "outward" on whichever side it's on.
-    p.wristTurnL = (p.wristTurnL || 0) + leftIK.wristTurnBoost;
   }
   const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
   if (!rightIK) {
@@ -1378,8 +1188,6 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     // elbow's hinge axis without disturbing flex/abd.
     if (rig3D.rightShoulder) rig3D.rightShoulder.rotation.y = deg2rad((p.shoulderRollR || 0) * 1);
     setHinge(rig3D.rightElbow, p.elbowR);
-  } else if (rightIK.wristTurnBoost) {
-    p.wristTurnR = (p.wristTurnR || 0) + rightIK.wristTurnBoost;
   }
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
