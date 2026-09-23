@@ -745,18 +745,20 @@ function computeBodyDepth3D(b) {
 // ikContext3D is filled in during buildBody3D/buildArmSide with whatever
 // current geometry (shoulder positions, arm segment lengths, head box) an
 // IK-driven pose needs, so it always reflects the body size on screen.
-let ikContext3D = { headBox: null, torsoBox: null, waistBox: null, waistTopY: 0, shoulders: {}, armLens: {} };
+let ikContext3D = { headBox: null, torsoBox: null, waistBox: null, waistTopY: 0, shoulders: {}, armLens: {}, spineDeg: { bend: 0, twist: 0, side: 0 } };
 
 // Shared helper: a point on/near the front face of a body box (head, torso,
 // waist/hip...), given as fractions of that box's own width/height/depth —
 // xFrac/yFrac measured from the box's own bottom-left-ish origin the same
 // way the box's own geometry is (0.5 = the box's horizontal or vertical
-// center), zFrac as a fraction of the box's own computed depth (0 = the
-// box's center plane, 1 = its full front surface). Returned in the spine's
-// local frame (waistTopY subtracted out), same frame the shoulders/IK solve
-// already use. Since every input is a fraction of the box's OWN current
-// size, the resulting point automatically tracks that box at any body
-// size — no baseline/rescale math needed.
+// center), zFrac as a fraction of the box's own computed depth, where ±0.5
+// is exactly the box's own front/back surface (the box spans z ∈
+// [-depth/2, +depth/2], so anything past ±0.5 is already floating outside
+// it — there's rarely a reason to go further than ~0.55-0.6). Returned in
+// the spine's local frame (waistTopY subtracted out), same frame the
+// shoulders/IK solve already use. Since every input is a fraction of the
+// box's OWN current size, the resulting point automatically tracks that box
+// at any body size — no baseline/rescale math needed.
 function boxTargetPoint3D(box, xFrac, yFrac, zFrac) {
   if (!box) return null;
   const depthCm = computeBodyDepth3D(box).depthCm;
@@ -767,32 +769,74 @@ function boxTargetPoint3D(box, xFrac, yFrac, zFrac) {
   };
 }
 
+// The waist/hip box hangs directly off the PELVIS (bodyGroup3D) so it stays
+// put while the torso leans/twists — but the reaching shoulder lives on the
+// SPINE pivot (spineGroup), which a pose's spineBend/spineSide/spineTwist
+// rotates. A target read straight off the hip box is therefore in a
+// DIFFERENT frame than the shoulder as soon as any spine rotation is
+// active (which most "hands on hips" poses use, for the model-y lean) —
+// the two silently drift apart and the hand chases the wrong point. This
+// undoes exactly that rotation on a pelvis-anchored point so it lands
+// exactly where it visually should, however much the spine is bent.
+function pelvisPointToSpineLocal3D(pt, bendDeg, twistDeg, sideDeg) {
+  const euler = new THREE.Euler(deg2rad(bendDeg || 0), deg2rad(twistDeg || 0), deg2rad(sideDeg || 0), 'XYZ');
+  const q = new THREE.Quaternion().setFromEuler(euler).invert();
+  const v = new THREE.Vector3(pt.x, pt.y, pt.z).applyQuaternion(q);
+  return { x: v.x, y: v.y, z: v.z };
+}
+
+// Recovers "which way did this gesture's ORIGINAL hand-tuned fixed angles
+// point the upper arm" — used as the IK pole (the "which side does the
+// elbow bend toward" hint) for a converted pose, so the IK solve reproduces
+// the same natural elbow plane the pose was designed with, just re-aimed
+// for exact reach instead of a baked angle. Mirrors setBallJoint's exact
+// math (flex unsigned, abd/roll mirrored by side).
+function poleFromAngles3D(side, flexDeg, abdDeg, rollDeg) {
+  const sideSign = side === 'right' ? 1 : -1;
+  const euler = new THREE.Euler(
+    deg2rad(flexDeg || 0), deg2rad((rollDeg || 0) * sideSign), deg2rad((abdDeg || 0) * sideSign), 'XYZ'
+  );
+  const dir = new THREE.Vector3(0, -1, 0).applyEuler(euler);
+  return { x: dir.x, y: dir.y, z: dir.z };
+}
+
 // Named "where the hand should reach for" presets, each returning a target
 // point in the spine's own local frame (the same frame the shoulders and
 // head already live in) so a pose can just say `handTarget: 'head-side'`.
 // These are what make a "locked" hand (see HAND_LOCK_SIGNATURES) stay glued
 // to the right spot on the body regardless of shoulder length or height —
 // the target is always read fresh off the CURRENT mesh, every rebuild.
+// A preset can carry a `.poleAngles` property (see poleFromAngles3D) to
+// steer the elbow's bend plane; presets without one fall back to a generic
+// forward/outward/down pole in applyArmIK.
 const HAND_TARGET_PRESETS_3D = {
-  // Salute: level with the brow, on the side of the head, but pulled
-  // forward to the FRONT of the head's own surface (zFrac~0.75, not 0) so
-  // the hand sits in front of the face/temple instead of clipping into it.
+  // Salute: level with the brow, on the side of the head, pulled forward
+  // just PAST the head's own front surface (zFrac just over 0.5, not deep
+  // into it) — enough to clear the face without demanding more reach than
+  // the arm actually has (an overshoot here is what makes an insufficient-
+  // reach solve fall back to a point that cuts back through the head).
   'head-side': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.headBox, sideSign * 0.42, 0.62, 0.75);
+    return boxTargetPoint3D(geom.headBox, sideSign * 0.44, 0.62, 0.56);
   },
-  // Hands on hips: the flare of the hip/waist box, just in front of its
-  // own surface, roughly mid-height on that box (where a hand naturally
-  // rests when "on the hips" rather than up at the belt-line).
+  // Hands on hips: the flare of the hip/waist box, just in front of its own
+  // surface, roughly mid-height on that box. Pelvis-anchored (see
+  // pelvisPointToSpineLocal3D) so a leaning/twisting torso doesn't pull it
+  // off the actual hip.
   'hip-side': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
     const box = geom.waistBox || geom.torsoBox;
-    return boxTargetPoint3D(box, sideSign * 0.46, 0.5, 0.55);
+    const raw = boxTargetPoint3D(box, sideSign * 0.44, 0.5, 0.5);
+    if (!raw) return null;
+    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
+    return pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
   },
   // Hands/forearms crossed over the chest: each hand lands on the OPPOSITE
   // upper arm near the shoulder — reads off that side's own actual shoulder
   // position (ikContext3D.shoulders), so it also tracks a widened/narrowed
-  // shoulder span, not just torso size.
+  // shoulder span, not just torso size. Both shoulders live on the SAME
+  // spine pivot as the reaching arm, so — unlike hip-side — no extra frame
+  // correction is needed even when the pose leans/twists the torso.
   'opposite-shoulder': (side, geom) => {
     const otherSide = side === 'right' ? 'left' : 'right';
     const otherShoulder = geom.shoulders[otherSide];
@@ -800,28 +844,31 @@ const HAND_TARGET_PRESETS_3D = {
     const otherSign = otherSide === 'right' ? 1 : -1;
     const unit = headWidthCm3D || 1; // proportional size reference, same one depth math uses
     return {
-      x: otherShoulder.x + otherSign * -0.45 * unit,
-      y: otherShoulder.y - 0.55 * unit,
-      z: 0.55 * unit,
+      x: otherShoulder.x + otherSign * -0.3 * unit,
+      y: otherShoulder.y - 0.35 * unit,
+      z: 0.35 * unit,
     };
   },
-  // Hand flat on the stomach (e.g. lying on the back).
+  // Hand flat on the stomach (e.g. lying on the back). Deliberately reads
+  // the TORSO box, not the waist/hip box — the torso already hangs off the
+  // spine pivot, so this needs no pelvis frame correction.
   'stomach': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
-    const box = geom.waistBox || geom.torsoBox;
-    return boxTargetPoint3D(box, sideSign * 0.15, 0.6, 0.6);
+    return boxTargetPoint3D(geom.torsoBox, sideSign * 0.15, 0.25, 0.5);
   },
   // Hand resting at the chest/collarbone.
   'collarbone': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.torsoBox, sideSign * 0.18, 0.85, 0.55);
+    return boxTargetPoint3D(geom.torsoBox, sideSign * 0.18, 0.85, 0.5);
   },
   // Hand touching the cheek/side of the face.
   'face-cheek': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.headBox, sideSign * 0.3, 0.5, 0.7);
+    return boxTargetPoint3D(geom.headBox, sideSign * 0.3, 0.5, 0.55);
   },
 };
+HAND_TARGET_PRESETS_3D['hip-side'].poleAngles = { flex: 40, abd: 25, roll: -30 };
+HAND_TARGET_PRESETS_3D['opposite-shoulder'].poleAngles = { flex: -5, abd: 30, roll: -70 };
 
 const v3 = (x, y, z) => ({ x, y, z });
 const v3sub = (a, b) => v3(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -927,7 +974,9 @@ function applyArmIK(side, shoulderGrp, elbowGrp, presetName) {
   const target = preset(side, ikContext3D);
   if (!target) return false;
   const sideSign = side === 'right' ? 1 : -1;
-  const pole = { x: sideSign * 0.5, y: -0.3, z: 0.8 };
+  const pole = preset.poleAngles
+    ? poleFromAngles3D(side, preset.poleAngles.flex, preset.poleAngles.abd, preset.poleAngles.roll)
+    : { x: sideSign * 0.5, y: -0.3, z: 0.8 };
   const sol = solveArmIK(shoulderPos, target, lens.upper, lens.lower, pole);
   if (!sol) return false;
   shoulderGrp.rotation.x = sol.flexRad;
@@ -973,7 +1022,7 @@ function buildBody3D() {
   // Refresh the IK context with this build's actual geometry — any
   // handTarget-driven pose reads current body size from here, never stale
   // numbers from a previous Generate/slider change.
-  ikContext3D = { headBox, torsoBox, waistBox, waistTopY, shoulders: {}, armLens: {} };
+  ikContext3D = { headBox, torsoBox, waistBox, waistTopY, shoulders: {}, armLens: {}, spineDeg: ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 } };
 
   const spineGroup = new THREE.Group();
   spineGroup.position.set(0, waistTopY, 0);
@@ -1301,7 +1350,12 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   setAnkle(rig3D.rightAnkle, p.ankleR,  p.ankleTurnR);
   // IK-driven arms (pose sets handTarget) reach for a mesh directly and
   // skip the fixed-angle path entirely; everything else still uses the
-  // authored flex/abd/roll/elbow numbers exactly as before.
+  // authored flex/abd/roll/elbow numbers exactly as before. Pelvis-anchored
+  // targets (hip-side) need to know how much the spine is currently
+  // bent/twisted/leaned to stay correctly locked — see
+  // pelvisPointToSpineLocal3D — so stamp that onto ikContext3D right before
+  // solving, using this pose's own spine numbers.
+  ikContext3D.spineDeg = { bend: p.spineBend || 0, twist: p.spineTwist || 0, side: p.spineSide || 0 };
   const leftIK = p.handTargetL ? applyArmIK('left', rig3D.leftShoulder, rig3D.leftElbow, p.handTargetL) : false;
   if (!leftIK) {
     setBallJoint(rig3D.leftShoulder, p.shoulderL, p.shoulderAbdL, -1);
