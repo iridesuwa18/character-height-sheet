@@ -5,7 +5,9 @@
 //
 // Depends on globals defined in index.html's inline script, which must load
 // BEFORE this file: PX_PER_CM, SCALE_FACTOR, preview (the #preview element),
-// leftArmWrap, rightArmWrap.
+// leftArmWrap, rightArmWrap, and the GitHub Presets helpers ghGetSettings/
+// ghHeaders/ghUtf8ToB64/ghB64ToUtf8 (used to save/load pose edits — see
+// "Cross-reload pose persistence" below).
 // Also depends on THREE and THREE.OrbitControls being loaded first.
 //
 // Called from index.html:
@@ -171,15 +173,40 @@ const HAND_ROTATION_DEG = {
 };
 const WRIST_ROTATION_DEG = { front: 0, up: 60, down: -60 };
 
+// ---- Wrist rotation-range limit -------------------------------------------
+// A real forearm can only pronate/supinate so far on its own before the
+// wrist runs out of twist — past that, turning the hand further needs the
+// whole elbow to lift/rotate at the shoulder instead. Canonical range (see
+// the wristTurn convention below): LEFT 0°(palm)↔180°(dorsum), RIGHT
+// 0°(palm)↔-180°(dorsum). Anything a pose or override asks for beyond that
+// gets clamped, and the clamped-off amount is handed to the shoulder as an
+// "elbow lift" (extra abduction) so the pose still reads as reaching for
+// the requested orientation instead of silently capping with no visual cue.
+const WRIST_TURN_RANGE = { left: [0, 180], right: [-180, 0] };
+const ELBOW_LIFT_PER_EXCESS_DEG = 0.4;   // how much shoulder-abd lift per degree of overshoot
+const MAX_ELBOW_LIFT_DEG = 45;           // cap so a wildly out-of-range value can't fling the elbow overhead
+function clampWristTurn(side, deg) {
+  const [min, max] = WRIST_TURN_RANGE[side];
+  const clamped = Math.min(max, Math.max(min, deg || 0));
+  const overshoot = Math.abs((deg || 0) - clamped);
+  const elbowLift = Math.min(MAX_ELBOW_LIFT_DEG, overshoot * ELBOW_LIFT_PER_EXCESS_DEG);
+  return { clamped, elbowLift };
+}
+
 // ---- Forearm flip state (palm vs. dorsum) ----------------------------------
 // A forearm is "flipped" when its hand is palm-side, "unflipped" when it's
-// dorsum-side — colored red/blue on the forearm block so the state reads at
-// a glance. CONFIRMED against the render (do not re-guess this):
-//   default thumb position (thumbFlip false, wristTurn 0, right hand's
-//   thumb on the +x edge / left hand's on the -x edge — see thumbSign in
-//   buildArmSide) = RED = flipped = palm view.
-//   The opposite thumb edge (thumbFlip true, or wristTurn rotated toward
-//   dorsum) = BLUE = unflipped = dorsum view.
+// dorsum-side — colored red/blue on the forearm block, AND used to pick
+// which edge the thumb sits on (see applyHandFlipVisuals3D), so the state
+// reads consistently at a glance. CONFIRMED against the render (do not
+// re-guess this):
+//   default thumb position (wristTurn 0, right hand's thumb on the +x edge /
+//   left hand's on the -x edge — see baseSign in applyHandFlipVisuals3D)
+//   = RED = flipped = palm view.
+//   The opposite thumb edge (wristTurn rotated toward dorsum)
+//   = BLUE = unflipped = dorsum view.
+// There is no separate per-pose flag for any of this — wristTurn is the
+// single source of truth, so the thumb and the forearm color can never
+// disagree with each other the way the old thumbFlip escape hatch allowed.
 // Canonical wristTurn range (viewer looking at the model's POV, hand
 // stretched ~15° from the body): 0° (palm) → 180° (dorsum) for the LEFT
 // hand as it rotates toward the torso midline, and 0° (palm) → -180°
@@ -191,6 +218,33 @@ const FOREARM_UNFLIPPED_COLOR = 0x4488ff; // blue = unflipped = dorsum view
 function isHandFlipped(side, wristTurnDeg) {
   const t = wristTurnDeg || 0;
   return side === 'left' ? t < 90 : t > -90;
+}
+
+// Applies the flip state (derived live from wristTurn, never authored) to
+// every visual that reads it: the forearm's red/blue color AND the thumb's
+// attachment edge, so the two can never fall out of sync with each other.
+// Replaces the old thumbFlip escape hatch — a pose no longer needs to
+// separately declare which edge its thumb belongs on; wristTurn alone
+// decides both the color and the thumb's position/angle. Safe to call
+// before the thumb/forearm exist yet (build order) since each ref is
+// checked individually.
+function applyHandFlipVisuals3D(side, wristTurnDeg) {
+  const flipped = isHandFlipped(side, wristTurnDeg);
+  rig3D[side + 'HandFlipped'] = flipped;
+  const forearmMesh = rig3D[side + 'ForearmMesh'];
+  if (forearmMesh) forearmMesh.material.color.setHex(flipped ? FOREARM_FLIPPED_COLOR : FOREARM_UNFLIPPED_COLOR);
+  const thumbPivot = rig3D[side + 'ThumbPivot'];
+  const thumbGeom = rig3D[side + 'ThumbGeom'];
+  if (thumbPivot && thumbGeom) {
+    // Base edge (thumb's home side ignoring flip): +x for the right hand,
+    // -x for the left — matches the old default thumbSign. Flipped (palm)
+    // keeps the thumb on that base edge; unflipped (dorsum) sends it to
+    // the opposite edge.
+    const baseSign = side === 'right' ? 1 : -1;
+    const thumbSign = baseSign * (flipped ? 1 : -1);
+    thumbPivot.position.x = thumbSign * thumbGeom.wCm * 0.42;
+    thumbPivot.rotation.z = deg2rad(thumbSign * 35);
+  }
 }
 
 // Expands a POSES3D entry (shared fields + optional left/right overrides)
@@ -225,12 +279,6 @@ function expandPose3D(pose) {
     wristTurnR: pickWithAlias(R, 'wristTurn', 'handRotation', HAND_ROTATION_DEG.right),
     spineBend: pose.spineBend || 0, spineSide: pose.spineSide || 0, spineTwist: pose.spineTwist || 0,
     root: pose.root || 0, rootZ: pose.rootZ || 0,
-    // Per-pose escape hatch for the thumb's fixed left/right attachment
-    // edge (see buildArmSide): a pose whose wrist ends up rotated roughly
-    // 180° from the "default-looking-right" baseline needs its thumb
-    // flipped to the other edge to still read correctly. Set true to flip.
-    thumbFlipL: (L.thumbFlip !== undefined ? L.thumbFlip : (pose.thumbFlip || false)),
-    thumbFlipR: (R.thumbFlip !== undefined ? R.thumbFlip : (pose.thumbFlip || false)),
     // "Reach for this mesh" instead of a fixed angle — see the IK block
     // above applyPose3D uses this. Per-side override wins; a shared
     // top-level `handTarget` (or one injected automatically by
@@ -251,7 +299,26 @@ function expandPose3D(pose) {
 // the same hand facing against several poses in a row.
 let handRotationOverride = { left: null, right: null };   // 'front'|'side'|'back'|null
 let wristRotationOverride = { left: null, right: null };  // 'up'|'front'|'down'|null
+// Elbow position overrides — raw degree numbers (not word aliases, unlike
+// the two above) since there's no small fixed vocabulary for "where the
+// elbow sits". elbowBendOverride replaces the pose's own `elbow` flexion
+// angle outright; elbowLiftOverride is an ADDITIONAL shoulder-abduction
+// amount stacked on top of whatever the wristTurn-overshoot auto-lift
+// already contributes (see clampWristTurn), so a person can lift the elbow
+// further without having to fight an out-of-range wristTurn to do it. Both
+// null = no override (pose default). Only meaningful on the fixed-angle
+// path — an IK-driven arm (handTarget set) already fully determines its own
+// elbow to keep the hand locked onto its target, so overriding the elbow
+// there would just pull the hand off the mesh it's pinned to; applyPose3D
+// skips both overrides whenever that side is IK-driven.
+let elbowBendOverride = { left: null, right: null };
+let elbowLiftOverride = { left: null, right: null };
 let handWristTargetSide = 'right';
+// Snapshot of the last applyPose3D() call's fully-resolved per-side values
+// (post-override, post-clamp) — see where it's written at the end of
+// applyPose3D for exactly what it holds. null until the first pose is
+// applied. Read by the Save button below.
+let lastPoseResolved3D = null;
 
 function setHandWristTargetSide(side) {
   handWristTargetSide = side;
@@ -269,14 +336,39 @@ function setWristRotationInput(value) {
   refreshHandWristButtons();
   if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
 }
+// Elbow inputs are free-typed numbers rather than buttons, so there's no
+// discrete "value" to toggle active — just parse-and-store, same
+// side-targeting (right/left/both) as the hand/wrist word presets above.
+// An empty/unparsable field clears that side's override back to null (pose
+// default) rather than coercing to 0, which would otherwise be
+// indistinguishable from an intentional "0°" override.
+function setElbowBendInput(value) {
+  const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
+  const num = value === '' ? null : parseFloat(value);
+  const parsed = (num === null || isNaN(num)) ? null : num;
+  sides.forEach(s => { elbowBendOverride[s] = parsed; });
+  if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
+}
+function setElbowLiftInput(value) {
+  const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
+  const num = value === '' ? null : parseFloat(value);
+  const parsed = (num === null || isNaN(num)) ? null : num;
+  sides.forEach(s => { elbowLiftOverride[s] = parsed; });
+  if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
+}
 function clearHandWristOverrides() {
   handRotationOverride = { left: null, right: null };
   wristRotationOverride = { left: null, right: null };
+  elbowBendOverride = { left: null, right: null };
+  elbowLiftOverride = { left: null, right: null };
   refreshHandWristButtons();
   if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
 }
-// Which value to show as "active" for the currently selected target side(s)
-// — for 'both', only lit up when left and right actually agree.
+// Which value to show as "active"/populated for the currently selected
+// target side(s) — for 'both', only lit up (or filled in) when left and
+// right actually agree; used for both the word-preset buttons (compared
+// against a button's data-value) and the elbow number fields (dropped
+// straight into the input's value).
 function currentHandWristValue(overrideObj) {
   if (handWristTargetSide === 'both') {
     return overrideObj.left === overrideObj.right ? overrideObj.left : null;
@@ -295,6 +387,179 @@ function refreshHandWristButtons() {
   document.querySelectorAll('.hw-wrist-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.value === wristVal);
   });
+  const bendEl = document.getElementById('hwElbowBend');
+  if (bendEl) {
+    const bendVal = currentHandWristValue(elbowBendOverride);
+    bendEl.value = (bendVal === null || bendVal === undefined) ? '' : bendVal;
+  }
+  const liftEl = document.getElementById('hwElbowLift');
+  if (liftEl) {
+    const liftVal = currentHandWristValue(elbowLiftOverride);
+    liftEl.value = (liftVal === null || liftVal === undefined) ? '' : liftVal;
+  }
+}
+
+const round1 = n => Math.round((n || 0) * 10) / 10;
+
+// ---- Cross-reload pose persistence (GitHub-backed) -------------------------
+// Saving a pose (below) mutates the in-memory POSES3D object, which is
+// enough to keep the edit for the rest of THIS page load, but a refresh
+// re-runs this whole file from scratch and POSES3D goes back to its
+// hardcoded literal below — so edits are also pushed to a JSON file in your
+// GitHub repo (reusing the same owner/repo/branch/token configured in the
+// GitHub Presets panel, and ghGetSettings/ghHeaders/ghUtf8ToB64/ghB64ToUtf8
+// from index.html's inline script) and pulled back down on top of the
+// literal once at load time (see pullPoseOverridesFromGitHub, called right
+// after POSES3D is defined). This needs owner/repo/token filled in on the
+// GitHub Presets panel — without them, edits still apply for the rest of
+// this session, they just won't survive a reload.
+const POSE_OVERRIDES_GH_PATH = 'presets/pose-overrides.json';
+function poseOverridesApiUrl(s) {
+  return `https://api.github.com/repos/${s.owner}/${s.repo}/contents/${POSE_OVERRIDES_GH_PATH.split('/').map(encodeURIComponent).join('/')}`;
+}
+// Re-applies every saved edit on top of the POSES3D literal below — called
+// once, right after that literal is defined. A pose key or field that no
+// longer exists (e.g. this file's own POSES3D was edited/renamed since the
+// edit was saved) is skipped harmlessly rather than throwing. Also does
+// nothing quietly if the GitHub settings aren't filled in yet, or the file
+// doesn't exist on the repo yet (first run). This is a network request, so
+// unlike the old localStorage version it doesn't finish before the pose
+// panel first renders — it re-applies on top a moment later instead.
+async function pullPoseOverridesFromGitHub() {
+  const s = ghGetSettings();
+  if (!s.token || !s.owner || !s.repo) return;
+  try {
+    const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+    if (!resp.ok) return; // 404 = nothing saved yet; other errors fail quietly at load time
+    const j = await resp.json();
+    const all = JSON.parse(ghB64ToUtf8(j.content));
+    Object.keys(all).forEach(poseKey => {
+      const pose = POSES3D[poseKey];
+      if (!pose) return;
+      ['left', 'right'].forEach(side => {
+        const fields = all[poseKey][side];
+        if (!fields) return;
+        pose[side] = pose[side] || {};
+        Object.assign(pose[side], fields);
+      });
+    });
+    // The overrides may have landed after the pose panel's first paint —
+    // re-apply the currently-selected pose so any edit to it shows up.
+    if (typeof applyPose3D === 'function' && sceneInited3D) applyPose3D(currentPose3D, { reframe: false });
+  } catch (e) { console.warn('Could not load pose edits from GitHub:', e); }
+}
+// Pushes one side's saved fields for one pose up to the GitHub file,
+// merging with whatever's already saved for other poses/sides (fetches the
+// current file first so this doesn't clobber edits saved from elsewhere).
+async function pushPoseOverrideToGitHub(poseKey, side, fields) {
+  const s = ghGetSettings();
+  if (!s.token || !s.owner || !s.repo) throw new Error('Fill in owner/repo/token in the GitHub Presets panel first.');
+  const apiUrl = poseOverridesApiUrl(s);
+  let sha, all = {};
+  const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+  if (getResp.ok) {
+    const j = await getResp.json();
+    sha = j.sha;
+    try { all = JSON.parse(ghB64ToUtf8(j.content)); } catch (e) { all = {}; }
+  }
+  all[poseKey] = all[poseKey] || {};
+  all[poseKey][side] = Object.assign({}, all[poseKey][side], fields);
+  const body = { message: `Save pose edit: ${poseKey} (${side})`, content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
+  if (sha) body.sha = sha;
+  const putResp = await fetch(apiUrl, { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
+  if (!putResp.ok) { const errj = await putResp.json().catch(() => ({})); throw new Error(errj.message || putResp.statusText); }
+}
+// Wipes the saved pose-edits file from the repo and reloads, so POSES3D
+// comes back purely from the hardcoded literal below with nothing re-applied
+// on top — the escape hatch if a saved edit needs undoing back to original.
+async function clearAllSavedPoseEdits() {
+  const s = ghGetSettings();
+  if (!s.token || !s.owner || !s.repo) { alert('Fill in owner/repo/token in the GitHub Presets panel first.'); return; }
+  if (!confirm('Delete the pose-edits file from GitHub and reload the page?')) return;
+  try {
+    const apiUrl = poseOverridesApiUrl(s);
+    const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+    if (getResp.status === 404) { location.reload(); return; } // nothing saved, nothing to clear
+    if (!getResp.ok) throw new Error(getResp.statusText);
+    const j = await getResp.json();
+    const delResp = await fetch(apiUrl, { method: 'DELETE', headers: ghHeaders(s.token), body: JSON.stringify({ message: 'Clear saved pose edits', sha: j.sha, branch: s.branch }) });
+    if (!delResp.ok) { const errj = await delResp.json().catch(() => ({})); throw new Error(errj.message || delResp.statusText); }
+    location.reload();
+  } catch (e) { alert('Could not clear pose edits from GitHub: ' + e.message); }
+}
+
+// Save button: bakes whatever the panel is CURRENTLY showing (pose defaults
+// plus any active hand-rotation/wrist-rotation/elbow overrides) into
+// POSES3D[currentPose3D] itself, as that pose's new permanent default —
+// reading straight from lastPoseResolved3D so what gets saved always
+// matches what's on screen, rather than re-deriving it from the overrides
+// (which only capture what's been touched, not the pose's own baseline for
+// whichever fields haven't been). Only touches wristTurn/wrist/elbow/
+// shoulderAbd, so any handTarget (mesh pin) already on the pose is left
+// exactly as authored — this is the "/pin" part of the panel state:
+// nothing here overwrites it, it just isn't clobbered by the save either.
+// An IK-driven side (has a handTarget) is skipped entirely: its hand
+// position comes from solving against that target every rebuild, so baking
+// in raw angle numbers here would leave dead fields the IK path ignores.
+// Also pushes the same fields to a JSON file in your GitHub repo (see
+// above) so the edit survives a page reload, not just the rest of this
+// session — needs owner/repo/token filled in on the GitHub Presets panel.
+async function savePoseFromHandWristPanel() {
+  const pose = POSES3D[currentPose3D];
+  if (!pose || !lastPoseResolved3D) return;
+  const toPush = [];
+  ['left', 'right'].forEach(side => {
+    const resolved = lastPoseResolved3D[side];
+    if (!resolved || resolved.isIK) return;
+    pose[side] = pose[side] || {};
+    pose[side].wristTurn = round1(resolved.wristTurn);
+    pose[side].wrist = round1(resolved.wrist);
+    pose[side].elbow = round1(resolved.elbow);
+    pose[side].shoulderAbd = round1(resolved.shoulderAbd);
+    // The values above are now the per-side source of truth going forward,
+    // so drop any word-alias fields on this side that would otherwise still
+    // take priority over a *shared* (non-side) raw field per expandPose3D's
+    // pick order — they can't out-rank what we just wrote on the same side,
+    // but leaving stale ones around is just confusing to read later.
+    delete pose[side].handRotation;
+    delete pose[side].wristRotation;
+    toPush.push({ side, fields: {
+      wristTurn: pose[side].wristTurn, wrist: pose[side].wrist,
+      elbow: pose[side].elbow, shoulderAbd: pose[side].shoulderAbd,
+    }});
+  });
+  // The pose's own numbers now already equal what the overrides were
+  // producing, so clear the overrides — leaving them active would just be
+  // silently re-applying the same values on top of their new home.
+  handRotationOverride = { left: null, right: null };
+  wristRotationOverride = { left: null, right: null };
+  elbowBendOverride = { left: null, right: null };
+  elbowLiftOverride = { left: null, right: null };
+  refreshHandWristButtons();
+  applyPose3D(currentPose3D, { reframe: false });
+  const statusEl = document.getElementById('hwSaveStatus');
+  if (statusEl) {
+    statusEl.textContent = `Saving "${pose.label}" to GitHub…`;
+    statusEl.style.opacity = '1';
+    clearTimeout(statusEl._fadeTimer);
+  }
+  try {
+    // Sequential, not Promise.all — each push does its own GET-modify-PUT
+    // round trip against the same file, so running them in parallel could
+    // let the second PUT clobber the first (stale sha).
+    for (const { side, fields } of toPush) {
+      await pushPoseOverrideToGitHub(currentPose3D, side, fields);
+    }
+    if (statusEl) {
+      statusEl.textContent = `Saved "${pose.label}" — will reload from GitHub next time`;
+      statusEl._fadeTimer = setTimeout(() => { statusEl.style.opacity = '0'; }, 2600);
+    }
+  } catch (e) {
+    if (statusEl) {
+      statusEl.textContent = `Save to GitHub failed: ${e.message}`;
+      statusEl._fadeTimer = setTimeout(() => { statusEl.style.opacity = '0'; }, 4000);
+    }
+  }
 }
 
 const POSES3D = {
@@ -516,6 +781,14 @@ const POSES3D = {
   'model-collarbone':   { section:'Model Poses', label:'Elegant Hand at Collarbone', spineTwist:12, right:{shoulder:90, shoulderAbd:90, elbow:-158, wrist:-30, wristTurn:-20} },
   'model-dynamic-jump': { section:'Model Poses', label:'Dynamic Editorial Jump', spineSide:10, hipAbd:20, knee:20, shoulder:-40, shoulderAbd:65 },
 };
+// Re-apply any pose edits saved from a previous visit (see the Save button /
+// GitHub helpers above). This is async (a network request), so — unlike the
+// old localStorage version — it can't finish before the automatic hand-lock
+// detection right below, the pose panel render at the bottom of the file, or
+// the very first applyPose3D() call; those still run against the
+// plain-literal defaults first, and pullPoseOverridesFromGitHub() re-applies
+// the current pose on top once the fetch resolves a moment later.
+pullPoseOverridesFromGitHub();
 
 
 // ── Automatic hand-lock detection ───────────────────────────────────────
@@ -774,7 +1047,7 @@ function computeBodyDepth3D(b) {
 // ikContext3D is filled in during buildBody3D/buildArmSide with whatever
 // current geometry (shoulder positions, arm segment lengths, head box) an
 // IK-driven pose needs, so it always reflects the body size on screen.
-let ikContext3D = { headBox: null, torsoBox: null, waistBox: null, waistTopY: 0, shoulders: {}, armLens: {}, spineDeg: { bend: 0, twist: 0, side: 0 } };
+let ikContext3D = { headBox: null, neckBox: null, torsoBox: null, waistBox: null, legBoxes: { left: null, right: null }, footBoxes: { left: null, right: null }, waistTopY: 0, shoulders: {}, armLens: {}, spineDeg: { bend: 0, twist: 0, side: 0 } };
 
 // Shared helper: a point on/near the front face of a body box (head, torso,
 // waist/hip...), given as fractions of that box's own width/height/depth —
@@ -899,6 +1172,62 @@ const HAND_TARGET_PRESETS_3D = {
 HAND_TARGET_PRESETS_3D['hip-side'].poleAngles = { flex: 40, abd: 25, roll: -30 };
 HAND_TARGET_PRESETS_3D['opposite-shoulder'].poleAngles = { flex: -5, abd: 30, roll: -70 };
 
+// ---- Generic mesh-face pinning ---------------------------------------------
+// The named presets above are hand-tuned one-off spots. This is the general
+// case: pin a hand to ANY of the body's rest-position boxes (not just head/
+// torso/waist), at any point on that box's face, given as fractions of that
+// box's OWN current width/height/depth — exactly like boxTargetPoint3D's
+// xFrac/yFrac/zFrac (0.5/0.5 = box center, ±0.5 on x or z = a side/front/
+// back face, y:0/1 = the bottom/top face). Because the fractions are read
+// fresh off that box's current size every rebuild, the pin automatically
+// tracks the mesh through any resize with no extra math.
+// Deliberately limited to boxes that sit at a fixed rest position relative
+// to their own parent (pelvis or spine) — head, neck, torso, waist/hip, and
+// the legs/feet. Arms and hands are themselves posed (rotated by whatever
+// pose is active), so their CURRENT world position isn't recoverable from
+// the flat 2D box alone; pinning a hand to another hand/arm still goes
+// through a hand-tuned preset like 'opposite-shoulder' above.
+// `pelvisAnchored: true` marks a box that hangs off the pelvis (bodyGroup3D)
+// rather than the spine pivot — its raw point needs the same
+// pelvisPointToSpineLocal3D correction 'hip-side' above uses, or a spine
+// bend/twist will pull the pin off the mesh it's supposed to sit on.
+const MESH_PIN_ANCHORS_3D = {
+  head:       { get: geom => geom.headBox,        pelvisAnchored: false },
+  neck:       { get: geom => geom.neckBox,        pelvisAnchored: false },
+  torso:      { get: geom => geom.torsoBox,       pelvisAnchored: false },
+  waist:      { get: geom => geom.waistBox,       pelvisAnchored: true },
+  leftLeg:    { get: geom => geom.legBoxes.left,  pelvisAnchored: true },
+  rightLeg:   { get: geom => geom.legBoxes.right, pelvisAnchored: true },
+  leftFoot:   { get: geom => geom.footBoxes.left, pelvisAnchored: true },
+  rightFoot:  { get: geom => geom.footBoxes.right,pelvisAnchored: true },
+};
+
+// Resolves a pose's `handTarget` field to a concrete spine-local point,
+// whichever form it's given in: a named string preset (existing behavior,
+// HAND_TARGET_PRESETS_3D above) or a generic mesh-pin descriptor object
+// `{ box: 'waist'|'torso'|'head'|'neck'|'leftLeg'|'rightLeg'|'leftFoot'|
+// 'rightFoot', x, y, z, poleAngles? }` (x/y/z default to 0/0.5/0.5, the
+// box's front-center, if omitted). Returns null if the target can't be
+// resolved (mesh not built this side, e.g. a missing leg), same as a
+// preset returning null — applyArmIK already treats that as "skip IK".
+function resolveHandTarget3D(side, targetSpec, geom) {
+  if (!targetSpec) return null;
+  if (typeof targetSpec === 'string') {
+    const preset = HAND_TARGET_PRESETS_3D[targetSpec];
+    if (!preset) return null;
+    const point = preset(side, geom);
+    return point ? { point, poleAngles: preset.poleAngles } : null;
+  }
+  const anchor = MESH_PIN_ANCHORS_3D[targetSpec.box];
+  const box = anchor ? anchor.get(geom) : null;
+  let point = boxTargetPoint3D(box, targetSpec.x ?? 0, targetSpec.y ?? 0.5, targetSpec.z ?? 0.5);
+  if (point && anchor.pelvisAnchored) {
+    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
+    point = pelvisPointToSpineLocal3D(point, sd.bend, sd.twist, sd.side);
+  }
+  return point ? { point, poleAngles: targetSpec.poleAngles } : null;
+}
+
 const v3 = (x, y, z) => ({ x, y, z });
 const v3sub = (a, b) => v3(a.x - b.x, a.y - b.y, a.z - b.z);
 const v3dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -993,20 +1322,20 @@ function solveArmIK(shoulderPos, target, L1, L2, pole) {
 // than the arm can physically reach, so the caller can add it to the pose's
 // own wristTurn and visibly sell the hand "reaching" rather than the arm
 // silently coming up short of the mesh it was supposed to lock onto.
-function applyArmIK(side, shoulderGrp, elbowGrp, presetName) {
+// targetSpec is whatever the pose's handTarget field holds — a named preset
+// string or a generic mesh-pin descriptor object; see resolveHandTarget3D.
+function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
   if (!shoulderGrp || !elbowGrp) return false;
-  const preset = HAND_TARGET_PRESETS_3D[presetName];
-  if (!preset) return false;
+  const resolved = resolveHandTarget3D(side, targetSpec, ikContext3D);
+  if (!resolved) return false;
   const shoulderPos = ikContext3D.shoulders[side];
   const lens = ikContext3D.armLens[side];
   if (!shoulderPos || !lens) return false;
-  const target = preset(side, ikContext3D);
-  if (!target) return false;
   const sideSign = side === 'right' ? 1 : -1;
-  const pole = preset.poleAngles
-    ? poleFromAngles3D(side, preset.poleAngles.flex, preset.poleAngles.abd, preset.poleAngles.roll)
+  const pole = resolved.poleAngles
+    ? poleFromAngles3D(side, resolved.poleAngles.flex, resolved.poleAngles.abd, resolved.poleAngles.roll)
     : { x: sideSign * 0.5, y: -0.3, z: 0.8 };
-  const sol = solveArmIK(shoulderPos, target, lens.upper, lens.lower, pole);
+  const sol = solveArmIK(shoulderPos, resolved.point, lens.upper, lens.lower, pole);
   if (!sol) return false;
   shoulderGrp.rotation.x = sol.flexRad;
   shoulderGrp.rotation.y = sol.rollRad;
@@ -1039,6 +1368,19 @@ function buildBody3D() {
 
   const torsoBox = boxes.find(b => b.group === 'torso');
   const waistBox = boxes.find(b => b.group === 'waistbox');
+  const neckBox = boxes.find(b => b.group === 'neck');
+  // Legs/feet have no explicit side field of their own (see
+  // collectBodyBoxData3D) — same left/right split buildLeg() itself uses
+  // (negative x = left), so a mesh pin targeting 'leftLeg'/'rightFoot' etc.
+  // always matches the same box the actual leg mesh was built from.
+  const legBoxes = {
+    left:  boxes.find(b => b.group === 'legs' && b.xCm < 0),
+    right: boxes.find(b => b.group === 'legs' && b.xCm >= 0),
+  };
+  const footBoxes = {
+    left:  boxes.find(b => b.group === 'feet' && b.xCm < 0),
+    right: boxes.find(b => b.group === 'feet' && b.xCm >= 0),
+  };
   const legBoxForPivot = boxes.find(b => b.group === 'legs');
   // Where the spine bends: the top of the waist/hip box (or, failing that,
   // the top of the legs) — i.e. roughly the real waistline. Everything
@@ -1051,7 +1393,7 @@ function buildBody3D() {
   // Refresh the IK context with this build's actual geometry — any
   // handTarget-driven pose reads current body size from here, never stale
   // numbers from a previous Generate/slider change.
-  ikContext3D = { headBox, torsoBox, waistBox, waistTopY, shoulders: {}, armLens: {}, spineDeg: ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 } };
+  ikContext3D = { headBox, neckBox, torsoBox, waistBox, legBoxes, footBoxes, waistTopY, shoulders: {}, armLens: {}, spineDeg: ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 } };
 
   const spineGroup = new THREE.Group();
   spineGroup.position.set(0, waistTopY, 0);
@@ -1138,7 +1480,7 @@ function buildBody3D() {
   // sits directly in the shoulder-pivot group; the forearm AND hand sit in
   // a nested elbow-pivot group, so the elbow can bend independently of the
   // shoulder and the hand just follows along without bending on its own. ----
-  function buildArmSide(group, pivot, side, thumbFlip) {
+  function buildArmSide(group, pivot, side) {
     if (!pivot) return;
     const armBox = boxes.find(b => b.side === side && b.group === 'arms');
     if (!armBox) return;
@@ -1213,15 +1555,17 @@ function buildBody3D() {
 
       // Thumb: a small block on the hand's edge, near the wrist end, so the
       // hand's facing (which way is palm vs. back, which edge is which) is
-      // readable at a glance instead of guessed from a flat rectangle. Sits
-      // on the +x edge for the right hand / -x edge for the left hand by
-      // default — CONFIRMED against the render as the palm edge (this is
-      // what isHandFlipped's red/flipped state above documents) — unless
-      // the current pose sets thumbFlip for this side, which sends it to
-      // the other (dorsum) edge instead (see the comment on thumbFlipL/R
-      // in expandPose3D for when a pose needs this), angled out a little
-      // from the hand's own plane to read clearly in 3D.
-      const thumbSign = (side === 'right' ? 1 : -1) * (thumbFlip ? -1 : 1);
+      // readable at a glance instead of guessed from a flat rectangle. Built
+      // here at its base edge (+x for the right hand / -x for the left) —
+      // CONFIRMED against the render as the palm edge, same baseSign
+      // applyHandFlipVisuals3D uses — and immediately corrected to whichever
+      // edge the CURRENT wristTurn actually calls for by the
+      // applyHandFlipVisuals3D() call after buildArmSide returns (and again
+      // on every later pose/override change), angled out a little from the
+      // hand's own plane to read clearly in 3D. rig3D keeps the pivot + the
+      // geometry it needs so that later repositioning doesn't have to
+      // rebuild the mesh.
+      const thumbSign = side === 'right' ? 1 : -1;
       const thumbW = handBox.wCm * 0.32, thumbH = handBox.hCm * 0.4, thumbD = handDepthCm * 0.8;
       const thumb = makeBoxMesh({ wCm: thumbW, hCm: thumbH, group: 'hands' }, thumbD);
       const thumbPivot = new THREE.Group();
@@ -1231,14 +1575,15 @@ function buildBody3D() {
       thumbPivot.add(thumb);
       wristGroup.add(thumbPivot);
       meshRecords3D.push({ mesh: thumb, group: 'hands', wCm: thumbW, hCm: thumbH });
+      rig3D[side + 'ThumbPivot'] = thumbPivot;
+      rig3D[side + 'ThumbGeom'] = { wCm: handBox.wCm, hCm: handBox.hCm };
     }
 
     noteY(armBox);
     rig3D[side + 'Elbow'] = elbowGroup;
   }
-  const currentPoseExpanded = expandPose3D(POSES3D[currentPose3D] || POSES3D['stand-relaxed']);
-  buildArmSide(leftArmGroup, leftPivot, 'left', currentPoseExpanded.thumbFlipL);
-  buildArmSide(rightArmGroup, rightPivot, 'right', currentPoseExpanded.thumbFlipR);
+  buildArmSide(leftArmGroup, leftPivot, 'left');
+  buildArmSide(rightArmGroup, rightPivot, 'right');
 
   // ---- Legs: split at the knee (the exact vertical midpoint of the leg
   // box — this already matches where the 2D "Knee line" is drawn). Thigh
@@ -1389,10 +1734,28 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   // solving, using this pose's own spine numbers.
   ikContext3D.spineDeg = { bend: p.spineBend || 0, twist: p.spineTwist || 0, side: p.spineSide || 0 };
   const leftIK = p.handTargetL ? applyArmIK('left', rig3D.leftShoulder, rig3D.leftElbow, p.handTargetL) : false;
+  // Actually-applied elbow bend/lift for this render — defaults to the
+  // pose's own numbers (untouched) for an IK-driven side, and gets replaced
+  // inside the non-IK branch below when an override is active. Declared out
+  // here (rather than as consts inside the branch) so the Save button below
+  // can read back exactly what was rendered, regardless of which path ran.
+  let leftElbowBend = p.elbowL, leftElbowLift = 0;
   if (!leftIK) {
-    setBallJoint(rig3D.leftShoulder, p.shoulderL, p.shoulderAbdL, -1);
+    // Clamp wristTurn to its physical range BEFORE positioning the shoulder,
+    // so any overshoot can be folded into this same shoulder call as extra
+    // abduction (elbow lift) rather than silently vanishing. The Hand/Wrist
+    // Facing panel's elbow inputs stack on top of/replace these the same
+    // way its hand/wrist word presets already override p.wristTurnL/p.wristL
+    // above: elbowLiftOverride ADDS to the auto lift (manual lift on top of
+    // whatever the wristTurn clamp already contributed), while
+    // elbowBendOverride REPLACES the pose's own elbow angle outright.
+    const leftWrist = clampWristTurn('left', p.wristTurnL);
+    p.wristTurnL = leftWrist.clamped;
+    leftElbowLift = leftWrist.elbowLift + (elbowLiftOverride.left || 0);
+    leftElbowBend = elbowBendOverride.left != null ? elbowBendOverride.left : p.elbowL;
+    setBallJoint(rig3D.leftShoulder, p.shoulderL, (p.shoulderAbdL || 0) + leftElbowLift, -1);
     if (rig3D.leftShoulder) rig3D.leftShoulder.rotation.y = deg2rad((p.shoulderRollL || 0) * -1);
-    setHinge(rig3D.leftElbow, p.elbowL);
+    setHinge(rig3D.leftElbow, leftElbowBend);
   } else if (leftIK.wristTurnBoost) {
     // Target was farther than the arm can reach — rotate the wrist a bit
     // further outward on top of whatever the pose authored, instead of
@@ -1400,18 +1763,26 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     // Added the same way other shared "outward" fields (hipAbd/shoulderAbd)
     // are authored — the per-side ×(-1)/×(+1) mirroring below turns this
     // single positive number into "outward" on whichever side it's on.
-    p.wristTurnL = (p.wristTurnL || 0) + leftIK.wristTurnBoost;
+    // IK already fixed the shoulder/elbow to reach the target, so an
+    // overshoot here just clamps (no elbow-lift compensation — lifting the
+    // elbow now would pull the hand off the target it's locked onto).
+    p.wristTurnL = clampWristTurn('left', (p.wristTurnL || 0) + leftIK.wristTurnBoost).clamped;
   }
   const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
+  let rightElbowBend = p.elbowR, rightElbowLift = 0;
   if (!rightIK) {
-    setBallJoint(rig3D.rightShoulder, p.shoulderR, p.shoulderAbdR, 1);
+    const rightWrist = clampWristTurn('right', p.wristTurnR);
+    p.wristTurnR = rightWrist.clamped;
+    rightElbowLift = rightWrist.elbowLift + (elbowLiftOverride.right || 0);
+    rightElbowBend = elbowBendOverride.right != null ? elbowBendOverride.right : p.elbowR;
+    setBallJoint(rig3D.rightShoulder, p.shoulderR, (p.shoulderAbdR || 0) + rightElbowLift, 1);
     // shoulderRoll: same mirroring convention as hipTurn — applied AFTER the
     // ball joint's flex/abd, on the same shoulder group, so it re-aims the
     // elbow's hinge axis without disturbing flex/abd.
     if (rig3D.rightShoulder) rig3D.rightShoulder.rotation.y = deg2rad((p.shoulderRollR || 0) * 1);
-    setHinge(rig3D.rightElbow, p.elbowR);
+    setHinge(rig3D.rightElbow, rightElbowBend);
   } else if (rightIK.wristTurnBoost) {
-    p.wristTurnR = (p.wristTurnR || 0) + rightIK.wristTurnBoost;
+    p.wristTurnR = clampWristTurn('right', (p.wristTurnR || 0) + rightIK.wristTurnBoost).clamped;
   }
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
@@ -1424,13 +1795,11 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   if (rig3D.leftWrist)  rig3D.leftWrist.rotation.y  = deg2rad((p.wristTurnL || 0) * -1);
   if (rig3D.rightWrist) rig3D.rightWrist.rotation.y = deg2rad((p.wristTurnR || 0) *  1);
 
-  // Forearm flip state + color, derived from the same wristTurn values just
-  // applied above — kept on rig3D so later features (rotation-range limits,
-  // mesh pinning) can read the current flip state without recomputing it.
-  rig3D.leftHandFlipped  = isHandFlipped('left',  p.wristTurnL);
-  rig3D.rightHandFlipped = isHandFlipped('right', p.wristTurnR);
-  if (rig3D.leftForearmMesh)  rig3D.leftForearmMesh.material.color.setHex(rig3D.leftHandFlipped  ? FOREARM_FLIPPED_COLOR : FOREARM_UNFLIPPED_COLOR);
-  if (rig3D.rightForearmMesh) rig3D.rightForearmMesh.material.color.setHex(rig3D.rightHandFlipped ? FOREARM_FLIPPED_COLOR : FOREARM_UNFLIPPED_COLOR);
+  // Forearm flip state, color AND thumb edge — all derived from the same
+  // wristTurn values just applied above, in one place, so they can never
+  // read as three different hand orientations at once.
+  applyHandFlipVisuals3D('left',  p.wristTurnL);
+  applyHandFlipVisuals3D('right', p.wristTurnR);
 
   if (rig3D.spine) {
     rig3D.spine.rotation.x = deg2rad(p.spineBend || 0);
@@ -1441,6 +1810,15 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     poseRootGroup3D.rotation.x = deg2rad(p.root || 0);
     poseRootGroup3D.rotation.z = deg2rad(p.rootZ || 0);
   }
+  // Snapshot of exactly what got rendered this call — the Save button in the
+  // Hand/Wrist Facing panel reads this rather than re-deriving it, so what
+  // gets written to POSES3D is guaranteed to match what's on screen. isIK
+  // sides are flagged so Save knows to leave their handTarget-driven fields
+  // alone instead of writing dead angle numbers the IK path would ignore.
+  lastPoseResolved3D = {
+    left:  { wristTurn: p.wristTurnL, wrist: p.wristL, elbow: leftElbowBend,  shoulderAbd: (p.shoulderAbdL || 0) + leftElbowLift,  isIK: !!leftIK },
+    right: { wristTurn: p.wristTurnR, wrist: p.wristR, elbow: rightElbowBend, shoulderAbd: (p.shoulderAbdR || 0) + rightElbowLift, isIK: !!rightIK },
+  };
   groundBody3D(reframe);
 }
 
@@ -1547,19 +1925,46 @@ function switchBodyView(view) {
   const el2D = document.getElementById('preview'), el3D = document.getElementById('preview3D');
   const btn2D = document.getElementById('view2DBtn'), btn3D = document.getElementById('view3DBtn');
   const depthPanel = document.getElementById('depthPanel');
-  const posePanel = document.getElementById('posePanel');
-  const handWristPanel = document.getElementById('handWristPanel');
+  const poseModalToggle = document.getElementById('poseModalToggle');
   if (view === '3d') {
     el2D.style.display = 'none'; el3D.style.display = 'block'; depthPanel.style.display = 'block';
-    if (posePanel) posePanel.style.display = 'block';
-    if (handWristPanel) handWristPanel.style.display = 'block';
+    if (poseModalToggle) poseModalToggle.classList.add('visible');
     btn2D.classList.remove('active'); btn3D.classList.add('active');
     if (!sceneInited3D) { initScene3D(); buildBody3D(); }
     requestAnimationFrame(resizeBody3D);
   } else {
     el2D.style.display = 'flex'; el3D.style.display = 'none'; depthPanel.style.display = 'none';
-    if (posePanel) posePanel.style.display = 'none';
-    if (handWristPanel) handWristPanel.style.display = 'none';
+    if (poseModalToggle) poseModalToggle.classList.remove('visible');
+    closePoseModal();
     btn3D.classList.remove('active'); btn2D.classList.add('active');
   }
 }
+
+// ---- Pose / Hand-Wrist popup (stage 7) -------------------------------------
+// The Pose panel and Hand/Wrist Facing panel used to sit permanently inline
+// below the 3D canvas (shown/hidden only by switchBodyView above); they now
+// live inside this popup instead so the 3D view itself has room to breathe.
+// Nothing about how the panels WORK changed — setPose3D, setHandWristTargetSide,
+// savePoseFromHandWristPanel etc. all still just look up the same element IDs,
+// which still exist, just nested one level deeper in the DOM now.
+function openPoseModal() {
+  const overlay = document.getElementById('poseModalOverlay');
+  if (overlay) overlay.classList.add('open');
+}
+function closePoseModal() {
+  const overlay = document.getElementById('poseModalOverlay');
+  if (overlay) overlay.classList.remove('open');
+}
+function switchPoseModalTab(tab) {
+  const poseTab = document.getElementById('poseModalTabPose');
+  const handTab = document.getElementById('poseModalTabHand');
+  const poseBtn = document.getElementById('poseModalTabPoseBtn');
+  const handBtn = document.getElementById('poseModalTabHandBtn');
+  if (poseTab) poseTab.classList.toggle('active', tab === 'pose');
+  if (handTab) handTab.classList.toggle('active', tab === 'hand');
+  if (poseBtn) poseBtn.classList.toggle('active', tab === 'pose');
+  if (handBtn) handBtn.classList.toggle('active', tab === 'hand');
+}
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closePoseModal();
+});
