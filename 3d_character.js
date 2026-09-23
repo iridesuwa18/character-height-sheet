@@ -174,23 +174,23 @@ const WRIST_ROTATION_DEG = { front: 0, up: 60, down: -60 };
 // ---- Forearm flip state (palm vs. dorsum) ----------------------------------
 // A forearm is "flipped" when its hand is palm-side, "unflipped" when it's
 // dorsum-side — colored red/blue on the forearm block so the state reads at
-// a glance. Canonical convention (viewer looking at the model's POV, hand
-// stretched ~15° from the body): wristTurn runs 0° (palm) → 180° (dorsum)
-// for the LEFT hand as it rotates toward the torso midline, and 0° (palm) →
-// -180° (dorsum) for the RIGHT hand. A raw wristTurn value is classified by
-// whichever endpoint (0 or ±180) it sits closer to, so poses authored before
-// this convention existed still get a reasonable flip/color reading.
+// a glance. CONFIRMED against the render (do not re-guess this):
+//   default thumb position (thumbFlip false, wristTurn 0, right hand's
+//   thumb on the +x edge / left hand's on the -x edge — see thumbSign in
+//   buildArmSide) = RED = flipped = palm view.
+//   The opposite thumb edge (thumbFlip true, or wristTurn rotated toward
+//   dorsum) = BLUE = unflipped = dorsum view.
+// Canonical wristTurn range (viewer looking at the model's POV, hand
+// stretched ~15° from the body): 0° (palm) → 180° (dorsum) for the LEFT
+// hand as it rotates toward the torso midline, and 0° (palm) → -180°
+// (dorsum) for the RIGHT hand. A raw wristTurn value is classified by
+// whichever endpoint (0 or ±180) it sits closer to, so poses authored
+// before this convention existed still get a reasonable flip/color reading.
 const FOREARM_FLIPPED_COLOR = 0xff4444;   // red  = flipped   = palm view
 const FOREARM_UNFLIPPED_COLOR = 0x4488ff; // blue = unflipped = dorsum view
-// If the default (relaxed, wristTurn=0) forearm ever reads as the wrong
-// color for what's actually on screen, this is the one line to flip —
-// it inverts the classification for BOTH hands without touching anything
-// else (the wristTurn ranges/buttons/thumb geometry all stay exactly as-is).
-const FLIP_SENSE_INVERTED = true;
 function isHandFlipped(side, wristTurnDeg) {
   const t = wristTurnDeg || 0;
-  const palmSide = side === 'left' ? t < 90 : t > -90;
-  return FLIP_SENSE_INVERTED ? !palmSide : palmSide;
+  return side === 'left' ? t < 90 : t > -90;
 }
 
 // Expands a POSES3D entry (shared fields + optional left/right overrides)
@@ -1215,12 +1215,12 @@ function buildBody3D() {
       // hand's facing (which way is palm vs. back, which edge is which) is
       // readable at a glance instead of guessed from a flat rectangle. Sits
       // on the +x edge for the right hand / -x edge for the left hand by
-      // default (confirmed against the actual render — this is the edge
-      // that reads correctly, the opposite of what an earlier pass here
-      // assumed) — unless the current pose sets thumbFlip for this side,
-      // which sends it to the other edge instead (see the comment on
-      // thumbFlipL/R in expandPose3D for when a pose needs this), angled
-      // out a little from the hand's own plane to read clearly in 3D.
+      // default — CONFIRMED against the render as the palm edge (this is
+      // what isHandFlipped's red/flipped state above documents) — unless
+      // the current pose sets thumbFlip for this side, which sends it to
+      // the other (dorsum) edge instead (see the comment on thumbFlipL/R
+      // in expandPose3D for when a pose needs this), angled out a little
+      // from the hand's own plane to read clearly in 3D.
       const thumbSign = (side === 'right' ? 1 : -1) * (thumbFlip ? -1 : 1);
       const thumbW = handBox.wCm * 0.32, thumbH = handBox.hCm * 0.4, thumbD = handDepthCm * 0.8;
       const thumb = makeBoxMesh({ wCm: thumbW, hCm: thumbH, group: 'hands' }, thumbD);
