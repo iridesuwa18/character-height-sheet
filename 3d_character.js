@@ -838,10 +838,11 @@ function buildBody3D() {
       // Thumb: a small block on the hand's edge, near the wrist end, so the
       // hand's facing (which way is palm vs. back, which edge is which) is
       // readable at a glance instead of guessed from a flat rectangle. Sits
-      // on the +x edge for the right hand / -x edge for the left hand (the
-      // same right:+1/left:-1 side convention used everywhere else), angled
-      // out a little from the hand's own plane to read clearly in 3D.
-      const thumbSign = side === 'right' ? 1 : -1;
+      // on the -x edge for the right hand / +x edge for the left hand (the
+      // OPPOSITE of the right:+1/left:-1 side convention used everywhere
+      // else in this file — this is the one exception, matching anatomy),
+      // angled out a little from the hand's own plane to read clearly in 3D.
+      const thumbSign = side === 'right' ? -1 : 1;
       const thumbW = handBox.wCm * 0.32, thumbH = handBox.hCm * 0.4, thumbD = handDepthCm * 0.8;
       const thumb = makeBoxMesh({ wCm: thumbW, hCm: thumbH, group: 'hands' }, thumbD);
       const thumbPivot = new THREE.Group();
