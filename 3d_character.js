@@ -186,6 +186,61 @@ function expandPose3D(pose) {
   };
 }
 
+// ---- Hand / Wrist Facing panel — live, pose-independent overrides -------
+// Lets a person click through the handRotation/wristRotation words above and
+// see the result immediately on whichever hand(s) are selected, instead of
+// having to guess a pose name or degree value. Sits on top of whatever the
+// current named pose already set — Reset clears back to the pose's own
+// values. Kept sticky across pose switches on purpose, so it's easy to try
+// the same hand facing against several poses in a row.
+let handRotationOverride = { left: null, right: null };   // 'front'|'side'|'back'|null
+let wristRotationOverride = { left: null, right: null };  // 'up'|'front'|'down'|null
+let handWristTargetSide = 'right';
+
+function setHandWristTargetSide(side) {
+  handWristTargetSide = side;
+  refreshHandWristButtons();
+}
+function setHandRotationInput(value) {
+  const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
+  sides.forEach(s => { handRotationOverride[s] = value; });
+  refreshHandWristButtons();
+  if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
+}
+function setWristRotationInput(value) {
+  const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
+  sides.forEach(s => { wristRotationOverride[s] = value; });
+  refreshHandWristButtons();
+  if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
+}
+function clearHandWristOverrides() {
+  handRotationOverride = { left: null, right: null };
+  wristRotationOverride = { left: null, right: null };
+  refreshHandWristButtons();
+  if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
+}
+// Which value to show as "active" for the currently selected target side(s)
+// — for 'both', only lit up when left and right actually agree.
+function currentHandWristValue(overrideObj) {
+  if (handWristTargetSide === 'both') {
+    return overrideObj.left === overrideObj.right ? overrideObj.left : null;
+  }
+  return overrideObj[handWristTargetSide];
+}
+function refreshHandWristButtons() {
+  document.querySelectorAll('.hw-side-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.side === handWristTargetSide);
+  });
+  const handVal = currentHandWristValue(handRotationOverride);
+  document.querySelectorAll('.hw-hand-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.value === handVal);
+  });
+  const wristVal = currentHandWristValue(wristRotationOverride);
+  document.querySelectorAll('.hw-wrist-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.value === wristVal);
+  });
+}
+
 const POSES3D = {
   // ── Standing ──────────────────────────────────────────────────────────
   'stand-relaxed':        { section:'Standing', label:'Relaxed' },
@@ -208,7 +263,7 @@ const POSES3D = {
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-75, shoulderAbd:14, shoulderRoll:-35, elbow:-151, wrist:47, wristTurn:-20} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-78, shoulderAbd:28, shoulderRoll:-14, elbow:-140, handRotation:'side', wrist:40} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -791,7 +846,7 @@ function buildBody3D() {
       const thumb = makeBoxMesh({ wCm: thumbW, hCm: thumbH, group: 'hands' }, thumbD);
       const thumbPivot = new THREE.Group();
       thumbPivot.position.set(thumbSign * handBox.wCm * 0.42, -handBox.hCm * 0.18, 0);
-      thumbPivot.rotation.z = deg2rad(thumbSign * -35);
+      thumbPivot.rotation.z = deg2rad(thumbSign * 35);
       thumb.position.set(0, -thumbH/2, 0);
       thumbPivot.add(thumb);
       wristGroup.add(thumbPivot);
@@ -910,6 +965,13 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   const pose = POSES3D[poseName] || POSES3D['stand-relaxed'];
   currentPose3D = POSES3D[poseName] ? poseName : 'stand-relaxed';
   const p = expandPose3D(pose);
+
+  // Hand/Wrist Facing panel overrides win over whatever the named pose set,
+  // on whichever side(s) have an override active.
+  if (handRotationOverride.left)  p.wristTurnL = HAND_ROTATION_DEG[handRotationOverride.left];
+  if (handRotationOverride.right) p.wristTurnR = HAND_ROTATION_DEG[handRotationOverride.right];
+  if (wristRotationOverride.left)  p.wristL = WRIST_ROTATION_DEG[wristRotationOverride.left];
+  if (wristRotationOverride.right) p.wristR = WRIST_ROTATION_DEG[wristRotationOverride.right];
 
   // side is -1 for left, +1 for right, so a positive hipAbd/shoulderAbd in
   // pose data always reads as "swing outward, away from the midline" on
@@ -1072,15 +1134,18 @@ function switchBodyView(view) {
   const btn2D = document.getElementById('view2DBtn'), btn3D = document.getElementById('view3DBtn');
   const depthPanel = document.getElementById('depthPanel');
   const posePanel = document.getElementById('posePanel');
+  const handWristPanel = document.getElementById('handWristPanel');
   if (view === '3d') {
     el2D.style.display = 'none'; el3D.style.display = 'block'; depthPanel.style.display = 'block';
     if (posePanel) posePanel.style.display = 'block';
+    if (handWristPanel) handWristPanel.style.display = 'block';
     btn2D.classList.remove('active'); btn3D.classList.add('active');
     if (!sceneInited3D) { initScene3D(); buildBody3D(); }
     requestAnimationFrame(resizeBody3D);
   } else {
     el2D.style.display = 'flex'; el3D.style.display = 'none'; depthPanel.style.display = 'none';
     if (posePanel) posePanel.style.display = 'none';
+    if (handWristPanel) handWristPanel.style.display = 'none';
     btn3D.classList.remove('active'); btn2D.classList.add('active');
   }
 }
