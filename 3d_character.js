@@ -314,6 +314,10 @@ let wristRotationOverride = { left: null, right: null };  // 'up'|'front'|'down'
 let elbowBendOverride = { left: null, right: null };
 let elbowLiftOverride = { left: null, right: null };
 let handWristTargetSide = 'right';
+// Click-to-pin state: which side (if any) is currently "armed" so the next
+// click on the 3D canvas locks that hand to whatever mesh spot gets
+// clicked. Only one side at a time — see armMeshPin.
+let pinArmedSide = null;
 // Snapshot of the last applyPose3D() call's fully-resolved per-side values
 // (post-override, post-clamp) — see where it's written at the end of
 // applyPose3D for exactly what it holds. null until the first pose is
@@ -322,6 +326,8 @@ let lastPoseResolved3D = null;
 
 function setHandWristTargetSide(side) {
   handWristTargetSide = side;
+  pinArmedSide = null; // arming is per-side; switching sides cancels it
+  updatePinModeUI();
   refreshHandWristButtons();
 }
 function setHandRotationInput(value) {
@@ -397,6 +403,140 @@ function refreshHandWristButtons() {
     const liftVal = currentHandWristValue(elbowLiftOverride);
     liftEl.value = (liftVal === null || liftVal === undefined) ? '' : liftVal;
   }
+  const pinStatusEl = document.getElementById('pinStatusLine');
+  if (pinStatusEl) {
+    const pose = POSES3D[currentPose3D];
+    const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
+    pinStatusEl.textContent = sides.map(s => {
+      const label = s.charAt(0).toUpperCase() + s.slice(1);
+      const ht = pose && pose[s] && pose[s].handTarget;
+      if (!ht) return `${label}: not pinned`;
+      return `${label}: pinned to ${typeof ht === 'string' ? ht : ht.box}`;
+    }).join('  ·  ');
+  }
+}
+
+// ── Click-to-pin ─────────────────────────────────────────────────────────
+// Lets a person click a spot on the rendered head/neck/torso/waist/leg/foot
+// mesh instead of typing box/x/y/z by hand, converting the click into the
+// exact same box-fraction format resolveHandTarget3D already reads
+// (MESH_PIN_ANCHORS_3D) — so a click-picked pin behaves identically to a
+// hand-authored one and keeps tracking that mesh through resizes. Arms and
+// hands are excluded (see MESH_PIN_ANCHORS_3D note: their posed position
+// isn't recoverable from the flat 2D box), and clicking them is ignored.
+//
+// Two coordinate frames matter here, matching the ones resolveHandTarget3D
+// itself uses: torso/head/neck hang directly off the SPINE pivot with no
+// joint of their own, so converting a click into spineGroup's local space
+// (spineGroup.worldToLocal) lands EXACTLY back on the box's own rest
+// coordinates, however much the spine is currently bent/twisted. Waist/legs/
+// feet hang off the PELVIS (bodyGroup3D) instead — waist has no joint of
+// its own either, so bodyGroup3D.worldToLocal is equally exact for it. Legs
+// and feet DO have their own hip/knee/ankle pivot in between, which is
+// baked into that same conversion — so a pin picked while the leg is bent
+// reads slightly off the straight-leg rest frame the box format assumes.
+// Accurate when picked on a roughly straight leg (e.g. a standing pose),
+// approximate otherwise. This is the same simplification
+// resolveHandTarget3D's own leg/foot targets already make (they don't
+// track hip/knee bend either), not a new one introduced here.
+let raycaster3D = null;
+const PIN_GROUP_ANCHOR_3D = { head: 'head', neck: 'neck', torso: 'torso', waistbox: 'waist' };
+const round2 = n => Math.round(n * 100) / 100;
+
+function setupMeshPinPicking3D() {
+  const canvas = document.getElementById('body3DCanvas');
+  if (!canvas || canvas._pinPickBound) return;
+  canvas._pinPickBound = true;
+  raycaster3D = new THREE.Raycaster();
+  // pointerdown/pointerup with a small drag-distance threshold, rather than
+  // a plain 'click' listener, so orbiting/panning the camera (which starts
+  // and ends on the same canvas) never gets misread as a pin placement.
+  let downAt = null;
+  canvas.addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointerup', (e) => {
+    const start = downAt; downAt = null;
+    if (!pinArmedSide || !start) return;
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) return; // was a drag, not a pick
+    handleMeshPinClick3D(e);
+  });
+}
+
+function handleMeshPinClick3D(e) {
+  if (!raycaster3D || !camera3D || !renderer3D || !bodyGroup3D || !rig3D.spine) return;
+  const rect = renderer3D.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width) * 2 - 1,
+    -((e.clientY - rect.top) / rect.height) * 2 + 1
+  );
+  raycaster3D.setFromCamera(ndc, camera3D);
+  const pinnable = meshRecords3D.filter(r => PIN_GROUP_ANCHOR_3D[r.group] || r.group === 'legs' || r.group === 'feet');
+  const hits = raycaster3D.intersectObjects(pinnable.map(r => r.mesh), false);
+  if (!hits.length) return;
+  const hit = hits[0];
+  const rec = pinnable.find(r => r.mesh === hit.object);
+  if (!rec) return;
+
+  const bodyLocal = bodyGroup3D.worldToLocal(hit.point.clone());
+  let anchorKey = PIN_GROUP_ANCHOR_3D[rec.group];
+  if (rec.group === 'legs') anchorKey = bodyLocal.x < 0 ? 'leftLeg' : 'rightLeg';
+  if (rec.group === 'feet') anchorKey = bodyLocal.x < 0 ? 'leftFoot' : 'rightFoot';
+  if (!anchorKey) return;
+
+  const anchor = MESH_PIN_ANCHORS_3D[anchorKey];
+  const box = anchor.get(ikContext3D);
+  if (!box) return;
+  const { depthCm, zOffset } = computeBodyDepth3D(box);
+  const local = anchor.pelvisAnchored ? bodyLocal : rig3D.spine.worldToLocal(hit.point.clone());
+  const yLocal = anchor.pelvisAnchored ? local.y : local.y + ikContext3D.waistTopY;
+
+  const xFrac = round2((local.x - box.xCm) / box.wCm);
+  const yFrac = round2((yLocal - box.bottomCm) / box.hCm);
+  const zFrac = round2((local.z - zOffset) / depthCm);
+
+  applyMeshPin3D(pinArmedSide, anchorKey, xFrac, yFrac, zFrac);
+}
+
+// Arms/disarms click-to-pin mode for one side. Clicking the button again
+// (or switching the side selector) disarms it. 'both' can't be armed —
+// a click is one point, and left/right need their own separate points.
+function armMeshPin(side) {
+  if (side === 'both') { alert('Pick Left Hand or Right Hand above (not Both) before pinning to the mesh.'); return; }
+  pinArmedSide = pinArmedSide === side ? null : side;
+  updatePinModeUI();
+}
+function updatePinModeUI() {
+  const btn = document.getElementById('pinMeshBtn');
+  const hint = document.getElementById('body3DHint');
+  if (btn) btn.classList.toggle('active', !!pinArmedSide);
+  if (hint) hint.textContent = pinArmedSide
+    ? `Click a spot on the body to pin the ${pinArmedSide} hand there`
+    : 'Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan';
+}
+function applyMeshPin3D(side, box, x, y, z) {
+  const pose = POSES3D[currentPose3D];
+  if (!pose) return;
+  pose[side] = pose[side] || {};
+  pose[side].handTarget = { box, x, y, z };
+  // An IK-driven side ignores the fixed-angle overrides entirely (see
+  // applyPose3D) — clear them so the panel doesn't keep showing dead values.
+  handRotationOverride[side] = null;
+  wristRotationOverride[side] = null;
+  elbowBendOverride[side] = null;
+  elbowLiftOverride[side] = null;
+  pinArmedSide = null;
+  updatePinModeUI();
+  refreshHandWristButtons();
+  applyPose3D(currentPose3D, { reframe: false });
+}
+// Clears the pin(s) for whichever side(s) the side selector is currently
+// on, reverting that hand to the pose's own plain fixed angles.
+function unpinHandWrist() {
+  const pose = POSES3D[currentPose3D];
+  if (!pose) return;
+  const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
+  sides.forEach(s => { if (pose[s]) delete pose[s].handTarget; });
+  refreshHandWristButtons();
+  applyPose3D(currentPose3D, { reframe: false });
 }
 
 const round1 = n => Math.round((n || 0) * 10) / 10;
@@ -929,6 +1069,7 @@ function initScene3D() {
   scene3D.add(poseRootGroup3D);
 
   window.addEventListener('resize', resizeBody3D);
+  setupMeshPinPicking3D();
   sceneInited3D = true;
   animate3D();
 }
@@ -1954,6 +2095,8 @@ function openPoseModal() {
 function closePoseModal() {
   const overlay = document.getElementById('poseModalOverlay');
   if (overlay) overlay.classList.remove('open');
+  pinArmedSide = null;
+  updatePinModeUI();
 }
 function switchPoseModalTab(tab) {
   const poseTab = document.getElementById('poseModalTabPose');
@@ -1964,6 +2107,7 @@ function switchPoseModalTab(tab) {
   if (handTab) handTab.classList.toggle('active', tab === 'hand');
   if (poseBtn) poseBtn.classList.toggle('active', tab === 'pose');
   if (handBtn) handBtn.classList.toggle('active', tab === 'hand');
+  if (tab === 'hand') refreshHandWristButtons();
 }
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closePoseModal();

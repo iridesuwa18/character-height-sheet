@@ -770,6 +770,12 @@
             <div class="field"><label>Bend (°)</label><input type="number" id="hwElbowBend" placeholder="pose default" oninput="setElbowBendInput(this.value)"/></div>
             <div class="field"><label>Extra Lift (°)</label><input type="number" id="hwElbowLift" placeholder="0" oninput="setElbowLiftInput(this.value)"/></div>
           </div>
+          <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">MESH PIN (lock hand to a spot on the body)</div>
+          <div class="pose-btn-row" style="margin-bottom:4px;">
+            <button type="button" class="pose-btn" id="pinMeshBtn" onclick="armMeshPin(handWristTargetSide)">📌 Click Mesh to Pin</button>
+            <button type="button" class="pose-btn" onclick="unpinHandWrist()">✕ Unpin</button>
+          </div>
+          <div id="pinStatusLine" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 10px;"></div>
           <button class="btn-secondary" style="width:100%;" onclick="clearHandWristOverrides()">↺ Reset to Pose Default</button>
           <button class="btn-primary" style="width:100%;margin-top:8px;" onclick="savePoseFromHandWristPanel()">💾 Save to This Pose</button>
           <div id="hwSaveStatus" style="font-size:9px;color:var(--accent-gold);font-family:'Space Mono',monospace;text-align:center;margin-top:6px;opacity:0;transition:opacity 0.3s;">&nbsp;</div>
