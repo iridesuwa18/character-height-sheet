@@ -189,11 +189,6 @@ function expandPose3D(pose) {
     // flipped to the other edge to still read correctly. Set true to flip.
     thumbFlipL: (L.thumbFlip !== undefined ? L.thumbFlip : (pose.thumbFlip || false)),
     thumbFlipR: (R.thumbFlip !== undefined ? R.thumbFlip : (pose.thumbFlip || false)),
-    // "Reach for this mesh" instead of a fixed angle — see the IK block
-    // above applyPose3D uses this. Per-side only; no pose-level fallback,
-    // since the two arms virtually never reach for the same preset.
-    handTargetL: L.handTarget || null,
-    handTargetR: R.handTarget || null,
   };
 }
 
@@ -274,7 +269,7 @@ const POSES3D = {
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{handTarget:'head-side', handRotation:'side', wrist:40} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-78, shoulderAbd:28, shoulderRoll:-14, elbow:-140, handRotation:'side', wrist:40} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -665,152 +660,6 @@ function computeBodyDepth3D(b) {
   return { depthCm, zOffset: (depthCm - normalDepthCm) / 2 };
 }
 
-// ── Simple 2-bone arm IK ────────────────────────────────────────────────
-// Lets a pose say "reach for this point on the head/torso mesh" instead of
-// baking in fixed joint angles that only look right at one body size. Given
-// the shoulder's position, a target point, and the actual (current) upper
-// arm / forearm lengths, this solves for the shoulder's full orientation
-// plus the elbow bend needed to put the WRIST exactly at that point — so it
-// stays correct as shoulder width / arm length change.
-//
-// Why this needs the shoulder's full orientation (not just "aim the upper
-// arm at roughly the right spot"): the elbow is a plain hinge, so it can
-// only bend within whichever plane the shoulder's own twist has already
-// set up. Picking flex/z to aim the upper arm while leaving that twist
-// (the old "shoulderRoll") as a free/authored number means the elbow's
-// hinge plane usually does NOT contain the target — the forearm swings
-// off to the side and misses. So instead of fixing the twist, this SOLVES
-// for it: the twist is exactly whatever's needed to put the elbow's hinge
-// axis perpendicular to the shoulder/elbow/target plane, which is what
-// actually guarantees an exact reach (verified numerically against the
-// real chain: zero reach error across a wide range of shoulder widths and
-// arm lengths). A "pole" direction — a rough "which way should the elbow
-// point" hint — is still needed to pick which of the two possible planes
-// (elbow out this way vs. that way) to use.
-//
-// ikContext3D is filled in during buildBody3D/buildArmSide with whatever
-// current geometry (shoulder positions, arm segment lengths, head box) an
-// IK-driven pose needs, so it always reflects the body size on screen.
-let ikContext3D = { headBox: null, waistTopY: 0, shoulders: {}, armLens: {} };
-
-// Named "where the hand should reach for" presets, each returning a target
-// point in the spine's own local frame (the same frame the shoulders and
-// head already live in) so a pose can just say `handTarget: 'head-side'`.
-const HAND_TARGET_PRESETS_3D = {
-  // Salute: the side of the head, level with the brow, without reaching
-  // forward past the head's own surface (z stays 0, level with the head).
-  'head-side': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    const hb = geom.headBox;
-    if (!hb) return null;
-    return {
-      x: hb.xCm + sideSign * hb.wCm * 0.45,
-      y: (hb.bottomCm + hb.hCm * 0.62) - geom.waistTopY,
-      z: 0,
-    };
-  },
-};
-
-const v3 = (x, y, z) => ({ x, y, z });
-const v3sub = (a, b) => v3(a.x - b.x, a.y - b.y, a.z - b.z);
-const v3dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
-const v3cross = (a, b) => v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
-const v3len = (a) => Math.hypot(a.x, a.y, a.z);
-const v3norm = (a) => { const l = v3len(a) || 1; return v3(a.x / l, a.y / l, a.z / l); };
-
-// Builds the shoulder's Euler angles (matching three.js's default 'XYZ'
-// Object3D rotation order, so this is exactly what gets assigned to
-// rotation.x/.y/.z) from two things we actually know: the direction the
-// upper arm should point (colY, negated — the rest pose points down local
-// -y), and the direction the elbow's hinge axis should end up pointing
-// (colX). The remaining local axis (colZ) is whatever completes a
-// right-handed frame — its exact value doesn't matter, only that the
-// frame is orthonormal, which colX/colY already are by construction below.
-function eulerXYZFromAimAndHinge(aimDir, hingeDir) {
-  const colY = v3(-aimDir.x, -aimDir.y, -aimDir.z);
-  let colX = v3sub(hingeDir, v3(colY.x * v3dot(hingeDir, colY), colY.y * v3dot(hingeDir, colY), colY.z * v3dot(hingeDir, colY)));
-  colX = v3norm(colX);
-  const colZ = v3cross(colX, colY);
-  // Standard 'XYZ' Euler extraction from a rotation matrix whose columns
-  // are [colX, colY, colZ]: colZ.x = sin(roll); the rest follow.
-  const sy = Math.max(-1, Math.min(1, colZ.x));
-  const rollRad = Math.asin(sy);
-  const cy = Math.cos(rollRad);
-  let flexRad, zRad;
-  if (Math.abs(cy) > 1e-6) {
-    flexRad = Math.atan2(-colZ.y, colZ.z);
-    zRad = Math.atan2(-colY.x, colX.x);
-  } else {
-    // Gimbal lock (roll ≈ ±90°) — extremely unlikely for these presets,
-    // but fall back to something valid rather than producing NaN.
-    flexRad = Math.atan2(colX.y, colY.y);
-    zRad = 0;
-  }
-  return { flexRad, rollRad, zRad };
-}
-
-// Full 2-bone solve: shoulderPos/target in the spine's local frame, L1/L2
-// the upper-arm/forearm lengths, pole a rough "which way the elbow points"
-// direction (defaults to outward + a bit forward + a bit down, like a
-// natural human elbow, unless the preset/pose gives its own).
-function solveArmIK(shoulderPos, target, L1, L2, pole) {
-  if (!target) return null;
-  const toTarget = v3sub(target, shoulderPos);
-  const rawD = v3len(toTarget);
-  const d = Math.max(Math.abs(L1 - L2) + 0.01, Math.min(rawD, L1 + L2 - 0.01));
-  const dirToTarget = rawD > 1e-6 ? v3norm(toTarget) : v3(0, -1, 0);
-  // Angle at the shoulder between "straight at target" and "where the
-  // upper arm actually points" (law of cosines on the S–Elbow–Target
-  // triangle), and the elbow's own bend (our convention: negative).
-  const cosAlpha = (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d);
-  const alpha = Math.acos(Math.max(-1, Math.min(1, cosAlpha)));
-  const cosInterior = (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2);
-  const interiorDeg = Math.acos(Math.max(-1, Math.min(1, cosInterior))) * 180 / Math.PI;
-  const elbowDeg = -(180 - interiorDeg);
-  // In-plane direction (perpendicular to dirToTarget) the elbow swings
-  // toward, from projecting the pole hint into that plane.
-  const dot = v3dot(dirToTarget, pole);
-  let p = v3sub(pole, v3(dirToTarget.x * dot, dirToTarget.y * dot, dirToTarget.z * dot));
-  if (v3len(p) < 1e-6) p = v3(1, 0, 0); // pole parallel to target dir — arbitrary fallback
-  p = v3norm(p);
-  const ca = Math.cos(alpha), sa = Math.sin(alpha);
-  const upperArmDir = v3(
-    ca * dirToTarget.x + sa * p.x,
-    ca * dirToTarget.y + sa * p.y,
-    ca * dirToTarget.z + sa * p.z
-  );
-  // The hinge axis this specific bend needs is perpendicular to the plane
-  // containing the shoulder, elbow and target — i.e. perpendicular to both
-  // dirToTarget and p. This exact cross-product order is what makes a
-  // NEGATIVE elbowDeg (this file's normal elbow-flexion sign) bend toward
-  // the target rather than away from it.
-  const hingeAxis = v3cross(dirToTarget, p);
-  const euler = eulerXYZFromAimAndHinge(upperArmDir, hingeAxis);
-  return { flexRad: euler.flexRad, rollRad: euler.rollRad, zRad: euler.zRad, elbowDeg };
-}
-
-// Runs the IK above for one arm and applies the result straight to the rig,
-// using whatever the CURRENT body proportions are (from ikContext3D).
-function applyArmIK(side, shoulderGrp, elbowGrp, presetName) {
-  if (!shoulderGrp || !elbowGrp) return false;
-  const preset = HAND_TARGET_PRESETS_3D[presetName];
-  if (!preset) return false;
-  const shoulderPos = ikContext3D.shoulders[side];
-  const lens = ikContext3D.armLens[side];
-  if (!shoulderPos || !lens) return false;
-  const target = preset(side, ikContext3D);
-  if (!target) return false;
-  const sideSign = side === 'right' ? 1 : -1;
-  const pole = { x: sideSign * 0.5, y: -0.3, z: 0.8 };
-  const sol = solveArmIK(shoulderPos, target, lens.upper, lens.lower, pole);
-  if (!sol) return false;
-  shoulderGrp.rotation.x = sol.flexRad;
-  shoulderGrp.rotation.y = sol.rollRad;
-  shoulderGrp.rotation.z = sol.zRad;
-  elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
-  return true;
-}
-
 // (Re)builds every box mesh from the current 2D layout. Called automatically
 // every time "Generate" runs, and whenever a depth or waistline slider changes.
 function buildBody3D() {
@@ -842,10 +691,6 @@ function buildBody3D() {
   // upper body as a unit without dragging the hips/legs along with it.
   const waistTopY = waistBox ? (waistBox.bottomCm + waistBox.hCm)
                    : (legBoxForPivot ? (legBoxForPivot.bottomCm + legBoxForPivot.hCm) : 0);
-  // Refresh the IK context with this build's actual geometry — any
-  // handTarget-driven pose reads current body size from here, never stale
-  // numbers from a previous Generate/slider change.
-  ikContext3D = { headBox, waistTopY, shoulders: {}, armLens: {} };
 
   const spineGroup = new THREE.Group();
   spineGroup.position.set(0, waistTopY, 0);
@@ -944,12 +789,6 @@ function buildBody3D() {
     const elbowOffsetCm = (armBox.hCm + handHcm/2) / 2;
     const upperH = elbowOffsetCm;
     const lowerH = armBox.hCm - upperH;
-    // Record this side's shoulder position (in the spine's local frame,
-    // same frame HAND_TARGET_PRESETS_3D targets are given in) and segment
-    // lengths, so an IK-driven pose can reach for a target using this
-    // build's actual proportions.
-    ikContext3D.shoulders[side] = { x: armBox.xCm, y: pivot.bottomCm - waistTopY, z: 0 };
-    ikContext3D.armLens[side] = { upper: upperH, lower: lowerH };
 
     const upper = makeBoxMesh({ wCm: armBox.wCm, hCm: upperH, group: 'arms' }, armDepthCm);
     upper.position.set(armLocalX, -upperH/2, 0);
@@ -1171,24 +1010,14 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   setHinge(rig3D.leftKnee, p.kneeL);   setHinge(rig3D.rightKnee, p.kneeR);
   setAnkle(rig3D.leftAnkle,  p.ankleL,  p.ankleTurnL);
   setAnkle(rig3D.rightAnkle, p.ankleR,  p.ankleTurnR);
-  // IK-driven arms (pose sets handTarget) reach for a mesh directly and
-  // skip the fixed-angle path entirely; everything else still uses the
-  // authored flex/abd/roll/elbow numbers exactly as before.
-  const leftIK = p.handTargetL ? applyArmIK('left', rig3D.leftShoulder, rig3D.leftElbow, p.handTargetL) : false;
-  if (!leftIK) {
-    setBallJoint(rig3D.leftShoulder, p.shoulderL, p.shoulderAbdL, -1);
-    if (rig3D.leftShoulder) rig3D.leftShoulder.rotation.y = deg2rad((p.shoulderRollL || 0) * -1);
-    setHinge(rig3D.leftElbow, p.elbowL);
-  }
-  const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
-  if (!rightIK) {
-    setBallJoint(rig3D.rightShoulder, p.shoulderR, p.shoulderAbdR, 1);
-    // shoulderRoll: same mirroring convention as hipTurn — applied AFTER the
-    // ball joint's flex/abd, on the same shoulder group, so it re-aims the
-    // elbow's hinge axis without disturbing flex/abd.
-    if (rig3D.rightShoulder) rig3D.rightShoulder.rotation.y = deg2rad((p.shoulderRollR || 0) * 1);
-    setHinge(rig3D.rightElbow, p.elbowR);
-  }
+  setBallJoint(rig3D.leftShoulder,  p.shoulderL,  p.shoulderAbdL,  -1);
+  setBallJoint(rig3D.rightShoulder, p.shoulderR,  p.shoulderAbdR,   1);
+  // shoulderRoll: same mirroring convention as hipTurn — applied AFTER the
+  // ball joint's flex/abd, on the same shoulder group, so it re-aims the
+  // elbow's hinge axis without disturbing flex/abd.
+  if (rig3D.leftShoulder)  rig3D.leftShoulder.rotation.y  = deg2rad((p.shoulderRollL || 0) * -1);
+  if (rig3D.rightShoulder) rig3D.rightShoulder.rotation.y = deg2rad((p.shoulderRollR || 0) *  1);
+  setHinge(rig3D.leftElbow, p.elbowL); setHinge(rig3D.rightElbow, p.elbowR);
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
   // which way the hand block faces by rotating it about the forearm's own
