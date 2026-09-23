@@ -455,6 +455,11 @@ function refreshHandWristButtons() {
 let raycaster3D = null;
 const PIN_GROUP_ANCHOR_3D = { head: 'head', neck: 'neck', torso: 'torso', waistbox: 'waist' };
 const round2 = n => Math.round(n * 100) / 100;
+// When set (by the Joint Editor's "pin to a specific mesh" dropdown), the
+// crosshair pin below only hit-tests THAT mesh group instead of every
+// pinnable mesh — a "smart" targeted pin instead of whatever's nearest.
+// Null = old behavior (nearest pinnable mesh under the crosshair, any group).
+let pinFilterGroup3D = null;
 
 function initMeshPinRaycaster3D() {
   if (!raycaster3D) raycaster3D = new THREE.Raycaster();
@@ -474,7 +479,10 @@ function initMeshPinRaycaster3D() {
 function resolveMeshPinAtCrosshair3D() {
   if (!raycaster3D || !camera3D || !bodyGroup3D || !rig3D.spine) return null;
   raycaster3D.setFromCamera(new THREE.Vector2(0, 0), camera3D); // dead center of the viewport
-  const pinnable = meshRecords3D.filter(r => PIN_GROUP_ANCHOR_3D[r.group] || r.group === 'legs' || r.group === 'feet');
+  const pinnable = meshRecords3D.filter(r =>
+    (PIN_GROUP_ANCHOR_3D[r.group] || r.group === 'legs' || r.group === 'feet')
+    && (!pinFilterGroup3D || r.group === pinFilterGroup3D)
+  );
   const hits = raycaster3D.intersectObjects(pinnable.map(r => r.mesh), false);
   if (!hits.length) return null;
   const hit = hits[0];
@@ -1140,6 +1148,7 @@ function initScene3D() {
 
   window.addEventListener('resize', resizeBody3D);
   initMeshPinRaycaster3D();
+  initJointEditor3D();
   sceneInited3D = true;
   animate3D();
 }
@@ -1649,6 +1658,15 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
 // every time "Generate" runs, and whenever a depth or waistline slider changes.
 function buildBody3D() {
   if (!sceneInited3D) initScene3D();
+  // The old rig3D groups (and the joint meshes the editor highlights/attaches
+  // its gizmo to) are about to be disposed below — drop the selection and
+  // any manual joint edits made against them first, or the gizmo/quaternion
+  // math below would be operating on stale, disposed objects.
+  if (jointEditorInited3D) deselectJoint3D();
+  manualJointEdits3D = {
+    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+  };
   while (bodyGroup3D.children.length) {
     disposeObject3D(bodyGroup3D.children.pop());
   }
@@ -1827,6 +1845,7 @@ function buildBody3D() {
     elbowJoint.position.set(0, 0, 0);
     elbowGroup.add(elbowJoint);
     meshRecords3D.push({ mesh: elbowJoint, group: 'joint', wCm: armDepthCm, hCm: armDepthCm });
+    rig3D[side + 'ElbowJointMesh'] = elbowJoint; // used by the Joint Editor to highlight the selected joint
 
     // Wrist pivot: the hand hangs from here, in its own local frame (y=0 at
     // the wrist), nested inside the elbow group so a pose can bend/turn the
@@ -1847,6 +1866,7 @@ function buildBody3D() {
       wristJoint.position.set(0, 0, 0);
       wristGroup.add(wristJoint);
       meshRecords3D.push({ mesh: wristJoint, group: 'joint', wCm: wristJointCm, hCm: wristJointCm });
+      rig3D[side + 'WristJointMesh'] = wristJoint; // used by the Joint Editor to highlight the selected joint
 
       const hand = makeBoxMesh({ wCm: handBox.wCm, hCm: handBox.hCm, group: 'hands' }, handDepthCm);
       hand.position.set(0, -handBox.hCm/2, 0);
@@ -2134,6 +2154,11 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     left:  { wristTurn: p.wristTurnL, wrist: p.wristL, elbow: leftElbowBend,  shoulderAbd: (p.shoulderAbdL || 0) + leftElbowLift,  isIK: !!leftIK },
     right: { wristTurn: p.wristTurnR, wrist: p.wristR, elbow: rightElbowBend, shoulderAbd: (p.shoulderAbdR || 0) + rightElbowLift, isIK: !!rightIK },
   };
+  // Re-stamp any manual Joint Editor drags on top of what the pose/IK just
+  // computed above, so a hand-dragged elbow/wrist survives pose switches,
+  // slider tweaks, and hand/wrist-facing overrides until explicitly reset —
+  // see reapplyManualJointEdits3D.
+  if (jointEditorInited3D) reapplyManualJointEdits3D();
   groundBody3D(reframe);
 }
 
@@ -2286,3 +2311,350 @@ function switchPoseModalTab(tab) {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closePoseModal();
 });
+
+// ============================================================================
+// ---- Interactive Joint Editor: wrist & elbow -------------------------------
+// Tap the wrist or elbow directly in the 3D view to select it; a Move/Rotate
+// arrow gizmo (THREE.TransformControls) appears on it, and a side panel shows
+// exact position (cm, relative to the pelvis) and rotation (degrees), for
+// when the joint itself is hard to grab (e.g. a wrist tucked into the torso).
+//
+// Rig recap (see buildArmSide): shoulderGroup -> elbowGroup -> wristGroup,
+// each a child of the last, at a FIXED local offset ("bone length") that
+// buildArmSide sets once and this editor never changes — only rotations are
+// ever touched, which is what keeps every drag anatomically valid:
+//   - Dragging the ELBOW's position re-aims the SHOULDER so the elbow lands
+//     at the requested spot on the sphere its fixed upper-arm length allows
+//     (forearm + wrist + hand ride along rigidly, keeping their own bend).
+//   - Dragging the WRIST's position re-aims the ELBOW the same way (hand
+//     rides along, keeping its own facing) — you can't move a wrist without
+//     either bending the elbow or swinging the whole arm, same as a real one.
+//   - Rotating the ELBOW bends/twists the forearm, carrying the wrist+hand.
+//   - Rotating the WRIST only re-aims the hand.
+// A pure rotation can't stretch a bone, so every one of the above "conforms
+// to the limitation" (fixed bone length) automatically — see
+// aimBoneToWorldPoint3D.
+// ============================================================================
+let jointEditorInited3D = false;
+let selectedJoint3D = null;            // { side:'left'|'right', jointType:'elbow'|'wrist' } | null
+let gizmoMode3D = 'translate';         // 'translate' | 'rotate'
+let transformControls3D = null;
+let gizmoProxy3D = null;               // world-space stand-in TransformControls actually drags in translate mode
+let jointPointerStart3D = null;        // {x,y,t} — lets a tap-to-select be told apart from an orbit/pan drag
+// Per-side manual overrides. null = "use whatever the pose/IK just computed";
+// otherwise a THREE.Quaternion snapshot of that group's LOCAL rotation,
+// re-stamped after every applyPose3D() call (see the hook at its end) so a
+// drag survives pose switches, sliders, and Generate until Reset is tapped.
+let manualJointEdits3D = {
+  left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+  right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+};
+
+function isTouchLikely3D() {
+  return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+}
+
+function initJointEditor3D() {
+  if (jointEditorInited3D || !renderer3D || !camera3D || !scene3D) return;
+  if (typeof THREE.TransformControls !== 'function') return; // script not loaded — editor quietly unavailable
+  jointEditorInited3D = true;
+
+  transformControls3D = new THREE.TransformControls(camera3D, renderer3D.domElement);
+  transformControls3D.setSize(isTouchLikely3D() ? 1.35 : 1.0);
+  transformControls3D.enabled = false;
+  transformControls3D.visible = false;
+  scene3D.add(transformControls3D);
+
+  gizmoProxy3D = new THREE.Object3D();
+  scene3D.add(gizmoProxy3D);
+
+  // Dragging a gizmo handle must suspend orbit/pan (they'd otherwise fight
+  // over the same pointer), and a completed drag re-grounds + re-frames the
+  // model (a moved elbow/wrist can shift the silhouette's lowest point).
+  transformControls3D.addEventListener('dragging-changed', (e) => {
+    if (controls3D) controls3D.enabled = !e.value;
+    if (!e.value && selectedJoint3D) { groundBody3D(true); updateJointPanelValues3D(); }
+  });
+  transformControls3D.addEventListener('change', () => {
+    if (selectedJoint3D && transformControls3D.dragging) onJointGizmoChange3D();
+  });
+
+  const dom = renderer3D.domElement;
+  dom.addEventListener('pointerdown', (e) => {
+    if (transformControls3D.dragging) return;
+    jointPointerStart3D = { x: e.clientX, y: e.clientY, t: Date.now() };
+  });
+  dom.addEventListener('pointerup', (e) => {
+    if (transformControls3D.dragging) return;
+    const start = jointPointerStart3D; jointPointerStart3D = null;
+    if (!start) return;
+    // A real tap, not the end of an orbit/pan gesture (same ambiguity the
+    // crosshair mesh-pin above works around, just solved differently here
+    // with a movement/time threshold instead of aim-then-confirm, since we
+    // DO need true tap-to-select for a Maya-style joint click).
+    const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+    if (moved > 10 || (Date.now() - start.t) > 600) return;
+    const hit = hitTestJointAtClientXY3D(e.clientX, e.clientY);
+    if (hit) selectJoint3D(hit.side, hit.jointType);
+    else if (selectedJoint3D) deselectJoint3D();
+  });
+}
+
+// Screen-space positions of all 4 candidate joints (both sides × elbow/wrist).
+// Picking in screen space rather than 3D-raycasting the joint spheres is
+// what makes a wrist that's visually buried inside the torso/hip mesh still
+// easy to select — exactly the case called out as hard to click.
+function getJointScreenPositions3D() {
+  if (!renderer3D || !camera3D) return [];
+  const rect = renderer3D.domElement.getBoundingClientRect();
+  const out = [];
+  ['left', 'right'].forEach(side => {
+    [['elbow', side + 'Elbow'], ['wrist', side + 'Wrist']].forEach(([jointType, key]) => {
+      const grp = rig3D[key];
+      if (!grp) return;
+      const world = new THREE.Vector3();
+      grp.getWorldPosition(world);
+      const ndc = world.clone().project(camera3D);
+      out.push({
+        side, jointType,
+        x: (ndc.x * 0.5 + 0.5) * rect.width,
+        y: (-ndc.y * 0.5 + 0.5) * rect.height,
+        z: ndc.z,
+      });
+    });
+  });
+  return out;
+}
+function hitTestJointAtClientXY3D(clientX, clientY) {
+  const rect = renderer3D.domElement.getBoundingClientRect();
+  const px = clientX - rect.left, py = clientY - rect.top;
+  const threshold = isTouchLikely3D() ? 36 : 22; // generous touch target on mobile
+  let best = null, bestDist = threshold;
+  getJointScreenPositions3D().forEach(c => {
+    if (c.z < -1 || c.z > 1) return; // behind the camera
+    const d = Math.hypot(c.x - px, c.y - py);
+    if (d < bestDist) { bestDist = d; best = c; }
+  });
+  return best;
+}
+
+// The rotation that maps a bone's fixed REST local vector (its child
+// group's .position — set once in buildArmSide and never itself changed) onto
+// the direction toward a desired WORLD point. A pure rotation can't change a
+// vector's length, so this automatically preserves the bone's exact length —
+// the "restriction" a dragged elbow/wrist has to conform to — with no
+// separate clamping step needed.
+function aimBoneToWorldPoint3D(boneGroup, restLocalVec, targetWorldPos) {
+  const parent = boneGroup.parent;
+  parent.updateMatrixWorld(true);
+  const targetLocal = parent.worldToLocal(targetWorldPos.clone());
+  const dir = targetLocal.clone().sub(boneGroup.position);
+  const rest = restLocalVec.clone();
+  if (dir.lengthSq() < 1e-8 || rest.lengthSq() < 1e-8) return boneGroup.quaternion.clone();
+  return new THREE.Quaternion().setFromUnitVectors(rest.normalize(), dir.normalize());
+}
+
+function selectJoint3D(side, jointType) {
+  selectedJoint3D = { side, jointType };
+  pinFilterGroup3D = null;
+  transformControls3D.enabled = true;
+  transformControls3D.visible = true;
+  attachGizmoToSelection3D();
+  highlightSelectedJoint3D();
+  openJointPanel3D();
+}
+function deselectJoint3D() {
+  if (!jointEditorInited3D) { selectedJoint3D = null; return; }
+  selectedJoint3D = null;
+  transformControls3D.detach();
+  transformControls3D.enabled = false;
+  transformControls3D.visible = false;
+  highlightSelectedJoint3D();
+  closeJointPanel3D();
+}
+function setGizmoMode3D(mode) {
+  gizmoMode3D = mode;
+  if (selectedJoint3D) attachGizmoToSelection3D();
+  const panel = document.getElementById('jointEditorPanel');
+  if (panel) panel.querySelectorAll('.je-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+}
+function attachGizmoToSelection3D() {
+  if (!selectedJoint3D) return;
+  const { side, jointType } = selectedJoint3D;
+  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  if (!grp) return;
+  if (gizmoMode3D === 'rotate') {
+    // Rotate mode controls the joint's OWN group directly — TransformControls
+    // handles a nested/rotated parent chain natively, so this just IS elbow
+    // bend/twist (drags forearm+wrist+hand with it) or wrist hinge/turn
+    // (hand only), exactly matching what applyPose3D already does with these
+    // same rotations.
+    transformControls3D.setMode('rotate');
+    transformControls3D.setSpace('local');
+    transformControls3D.attach(grp);
+  } else {
+    // Translate mode drags a free-floating proxy in world space; its motion
+    // gets converted into a bone-length-preserving rotation on the PARENT
+    // joint in onJointGizmoChange3D (see aimBoneToWorldPoint3D) rather than
+    // moving the joint's own position directly, which would visibly detach
+    // it from the fixed-length arm mesh above it.
+    transformControls3D.setMode('translate');
+    transformControls3D.setSpace('world');
+    const world = new THREE.Vector3();
+    grp.getWorldPosition(world);
+    gizmoProxy3D.position.copy(world);
+    gizmoProxy3D.quaternion.identity();
+    transformControls3D.attach(gizmoProxy3D);
+  }
+}
+function highlightSelectedJoint3D() {
+  ['left', 'right'].forEach(side => {
+    ['Elbow', 'Wrist'].forEach(j => {
+      const mesh = rig3D[side + j + 'JointMesh'];
+      if (!mesh || !mesh.material) return;
+      const isSel = !!selectedJoint3D && selectedJoint3D.side === side && selectedJoint3D.jointType === j.toLowerCase();
+      if (mesh.material.emissive) mesh.material.emissive.setHex(isSel ? 0xf0c040 : 0x000000);
+      mesh.material.color.setHex(isSel ? 0xf0c040 : 0xf2f2f2);
+    });
+  });
+}
+
+// Fires continuously while a gizmo handle is being dragged.
+function onJointGizmoChange3D() {
+  if (!selectedJoint3D) return;
+  const { side, jointType } = selectedJoint3D;
+  if (gizmoMode3D === 'rotate') {
+    const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+    if (!grp) return;
+    manualJointEdits3D[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = grp.quaternion.clone();
+  } else {
+    const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
+    const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
+    if (!boneGroup || !childGroup) return;
+    const q = aimBoneToWorldPoint3D(boneGroup, childGroup.position, gizmoProxy3D.position);
+    manualJointEdits3D[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
+  }
+  reapplyManualJointEdits3D();
+  groundBody3D(false); // cheap re-ground during the drag; full reframe happens on release
+  updateJointPanelValues3D();
+}
+
+// Re-stamps every active manual override — called at the end of every
+// applyPose3D() (see the hook there) so a drag isn't silently undone the
+// next time a pose/slider/hand-facing change runs applyPose3D again.
+function reapplyManualJointEdits3D() {
+  ['left', 'right'].forEach(side => {
+    const m = manualJointEdits3D[side];
+    if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
+    if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
+    if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
+  });
+}
+
+function resetSelectedJoint3D() {
+  if (!selectedJoint3D) return;
+  const { side, jointType } = selectedJoint3D;
+  if (jointType === 'elbow') { manualJointEdits3D[side].shoulderQuat = null; manualJointEdits3D[side].elbowQuat = null; }
+  else { manualJointEdits3D[side].wristQuat = null; }
+  applyPose3D(currentPose3D, { reframe: false });
+  attachGizmoToSelection3D();
+  updateJointPanelValues3D();
+}
+
+// ---- Numeric panel: position (pelvis-relative cm) + rotation (degrees) ----
+function onJointPosInput(axis, rawVal) {
+  if (!selectedJoint3D) return;
+  const n = parseFloat(rawVal);
+  if (isNaN(n)) return;
+  const { side, jointType } = selectedJoint3D;
+  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  if (!grp || !bodyGroup3D) return;
+  const world = new THREE.Vector3(); grp.getWorldPosition(world);
+  const local = bodyGroup3D.worldToLocal(world.clone());
+  local[axis] = n;
+  const targetWorld = bodyGroup3D.localToWorld(local.clone());
+  const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
+  const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
+  if (!boneGroup || !childGroup) return;
+  const q = aimBoneToWorldPoint3D(boneGroup, childGroup.position, targetWorld);
+  manualJointEdits3D[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
+  reapplyManualJointEdits3D();
+  groundBody3D(false);
+  attachGizmoToSelection3D();
+  updateJointPanelValues3D();
+}
+function onJointRotInput(axis, rawVal) {
+  if (!selectedJoint3D) return;
+  const n = parseFloat(rawVal);
+  if (isNaN(n)) return;
+  const { side, jointType } = selectedJoint3D;
+  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  if (!grp) return;
+  const euler = new THREE.Euler().setFromQuaternion(grp.quaternion, 'XYZ');
+  euler[axis] = deg2rad(n);
+  manualJointEdits3D[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = new THREE.Quaternion().setFromEuler(euler);
+  reapplyManualJointEdits3D();
+  groundBody3D(false);
+  attachGizmoToSelection3D();
+  updateJointPanelValues3D();
+}
+// Hand-facing dropdowns in the wrist panel — thin wrapper around the
+// existing Hand/Wrist Facing panel logic (HAND_ROTATION_DEG/WRIST_ROTATION_DEG),
+// scoped to just the selected side instead of whatever the Hand/Wrist panel's
+// own side selector currently points at.
+function setJointHandFacing3D(kind, value) {
+  if (!selectedJoint3D) return;
+  const prevSide = handWristTargetSide;
+  handWristTargetSide = selectedJoint3D.side;
+  if (kind === 'hand') setHandRotationInput(value); else setWristRotationInput(value);
+  handWristTargetSide = prevSide;
+  refreshHandWristButtons();
+}
+// "Aim & Pin" in the wrist panel — opens the proven Hand/Wrist Facing aim-bar
+// flow (crosshair + Pin Here/Done) rather than a second copy of it, scoped to
+// the selected side and, if a specific mesh was chosen in the dropdown below,
+// filtered to just that mesh (pinFilterGroup3D) for a targeted pin instead of
+// "nearest anything."
+function jointPanelAimAndPin3D() {
+  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') return;
+  const side = selectedJoint3D.side;
+  openPoseModal();
+  switchPoseModalTab('hand');
+  setHandWristTargetSide(side);
+  armMeshPin(side);
+}
+function setPinFilterGroup3D(value) {
+  pinFilterGroup3D = value || null;
+}
+
+function openJointPanel3D() {
+  const panel = document.getElementById('jointEditorPanel');
+  if (!panel || !selectedJoint3D) return;
+  panel.style.display = '';
+  const wristOnlyRow = document.getElementById('jeWristOnlyRow');
+  if (wristOnlyRow) wristOnlyRow.style.display = selectedJoint3D.jointType === 'wrist' ? '' : 'none';
+  updateJointPanelValues3D();
+}
+function closeJointPanel3D() {
+  const panel = document.getElementById('jointEditorPanel');
+  if (panel) panel.style.display = 'none';
+}
+function updateJointPanelValues3D() {
+  if (!selectedJoint3D) return;
+  const { side, jointType } = selectedJoint3D;
+  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  if (!grp || !bodyGroup3D) return;
+  const world = new THREE.Vector3(); grp.getWorldPosition(world);
+  const local = bodyGroup3D.worldToLocal(world.clone());
+  const euler = new THREE.Euler().setFromQuaternion(grp.quaternion, 'XYZ');
+  const setVal = (id, v) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = round1(v);
+  };
+  setVal('jePosX', local.x); setVal('jePosY', local.y); setVal('jePosZ', local.z);
+  setVal('jeRotX', euler.x * 180 / Math.PI);
+  setVal('jeRotY', euler.y * 180 / Math.PI);
+  setVal('jeRotZ', euler.z * 180 / Math.PI);
+  const title = document.getElementById('jeTitle');
+  if (title) title.textContent = `${side === 'left' ? 'Left' : 'Right'} ${jointType === 'elbow' ? 'Elbow' : 'Wrist'}`;
+}

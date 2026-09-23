@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -122,6 +123,60 @@
   }
   #pinReticle::before { top: 50%; left: 0; right: 0; height: 2px; transform: translateY(-50%); }
   #pinReticle::after { left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); }
+
+  /* ── Joint Editor (tap a wrist/elbow in the 3D view) ── */
+  #jointEditorHint {
+    position: absolute; top: 8px; left: 0; right: 0; text-align: center;
+    font-family: 'Space Mono', monospace; font-size: 9px; color: var(--accent-gold);
+    text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  }
+  #jointEditorPanel {
+    position: absolute; top: 10px; right: 10px; width: 220px; z-index: 60;
+    background: rgba(20,20,24,0.97); border: 1px solid var(--accent-gold);
+    border-radius: 10px; padding: 12px; font-family: 'Space Mono', monospace;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.5); max-height: calc(100% - 20px); overflow-y: auto;
+  }
+  .je-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  #jeTitle { font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.06em; }
+  .je-close-btn { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; line-height: 1; padding: 4px; }
+  .je-section-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 10px 0 5px; }
+  .je-mode-row { display: flex; gap: 6px; margin-bottom: 4px; }
+  .je-mode-btn {
+    flex: 1; padding: 8px 4px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--muted); font-family: 'Space Mono', monospace;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; min-height: 36px;
+  }
+  .je-mode-btn.active { background: rgba(240,192,64,0.15); border-color: var(--accent-gold); color: var(--accent-gold); }
+  .je-xyz-row { display: grid; grid-template-columns: 16px 1fr; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .je-xyz-row span { font-size: 10px; color: var(--muted); }
+  .je-xyz-row input[type=number] {
+    width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--text); font-family: 'Space Mono', monospace; font-size: 11px; padding: 7px 6px; min-height: 32px;
+  }
+  .je-select {
+    width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--text); font-family: 'Space Mono', monospace; font-size: 10px; padding: 7px 6px;
+    margin-bottom: 6px; min-height: 32px;
+  }
+  .je-btn {
+    width: 100%; padding: 8px 4px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: 'Space Mono', monospace; font-size: 10px;
+    font-weight: 700; cursor: pointer; margin-bottom: 6px; min-height: 34px;
+  }
+  .je-btn.je-reset { color: var(--accent-red); border-color: var(--accent-red); }
+  /* Mobile: pin the panel to the bottom of the viewport as a full-width sheet
+     instead of a small floating card, and make every control a comfortably
+     large touch target. */
+  @media (max-width: 560px) {
+    #jointEditorPanel {
+      position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto;
+      max-height: 62vh; border-radius: 16px 16px 0 0; z-index: 200;
+      padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    }
+    .je-mode-btn, .je-select, .je-btn { min-height: 44px; }
+    .je-xyz-row input[type=number] { min-height: 40px; font-size: 13px; }
+  }
   .depth-row {
     display: grid; grid-template-columns: 70px 1fr 34px; align-items: center;
     gap: 10px; margin-bottom: 10px;
@@ -753,6 +808,61 @@
     <canvas id="body3DCanvas"></canvas>
     <div id="pinReticle" style="display:none;"></div>
     <div id="body3DHint">Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan</div>
+    <div id="jointEditorHint">Tap the wrist or elbow to edit it</div>
+
+    <!-- Joint Editor: appears when a wrist or elbow is tapped in the 3D view above -->
+    <div id="jointEditorPanel" style="display:none;">
+      <div class="je-header">
+        <span id="jeTitle">Joint</span>
+        <button type="button" class="je-close-btn" onclick="deselectJoint3D()">✕</button>
+      </div>
+
+      <div class="je-section-label">Gizmo</div>
+      <div class="je-mode-row">
+        <button type="button" class="je-mode-btn active" data-mode="translate" onclick="setGizmoMode3D('translate')">↔ Move</button>
+        <button type="button" class="je-mode-btn" data-mode="rotate" onclick="setGizmoMode3D('rotate')">↻ Rotate</button>
+      </div>
+
+      <div class="je-section-label">Position (cm from pelvis)</div>
+      <div class="je-xyz-row"><span>X</span><input type="number" id="jePosX" step="0.5" oninput="onJointPosInput('x', this.value)"></div>
+      <div class="je-xyz-row"><span>Y</span><input type="number" id="jePosY" step="0.5" oninput="onJointPosInput('y', this.value)"></div>
+      <div class="je-xyz-row"><span>Z</span><input type="number" id="jePosZ" step="0.5" oninput="onJointPosInput('z', this.value)"></div>
+
+      <div class="je-section-label">Rotation (degrees)</div>
+      <div class="je-xyz-row"><span>X</span><input type="number" id="jeRotX" step="1" oninput="onJointRotInput('x', this.value)"></div>
+      <div class="je-xyz-row"><span>Y</span><input type="number" id="jeRotY" step="1" oninput="onJointRotInput('y', this.value)"></div>
+      <div class="je-xyz-row"><span>Z</span><input type="number" id="jeRotZ" step="1" oninput="onJointRotInput('z', this.value)"></div>
+
+      <div id="jeWristOnlyRow">
+        <div class="je-section-label">Hand Facing</div>
+        <select class="je-select" onchange="setJointHandFacing3D('hand', this.value)">
+          <option value="">Pose default</option>
+          <option value="front">Front</option>
+          <option value="side">Side</option>
+          <option value="back">Back</option>
+        </select>
+        <select class="je-select" onchange="setJointHandFacing3D('wrist', this.value)">
+          <option value="">Pose default</option>
+          <option value="up">Fingers Up</option>
+          <option value="front">Fingers Front</option>
+          <option value="down">Fingers Down</option>
+        </select>
+
+        <div class="je-section-label">Pin Hand To</div>
+        <select class="je-select" id="jePinTarget" onchange="setPinFilterGroup3D(this.value)">
+          <option value="">Nearest surface (any)</option>
+          <option value="head">Head</option>
+          <option value="neck">Neck</option>
+          <option value="torso">Torso</option>
+          <option value="waistbox">Waist / Hip</option>
+          <option value="legs">Legs</option>
+          <option value="feet">Feet</option>
+        </select>
+        <button type="button" class="je-btn" onclick="jointPanelAimAndPin3D()">🎯 Aim &amp; Pin</button>
+      </div>
+
+      <button type="button" class="je-btn je-reset" onclick="resetSelectedJoint3D()">↺ Reset Joint</button>
+    </div>
   </div>
   <div class="panel" style="width:100%; display:none;" id="depthPanel">
     <div class="panel-title">3D Depth (relative to head width)</div>
