@@ -784,25 +784,25 @@ const POSES3D = {
   // ── Standing ──────────────────────────────────────────────────────────
   'stand-relaxed':        { section:'Standing', label:'Relaxed' },
   'stand-arms-out':        { section:'Standing', label:'Arms Out (T-Pose)', shoulderAbd:85 },
-  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
+  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
   'stand-arms-overhead':   { section:'Standing', label:'Arms Overhead', shoulder:-175, elbow:-5 },
-  'stand-arms-crossed':    { section:'Standing', label:'Arms Crossed', shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
-  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
+  'stand-arms-crossed':    { section:'Standing', label:'Arms Crossed', shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
+  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side'} },
   'stand-weight-shift':    { section:'Standing', label:'Weight on One Hip', spineSide:6, right:{hipAbd:9}, left:{hipAbd:2} },
   'stand-hip-pop':         { section:'Standing', label:'Hip Pop', spineSide:10, right:{hipAbd:15}, left:{hipAbd:-2} },
-  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90 },
-  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
-  'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
+  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, handTarget:'behind-back' },
+  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side'} },
+  'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
   'stand-look-back':       { section:'Standing', label:'Looking Over Shoulder', spineTwist:35 },
   'stand-lean':            { section:'Standing', label:'Casual Lean', spineSide:-8, shoulder:-70, elbow:-105, shoulderAbd:8, wrist:-15, wristTurn:20 },
   'stand-point':           { section:'Standing', label:'Pointing Forward', right:{shoulder:-95, elbow:-10, wrist:5} },
-  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
+  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'} },
   'stand-arms-open':       { section:'Standing', label:'Arms Wide Open', shoulder:20, shoulderAbd:60 },
   'stand-hands-head':      { section:'Standing', label:'Hands Behind Head', shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, handTarget:'head-side-salute'} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -832,15 +832,15 @@ const POSES3D = {
   'sit-ankle-on-knee':  { section:'Sitting', label:'Ankle on Knee', right:{hip:-48, hipAbd:0, hipTurn:130, knee:108, ankle:-60}, left:{hip:-90, knee:95, ankle:-8} },
   'sit-lean-fwd':       { section:'Sitting', label:'Elbows on Knees', hip:-90, knee:90, ankle:-8, spineBend:65, shoulder:-69, shoulderAbd:-16, elbow:-45, wrist:-20 },
   'sit-lean-back':      { section:'Sitting', label:'Leaning Back, Relaxed', hip:-90, knee:90, ankle:-8, spineBend:-15, shoulder:10, elbow:-30, wrist:-15 },
-  'sit-arms-crossed':   { section:'Sitting', label:'Arms Crossed', hip:-90, knee:90, ankle:-8, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
+  'sit-arms-crossed':   { section:'Sitting', label:'Arms Crossed', hip:-90, knee:90, ankle:-8, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
   'sit-hand-on-table':  { section:'Sitting', label:'One Arm Resting Forward', hip:-90, knee:90, ankle:-8, right:{shoulder:-80, elbow:-10, wrist:60}, left:{shoulder:5, elbow:-30, wrist:-15} },
   'sit-phone':          { section:'Sitting', label:'Looking at Phone', hip:-90, knee:90, ankle:-8, spineBend:12, shoulder:-70, elbow:-130, shoulderAbd:6, wrist:-70, wristTurn:-60 },
-  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
+  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'} },
   'sit-legs-apart':     { section:'Sitting', label:'Legs Apart', hip:-90, knee:90, ankle:-8, hipAbd:16 },
   'sit-legs-side':      { section:'Sitting', label:'Legs Tucked to the Side', hip:-90, knee:90, ankle:-8, spineTwist:15, hipAbd:35 },
   'sit-stretch-up':     { section:'Sitting', label:'Stretching Arms Up', hip:-90, knee:90, ankle:-8, spineBend:-8, shoulder:-175, elbow:-5 },
   'sit-hands-head':     { section:'Sitting', label:'Hands Behind Head', hip:-90, knee:90, ankle:-8, shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
-  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65}, left:{shoulder:-10, wrist:-15} },
+  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'}, left:{shoulder:-10, wrist:-15} },
   'sit-look-back':      { section:'Sitting', label:'Looking Back', hip:-90, knee:90, ankle:-8, spineTwist:40 },
   'sit-slouch':         { section:'Sitting', label:'Slouching', spineBend:-20, hip:-80, knee:100, shoulder:5 },
   'sit-one-leg-out':    { section:'Sitting', label:'One Leg Extended', right:{hip:-60, knee:25, ankle:-40}, left:{hip:-90, knee:95} },
@@ -855,11 +855,11 @@ const POSES3D = {
   'perch-grip-edge':    { section:'Sitting on Something', label:'Gripping the Edge', hip:-75, knee:70, ankle:-15, shoulder:35, elbow:-20, wrist:-55 },
   'perch-lean-back':    { section:'Sitting on Something', label:'Leaning Back on Hands', hip:-75, knee:70, ankle:-15, spineBend:-12, shoulder:60, elbow:-15, wrist:60 },
   'perch-foot-on-seat': { section:'Sitting on Something', label:'One Foot Up on the Seat', right:{hip:-95, knee:130, hipAbd:20, ankle:-20}, left:{hip:-80, knee:80} },
-  'perch-arms-crossed': { section:'Sitting on Something', label:'Arms Crossed', hip:-75, knee:70, ankle:-15, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
+  'perch-arms-crossed': { section:'Sitting on Something', label:'Arms Crossed', hip:-75, knee:70, ankle:-15, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
   'perch-phone':        { section:'Sitting on Something', label:'Checking Phone', hip:-75, knee:70, ankle:-15, spineBend:10, shoulder:-65, elbow:-120, wrist:-70, wristTurn:-60 },
   'perch-legs-apart':   { section:'Sitting on Something', label:'Legs Apart', hip:-75, knee:70, ankle:-15, hipAbd:14 },
   'perch-look-side':    { section:'Sitting on Something', label:'Looking to the Side', hip:-75, knee:70, ankle:-15, spineTwist:30 },
-  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
+  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'} },
   'perch-lean-elbows':  { section:'Sitting on Something', label:'Forward Lean, Elbows on Knees', hip:-75, knee:70, ankle:-15, spineBend:70, shoulder:-69, shoulderAbd:-13, elbow:-45, wrist:-20 },
   'perch-casual-side':  { section:'Sitting on Something', label:'Casual Side Sit', hip:-75, knee:70, ankle:-15, spineTwist:15, hipAbd:20 },
   'perch-back-support': { section:'Sitting on Something', label:'One Arm Back for Support', hip:-75, knee:70, ankle:-15, right:{shoulder:50, elbow:-10, wrist:60}, left:{shoulder:-60, elbow:-90, wrist:-15} },
@@ -911,7 +911,7 @@ const POSES3D = {
   'squat-knees-out-low':{ section:'Squatting', label:'Sitting on Heels, Knees Out', hip:-140, knee:170, ankle:-45, hipAbd:35 },
   'squat-look-up':      { section:'Squatting', label:'Squat, Looking Up', hip:-120, knee:140, ankle:-30, spineBend:-20 },
   'squat-lean-fwd':     { section:'Squatting', label:'Squat, Leaning Forward', hip:-125, knee:145, ankle:-35, spineBend:35, shoulder:35, elbow:-15, wrist:-15 },
-  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
+  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
   'squat-relaxed-wide': { section:'Squatting', label:'Relaxed Resting Squat', hip:-130, knee:150, ankle:-35, hipAbd:15, shoulder:-30, elbow:-70, wrist:-15 },
   'squat-shallow':      { section:'Squatting', label:'Shallow Squat', hip:-70, knee:80, ankle:-15 },
   'squat-pickup':       { section:'Squatting', label:'Picking Something Up', hip:-115, knee:135, ankle:-25, spineBend:15, shoulder:-100, elbow:-10, wrist:-30 },
@@ -978,11 +978,11 @@ const POSES3D = {
   'kick-up-prep':       { section:'Handstand & Inversions', label:'Kicking Up (Donkey Kick)', spineBend:85, shoulder:-90, elbow:-5, wrist:70, right:{hip:60, knee:20, ankle:20}, left:{hip:-95, knee:5, ankle:-60} },
 
   // ── Model Poses ──────────────────────────────────────────────────────
-  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35}, left:{hipAbd:-3} },
-  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{hipAbd:16} },
+  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side'}, left:{hipAbd:-3} },
+  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side', right:{hipAbd:16} },
   'model-over-shoulder':{ section:'Model Poses', label:'Look Over Shoulder', spineTwist:45, spineSide:8 },
   'model-walk':         { section:'Model Poses', label:'Runway Stride', spineTwist:10, right:{hip:-30, knee:15, ankle:-15, shoulder:20}, left:{hip:35, knee:10, ankle:15, shoulder:-25} },
-  'model-power':        { section:'Model Poses', label:'Power Stance, Arms Crossed', spineSide:-5, hipAbd:16, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
+  'model-power':        { section:'Model Poses', label:'Power Stance, Arms Crossed', spineSide:-5, hipAbd:16, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
   'model-hair-flip':    { section:'Model Poses', label:'Hair Flip', spineSide:15, spineTwist:-15, right:{shoulder:-170, elbow:-30, wrist:-30, wristTurn:-20}, left:{shoulder:-10, elbow:-150, shoulderAbd:10} },
   'model-side-lean':    { section:'Model Poses', label:'Side Profile Lean', spineSide:20, right:{hipAbd:10}, left:{hipAbd:-14} },
   'model-editorial-crouch': { section:'Model Poses', label:'Editorial Crouch', spineBend:20, hip:-90, knee:110, hipAbd:20, ankle:-25, shoulder:-40, elbow:-70, wrist:-15 },
@@ -991,76 +991,21 @@ const POSES3D = {
   'model-hand-face':    { section:'Model Poses', label:'Hand to Face', spineTwist:20, right:{shoulder:-60, shoulderAbd:22, elbow:-105, wrist:-35, wristTurn:-20} },
   'model-back-look':    { section:'Model Poses', label:'Back to Camera, Looking Back', spineTwist:70, right:{hipAbd:10} },
   'model-seated':       { section:'Model Poses', label:'Editorial Seated', spineTwist:20, hip:-90, knee:95, shoulder:-30, elbow:-80, wrist:-15, right:{hipAbd:22}, left:{hipAbd:-10} },
-  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
+  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
   'model-runway-swing': { section:'Model Poses', label:'Runway Walk, Arms Swinging', right:{hip:-35, knee:10, shoulder:35}, left:{hip:30, knee:10, shoulder:-30} },
   'model-jacket-over':  { section:'Model Poses', label:'Jacket Over Shoulder', spineTwist:-15, right:{shoulder:60, elbow:-20, wrist:-40}, left:{shoulder:-40, elbow:-110, shoulderAbd:10, wrist:-15} },
-  'model-lean-wall':    { section:'Model Poses', label:'Crossed Legs, Leaning', spineSide:18, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, right:{hipAbd:14}, left:{hip:8, hipAbd:-10} },
-  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
+  'model-lean-wall':    { section:'Model Poses', label:'Crossed Legs, Leaning', spineSide:18, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder', right:{hipAbd:14}, left:{hip:8, hipAbd:-10} },
+  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
   'model-collarbone':   { section:'Model Poses', label:'Elegant Hand at Collarbone', spineTwist:12, right:{shoulder:90, shoulderAbd:90, elbow:-158, wrist:-30, wristTurn:-20} },
   'model-dynamic-jump': { section:'Model Poses', label:'Dynamic Editorial Jump', spineSide:10, hipAbd:20, knee:20, shoulder:-40, shoulderAbd:65 },
 };
 // Re-apply any pose edits saved from a previous visit (see the Save button /
-// GitHub helpers above). This is async (a network request), so — unlike the
-// old localStorage version — it can't finish before the automatic hand-lock
-// detection right below, the pose panel render at the bottom of the file, or
-// the very first applyPose3D() call; those still run against the
-// plain-literal defaults first, and pullPoseOverridesFromGitHub() re-applies
-// the current pose on top once the fetch resolves a moment later.
+// GitHub helpers above). This is async (a network request), so it can't
+// finish before the pose panel render at the bottom of the file or the very
+// first applyPose3D() call; those still run against the plain-literal
+// defaults first, and pullPoseOverridesFromGitHub() re-applies the current
+// pose on top once the fetch resolves a moment later.
 pullPoseOverridesFromGitHub();
-
-
-// ── Automatic hand-lock detection ───────────────────────────────────────
-// "Does this hand need to stay in position (locked to a body surface), or
-// is it loose (swinging/hovering, free to drift proportionally with the
-// rest of the body)?" — rather than hand-annotating ~150 poses one by one,
-// this recognizes the handful of exact shoulder/elbow/wrist angle
-// combinations this file already reuses across many poses to mean the same
-// real-world locked gesture (hands on hips, arms crossed over the chest...)
-// and swaps them for the matching `handTarget` mesh-lock preset above.
-// Anything NOT matching one of these signatures is left exactly as
-// authored — a plain angle set with nothing to grab onto (an arm swinging
-// at the side, reaching into open air overhead, a stretch) IS the "loose"
-// case, and plain forward-kinematics angles already scale correctly with
-// body size for those (nothing to snap onto means nothing to relock).
-const HAND_LOCK_SIGNATURES = [
-  // Hand flat on the hip (elbow bent back, wrist turned to lay it against
-  // the hip bone) — 'stand-hands-hips', 'model-hands-hips', 'squat-hands-hips',
-  // 'model-fierce-hips', 'model-power-wide', 'model-contrapposto', etc.
-  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
-    values: [40, 25, -30, -80, -25, 35], handTarget: 'hip-side' },
-  // Forearms folded across the chest so the hand lands on the OPPOSITE
-  // upper arm — 'stand-arms-crossed', 'sit-arms-crossed', 'model-power', etc.
-  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
-    values: [-5, 30, -70, -105, -70, 80], handTarget: 'opposite-shoulder' },
-  // Chin resting in hand — 'stand-thinking', 'sit-thinking', 'sit-chin-elbow',
-  // 'perch-chin-rest' all share this exact right-arm signature.
-  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
-    values: [-40, 0, -22, -155, 10, 65], handTarget: 'chin-rest' },
-  // Saluting hand at the temple — 'stand-salute'.
-  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
-    values: [-65, 55, 40, -155, 15, -115], handTarget: 'head-side-salute' },
-  // Arms behind the back — 'stand-arms-behind'. This one lives on the pose's
-  // TOP-LEVEL (shared, mirrored) fields rather than a per-side sub-object,
-  // so matching it sets pose.handTarget itself, which both arms fall back
-  // to — see the 'behind-back' preset's own comment for why that (rather
-  // than the usual per-side mirroring) is exactly what a real "hands behind
-  // the back" needs.
-  { keys: ['shoulder', 'shoulderAbd', 'shoulderRoll', 'elbow', 'wrist', 'wristTurn'],
-    values: [55, 0, 0, -90, -15, -90], handTarget: 'behind-back' },
-];
-function signatureMatches3D(obj, sig) {
-  return sig.keys.every((k, i) => (obj[k] || 0) === sig.values[i]);
-}
-function applyHandLockSignatures3D() {
-  Object.values(POSES3D).forEach(pose => {
-    [pose, pose.left, pose.right].forEach(side => {
-      if (!side || side.handTarget) return; // already explicit
-      const sig = HAND_LOCK_SIGNATURES.find(s => signatureMatches3D(side, s));
-      if (sig) side.handTarget = sig.handTarget;
-    });
-  });
-}
-applyHandLockSignatures3D();
 
 // Force the depth sliders back to their real defaults on every load — some
 // browsers restore stale <input type=range> values from a previous session,
@@ -1386,16 +1331,17 @@ const HAND_TARGET_PRESETS_3D = {
     return { point, normal };
   },
   // Hands/forearms crossed over the chest: each hand lands near the
-  // OPPOSITE elbow (roughly one upper-arm-length below that shoulder, and
-  // pulled further out toward where that elbow tucks against the side of
-  // the torso) rather than up near the shoulder itself. Reads off that
-  // side's own actual shoulder position and arm length (ikContext3D), so it
-  // tracks a widened/narrowed or longer/shorter arm, not just torso size.
-  // Both shoulders live on the SAME spine pivot as the reaching arm, so —
-  // unlike hip-side — no extra pelvis-frame correction is needed even when
-  // the pose leans/twists the torso. The hand faces further across the
-  // body, past that elbow, continuing the direction the forearm reaches —
-  // not straight into the ribcage.
+  // OPPOSITE elbow rather than up near the shoulder itself — pulled down
+  // by most of an upper-arm-length, but only slightly further across the
+  // body than that shoulder's own position (an elbow tucked at the side of
+  // the torso sits close to the shoulder's own x, not out past it — pushing
+  // much further across risks asking the REACHING arm for more than its
+  // own upper+lower arm length can cover). Reads off that side's own actual
+  // shoulder position and arm length (ikContext3D), so it tracks a
+  // widened/narrowed or longer/shorter arm, not just torso size. Both
+  // shoulders live on the SAME spine pivot as the reaching arm, so — unlike
+  // hip-side — no extra pelvis-frame correction is needed even when the
+  // pose leans/twists the torso.
   'opposite-shoulder': (side, geom) => {
     const otherSide = side === 'right' ? 'left' : 'right';
     const otherShoulder = geom.shoulders[otherSide];
@@ -1404,25 +1350,27 @@ const HAND_TARGET_PRESETS_3D = {
     const otherSign = otherSide === 'right' ? 1 : -1;
     const unit = headWidthCm3D || 1;
     const point = {
-      x: otherShoulder.x + otherSign * 0.55 * unit,
-      y: otherShoulder.y - lens.upper * 0.85,
-      z: 0.4 * unit,
+      x: otherShoulder.x + otherSign * 0.12 * unit,
+      y: otherShoulder.y - lens.upper * 0.6,
+      z: 0.3 * unit,
     };
-    const normal = v3norm({ x: otherSign, y: -0.15, z: 0.3 });
+    const normal = v3norm({ x: otherSign, y: -0.1, z: 0.3 });
     return { point, normal };
   },
   // Arms behind the back: BOTH hands target the exact SAME spot (this
   // preset ignores `side` and returns an identical point either way) — a
   // real "hands behind the back" interleaves the two arms (one hand often
   // resting in/around the other) rather than mirroring them at two separate
-  // points. The point sits behind the pelvis, biased toward the right hip —
-  // where the fixed-angle version this replaces (shoulder:55, elbow:-90,
-  // wrist:-15, wristTurn:-90, mirrored) already happened to land closest.
+  // points. The point sits just behind the small of the back — close to the
+  // waist box's own back surface rather than deep behind it, since asking
+  // either shoulder to rotate a hand far behind the torso is a much more
+  // extreme angle for the shoulder IK to solve than anything else this rig
+  // does, and sitting it right at the surface reads the same visually.
   // Facing mostly backward with a slight upward cant, like the backs of
   // clasped hands.
   'behind-back': (side, geom) => {
     const box = geom.waistBox || geom.torsoBox;
-    const raw = boxTargetPoint3D(box, -0.12, 0.6, -0.42);
+    const raw = boxTargetPoint3D(box, -0.1, 0.6, -0.2);
     if (!raw) return null;
     const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
     const point = pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
