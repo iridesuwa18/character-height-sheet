@@ -183,6 +183,12 @@ function expandPose3D(pose) {
     wristTurnR: pickWithAlias(R, 'wristTurn', 'handRotation', HAND_ROTATION_DEG),
     spineBend: pose.spineBend || 0, spineSide: pose.spineSide || 0, spineTwist: pose.spineTwist || 0,
     root: pose.root || 0, rootZ: pose.rootZ || 0,
+    // Per-pose escape hatch for the thumb's fixed left/right attachment
+    // edge (see buildArmSide): a pose whose wrist ends up rotated roughly
+    // 180° from the "default-looking-right" baseline needs its thumb
+    // flipped to the other edge to still read correctly. Set true to flip.
+    thumbFlipL: (L.thumbFlip !== undefined ? L.thumbFlip : (pose.thumbFlip || false)),
+    thumbFlipR: (R.thumbFlip !== undefined ? R.thumbFlip : (pose.thumbFlip || false)),
   };
 }
 
@@ -251,7 +257,7 @@ const POSES3D = {
   'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-weight-shift':    { section:'Standing', label:'Weight on One Hip', spineSide:6, right:{hipAbd:9}, left:{hipAbd:2} },
   'stand-hip-pop':         { section:'Standing', label:'Hip Pop', spineSide:10, right:{hipAbd:15}, left:{hipAbd:-2} },
-  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90 },
+  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, thumbFlip:true },
   'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'stand-look-back':       { section:'Standing', label:'Looking Over Shoulder', spineTwist:35 },
@@ -771,7 +777,7 @@ function buildBody3D() {
   // sits directly in the shoulder-pivot group; the forearm AND hand sit in
   // a nested elbow-pivot group, so the elbow can bend independently of the
   // shoulder and the hand just follows along without bending on its own. ----
-  function buildArmSide(group, pivot, side) {
+  function buildArmSide(group, pivot, side, thumbFlip) {
     if (!pivot) return;
     const armBox = boxes.find(b => b.side === side && b.group === 'arms');
     if (!armBox) return;
@@ -838,11 +844,14 @@ function buildBody3D() {
       // Thumb: a small block on the hand's edge, near the wrist end, so the
       // hand's facing (which way is palm vs. back, which edge is which) is
       // readable at a glance instead of guessed from a flat rectangle. Sits
-      // on the -x edge for the right hand / +x edge for the left hand (the
-      // OPPOSITE of the right:+1/left:-1 side convention used everywhere
-      // else in this file — this is the one exception, matching anatomy),
-      // angled out a little from the hand's own plane to read clearly in 3D.
-      const thumbSign = side === 'right' ? -1 : 1;
+      // on the -x edge for the right hand / +x edge for the left hand by
+      // default (the OPPOSITE of the right:+1/left:-1 side convention used
+      // everywhere else in this file — this is the one exception, matching
+      // anatomy) — unless the current pose sets thumbFlip for this side,
+      // which sends it to the other edge instead (see the comment on
+      // thumbFlipL/R in expandPose3D for when a pose needs this), angled
+      // out a little from the hand's own plane to read clearly in 3D.
+      const thumbSign = (side === 'right' ? -1 : 1) * (thumbFlip ? -1 : 1);
       const thumbW = handBox.wCm * 0.32, thumbH = handBox.hCm * 0.4, thumbD = handDepthCm * 0.8;
       const thumb = makeBoxMesh({ wCm: thumbW, hCm: thumbH, group: 'hands' }, thumbD);
       const thumbPivot = new THREE.Group();
@@ -857,8 +866,9 @@ function buildBody3D() {
     noteY(armBox);
     rig3D[side + 'Elbow'] = elbowGroup;
   }
-  buildArmSide(leftArmGroup, leftPivot, 'left');
-  buildArmSide(rightArmGroup, rightPivot, 'right');
+  const currentPoseExpanded = expandPose3D(POSES3D[currentPose3D] || POSES3D['stand-relaxed']);
+  buildArmSide(leftArmGroup, leftPivot, 'left', currentPoseExpanded.thumbFlipL);
+  buildArmSide(rightArmGroup, rightPivot, 'right', currentPoseExpanded.thumbFlipR);
 
   // ---- Legs: split at the knee (the exact vertical midpoint of the leg
   // box — this already matches where the 2D "Knee line" is drawn). Thigh
