@@ -1300,7 +1300,11 @@ const HAND_TARGET_PRESETS_3D = {
   // the head at and the direction the fingertips end up pointing.
   'head-side-salute': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
-    const point = boxTargetPoint3D(geom.headBox, sideSign * 0.48, 0.86, 0.52);
+    // Lowered and pulled slightly further forward from the original
+    // (0.48, 0.86, 0.52) — the hand was sitting too high above the temple;
+    // this puts the fingertips (which extend up/out past this point along
+    // the normal below) roughly level with the top of the head instead.
+    const point = boxTargetPoint3D(geom.headBox, sideSign * 0.48, 0.80, 0.58);
     if (!point) return null;
     return { point, normal: v3norm({ x: sideSign, y: 0.55, z: 0.4 }) };
   },
@@ -1310,9 +1314,15 @@ const HAND_TARGET_PRESETS_3D = {
   // the chin rather than stopping flush at the box's edge. Facing mostly
   // UP (the palm cups the chin from below) with a little forward lean.
   'chin-rest': (side, geom) => {
-    const point = boxTargetPoint3D(geom.headBox, 0.06, -0.06, 0.42); // yFrac<0 = the offset below the head box's own bottom face
+    // Pulled way back in z (0.42 -> 0.18) — the hand was reaching deep into
+    // the front of the face instead of just meeting the chin's underside.
+    // yFrac nudged up slightly too (-0.06 -> -0.04, still just below the
+    // head box's own bottom face). Normal is now dead vertical (no forward
+    // z-lean) so the hand sits flat/horizontal, tip meeting the bottom of
+    // the head instead of angling forward into it.
+    const point = boxTargetPoint3D(geom.headBox, 0.04, -0.04, 0.18); // yFrac<0 = the offset below the head box's own bottom face
     if (!point) return null;
-    return { point, normal: v3norm({ x: 0, y: 1, z: 0.35 }) };
+    return { point, normal: v3norm({ x: 0, y: 1, z: 0 }) };
   },
   // Hands on hips: the OUTER SIDE face of the hip/waist box (xFrac at the
   // edge, zFrac near mid-depth — a side face, not the front), at roughly
@@ -1323,11 +1333,21 @@ const HAND_TARGET_PRESETS_3D = {
   'hip-side': (side, geom) => {
     const sideSign = side === 'right' ? 1 : -1;
     const box = geom.waistBox || geom.torsoBox;
-    const raw = boxTargetPoint3D(box, sideSign * 0.5, 0.72, 0.1);
+    // zFrac pulled back from 0.1 to -0.05 — the hand was sitting slightly
+    // forward of the hip's actual side face; this tucks it in against the
+    // waist box's own side instead of floating in front of it.
+    const raw = boxTargetPoint3D(box, sideSign * 0.5, 0.72, -0.05);
     if (!raw) return null;
     const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
     const point = pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
-    const normal = pelvisPointToSpineLocal3D(v3norm({ x: sideSign * 0.3, y: -1, z: 0.15 }), sd.bend, sd.twist, sd.side);
+    // Normal reworked (was {sideSign*0.3, -1, 0.15}) so this resolves to a
+    // clean dorsum (blue) reading instead of palm — verified numerically
+    // against the actual wrist-orientation solve, not just eyeballed: the
+    // old z:+0.15 (forward-facing) always landed the solved wristTurn in
+    // the palm half of its range; z:-0.3 (backward-facing) lands it near
+    // the dorsum end with zero clamp overshoot across the whole range of
+    // spine lean these hip poses use.
+    const normal = pelvisPointToSpineLocal3D(v3norm({ x: sideSign * 0.2, y: -0.4, z: -0.3 }), sd.bend, sd.twist, sd.side);
     return { point, normal };
   },
   // Hands/forearms crossed over the chest: each hand lands near the
@@ -1349,10 +1369,16 @@ const HAND_TARGET_PRESETS_3D = {
     if (!otherShoulder || !lens) return null;
     const otherSign = otherSide === 'right' ? 1 : -1;
     const unit = headWidthCm3D || 1;
+    // Pulled in from the old (0.12 out past the shoulder, 0.6 of the way
+    // down the upper arm, 0.3 unit forward) — that put the tuck point well
+    // out past the torso's own silhouette. This aims for the OTHER elbow
+    // itself (0.85 of the way down its upper arm, right at the shoulder's
+    // own x rather than past it, and less far forward), matching "imagine
+    // the upper arm at the sides, hands tuck at the elbow joint."
     const point = {
-      x: otherShoulder.x + otherSign * 0.12 * unit,
-      y: otherShoulder.y - lens.upper * 0.6,
-      z: 0.3 * unit,
+      x: otherShoulder.x + otherSign * 0.02 * unit,
+      y: otherShoulder.y - lens.upper * 0.85,
+      z: 0.15 * unit,
     };
     const normal = v3norm({ x: otherSign, y: -0.1, z: 0.3 });
     return { point, normal };
@@ -1370,7 +1396,11 @@ const HAND_TARGET_PRESETS_3D = {
   // clasped hands.
   'behind-back': (side, geom) => {
     const box = geom.waistBox || geom.torsoBox;
-    const raw = boxTargetPoint3D(box, -0.1, 0.6, -0.2);
+    // yFrac lowered (0.6 -> 0.42) — one hand was sinking into the torso/
+    // waist mesh at the higher spot; the lower target clears it for both
+    // hands (which reach this same shared point from mirrored shoulders,
+    // so a single shared adjustment is the only way to fix both at once).
+    const raw = boxTargetPoint3D(box, -0.1, 0.42, -0.2);
     if (!raw) return null;
     const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
     const point = pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
@@ -1594,7 +1624,21 @@ function solveHandOrientationForNormal(side, sol, normalLocal) {
     const rotXRad = -Math.asin(y);
     const rotYRad = Math.atan2(d.x, d.z);
     const hingeDeg = Math.max(-80, Math.min(80, rad2deg(rotXRad)));
-    const rawTurnDeg = side === 'left' ? -rad2deg(rotYRad) : rad2deg(rotYRad);
+    // NOT side-negated: for a target/normal pair that's a true mirror image
+    // between left and right (hip-side, opposite-shoulder — same preset
+    // fed each side's own mirrored point+normal), the elbow-local `d` this
+    // function receives is ALSO an exact mirror image (dA.x flips sign,
+    // dA.y/dA.z don't — verified numerically against the solved shoulder/
+    // elbow quaternions). Negating rotYRad again for the left side undid
+    // that mirror and collapsed both sides toward the SAME raw number, so
+    // one side would land inside its dorsum range while the other didn't
+    // (a hip-side pose could render one hand red and the other blue for
+    // what's meant to be an identical symmetric gesture). Leaving it
+    // un-negated makes left/right come out equal-magnitude, OPPOSITE sign —
+    // which is exactly what's needed given WRIST_TURN_RANGE is itself
+    // mirrored (left [0,180], right [-180,0]): both sides then land in the
+    // same palm/dorsum half together. Do not reintroduce this negation.
+    const rawTurnDeg = rad2deg(rotYRad);
     const { clamped, elbowLift } = clampWristTurn(side, rawTurnDeg);
     return { turnDeg: clamped, hingeDeg, overshoot: elbowLift };
   };
