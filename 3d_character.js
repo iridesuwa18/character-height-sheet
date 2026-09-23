@@ -164,33 +164,20 @@ const BASELINE_SHOULDER_LENGTH_CM = 21.4;
 const HAND_ROTATION_DEG = { front: 0, side: 90, back: 180 };
 const WRIST_ROTATION_DEG = { front: 0, up: 60, down: -60 };
 
-// ── Palm / dorsum debug coloring ───────────────────────────────────────
-// Pure visual aid for authoring poses: paints each forearm red when that
-// hand is showing its PALM, blue when it's showing the back of the hand
-// (dorsum) — so a pose's hand orientation can be checked at a glance
-// instead of guessed from raw wristTurn degrees (this is exactly the
-// mistake that produced a wrong salute — never again).
-// Convention: wristTurn:0 is full palm. Twisting the RIGHT wrist toward
-// -180 reaches full dorsum; twisting the LEFT wrist toward +180 does the
-// same (this matches exactly how wristTurn already gets applied to
-// rig3D.leftWrist/rightWrist — see the rotation.y lines a bit further
-// down). The thumb is NOT separately flipped for this — it's a fixed
-// point on the hand mesh, so it swings around for free as wristTurn
-// rotates the hand from palm to dorsum. A manual thumbFlip should only
-// ever be needed for a pose that's doing something unusual, not as a
-// routine fix.
-const WRIST_FLIP_COLORS = { palm: 0xdb4437, dorsum: 0x3367d6 }; // red / blue
-let showWristFlipDebugColors = true;
-function wristFlipState(side, wristTurnDeg) {
-  const towardDorsum = side === 'left' ? -(wristTurnDeg || 0) : (wristTurnDeg || 0);
-  let t = ((towardDorsum % 360) + 360) % 360; // fold into 0..360
-  if (t > 180) t = 360 - t;                   // ...then to a 0..180 "distance from palm"
-  return t < 90 ? 'palm' : 'dorsum';
-}
-function updateForearmFlipColors(p) {
-  if (!showWristFlipDebugColors) return;
-  if (rig3D.leftForearm)  rig3D.leftForearm.material.color.setHex(WRIST_FLIP_COLORS[wristFlipState('left', p.wristTurnL)]);
-  if (rig3D.rightForearm) rig3D.rightForearm.material.color.setHex(WRIST_FLIP_COLORS[wristFlipState('right', p.wristTurnR)]);
+// ---- Forearm flip state (palm vs. dorsum) ----------------------------------
+// A forearm is "flipped" when its hand is palm-side, "unflipped" when it's
+// dorsum-side — colored red/blue on the forearm block so the state reads at
+// a glance. Canonical convention (viewer looking at the model's POV, hand
+// stretched ~15° from the body): wristTurn runs 0° (palm) → 180° (dorsum)
+// for the LEFT hand as it rotates toward the torso midline, and 0° (palm) →
+// -180° (dorsum) for the RIGHT hand. A raw wristTurn value is classified by
+// whichever endpoint (0 or ±180) it sits closer to, so poses authored before
+// this convention existed still get a reasonable flip/color reading.
+const FOREARM_FLIPPED_COLOR = 0xff4444;   // red  = flipped   = palm view
+const FOREARM_UNFLIPPED_COLOR = 0x4488ff; // blue = unflipped = dorsum view
+function isHandFlipped(side, wristTurnDeg) {
+  const t = wristTurnDeg || 0;
+  return side === 'left' ? t < 90 : t > -90;
 }
 
 // Expands a POSES3D entry (shared fields + optional left/right overrides)
@@ -319,7 +306,7 @@ const POSES3D = {
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-160} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, thumbFlip:true} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -1178,11 +1165,9 @@ function buildBody3D() {
     lower.position.set(0, -lowerH/2, 0);
     elbowGroup.add(lower);
     meshRecords3D.push({ mesh: lower, group: 'arms', wCm: armBox.wCm, hCm: lowerH });
-    // Kept so applyPose3D can recolor just this one box (palm/dorsum debug
-    // indicator — see WRIST_FLIP_DEBUG below) without touching the upper
-    // arm, which shares the same 'arms' group color but isn't part of the
-    // wrist twist.
-    rig3D[side + 'Forearm'] = lower;
+    // Kept so applyPose3D can recolor it red/blue for flipped/unflipped
+    // (palm/dorsum) every time the pose or a hand/wrist override changes.
+    rig3D[side + 'ForearmMesh'] = lower;
 
     const elbowJoint = makeJointSphere(armDepthCm);
     elbowJoint.position.set(0, 0, 0);
@@ -1415,11 +1400,6 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   } else if (rightIK.wristTurnBoost) {
     p.wristTurnR = (p.wristTurnR || 0) + rightIK.wristTurnBoost;
   }
-  // Palm/dorsum debug coloring — see WRIST_FLIP_COLORS above. Must run
-  // after the IK wristTurnBoost adjustments just above, since those can
-  // change p.wristTurnL/R from what the pose originally authored.
-  updateForearmFlipColors(p);
-
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
   // which way the hand block faces by rotating it about the forearm's own
@@ -1430,6 +1410,14 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   setHinge(rig3D.leftWrist, p.wristL); setHinge(rig3D.rightWrist, p.wristR);
   if (rig3D.leftWrist)  rig3D.leftWrist.rotation.y  = deg2rad((p.wristTurnL || 0) * -1);
   if (rig3D.rightWrist) rig3D.rightWrist.rotation.y = deg2rad((p.wristTurnR || 0) *  1);
+
+  // Forearm flip state + color, derived from the same wristTurn values just
+  // applied above — kept on rig3D so later features (rotation-range limits,
+  // mesh pinning) can read the current flip state without recomputing it.
+  rig3D.leftHandFlipped  = isHandFlipped('left',  p.wristTurnL);
+  rig3D.rightHandFlipped = isHandFlipped('right', p.wristTurnR);
+  if (rig3D.leftForearmMesh)  rig3D.leftForearmMesh.material.color.setHex(rig3D.leftHandFlipped  ? FOREARM_FLIPPED_COLOR : FOREARM_UNFLIPPED_COLOR);
+  if (rig3D.rightForearmMesh) rig3D.rightForearmMesh.material.color.setHex(rig3D.rightHandFlipped ? FOREARM_FLIPPED_COLOR : FOREARM_UNFLIPPED_COLOR);
 
   if (rig3D.spine) {
     rig3D.spine.rotation.x = deg2rad(p.spineBend || 0);
