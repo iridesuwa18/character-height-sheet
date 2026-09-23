@@ -104,6 +104,16 @@
     font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted);
     text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none;
   }
+  #pinReticle {
+    position: absolute; top: 50%; left: 50%; width: 28px; height: 28px;
+    transform: translate(-50%, -50%); pointer-events: none; z-index: 50;
+  }
+  #pinReticle::before, #pinReticle::after {
+    content: ''; position: absolute; background: var(--accent-gold);
+    box-shadow: 0 0 3px rgba(0,0,0,0.8);
+  }
+  #pinReticle::before { top: 50%; left: 0; right: 0; height: 2px; transform: translateY(-50%); }
+  #pinReticle::after { left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); }
   .depth-row {
     display: grid; grid-template-columns: 70px 1fr 34px; align-items: center;
     gap: 10px; margin-bottom: 10px;
@@ -717,6 +727,7 @@
   </div>
   <div id="preview3D" style="display:none;">
     <canvas id="body3DCanvas"></canvas>
+    <div id="pinReticle" style="display:none;"></div>
     <div id="body3DHint">Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan</div>
   </div>
   <div class="panel" style="width:100%; display:none;" id="depthPanel">
@@ -772,7 +783,8 @@
           </div>
           <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">MESH PIN (lock hand to a spot on the body)</div>
           <div class="pose-btn-row" style="margin-bottom:4px;">
-            <button type="button" class="pose-btn" id="pinMeshBtn" onclick="armMeshPin(handWristTargetSide)">📌 Click Mesh to Pin</button>
+            <button type="button" class="pose-btn" id="pinMeshBtn" onclick="armMeshPin(handWristTargetSide)">🎯 Aim &amp; Pin</button>
+            <button type="button" class="pose-btn" id="pinConfirmBtn" style="display:none;" onclick="confirmMeshPinAtCrosshair3D()">📍 Pin Here</button>
             <button type="button" class="pose-btn" onclick="unpinHandWrist()">✕ Unpin</button>
           </div>
           <div id="pinStatusLine" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 10px;"></div>

@@ -417,17 +417,29 @@ function refreshHandWristButtons() {
 }
 
 // ── Click-to-pin ─────────────────────────────────────────────────────────
-// Lets a person click a spot on the rendered head/neck/torso/waist/leg/foot
-// mesh instead of typing box/x/y/z by hand, converting the click into the
-// exact same box-fraction format resolveHandTarget3D already reads
-// (MESH_PIN_ANCHORS_3D) — so a click-picked pin behaves identically to a
-// hand-authored one and keeps tracking that mesh through resizes. Arms and
-// hands are excluded (see MESH_PIN_ANCHORS_3D note: their posed position
-// isn't recoverable from the flat 2D box), and clicking them is ignored.
+// Lets a person aim the 3D view (orbit/pinch/pan, same gestures as always)
+// so the spot they want lines up with a crosshair fixed at the center of
+// the viewport, then tap one button to pin the currently-armed hand to
+// whatever's under it — converting that into the exact same box-fraction
+// format resolveHandTarget3D already reads (MESH_PIN_ANCHORS_3D), so a
+// picked pin behaves identically to a hand-authored one and keeps tracking
+// that mesh through resizes. Arms and hands are excluded (see
+// MESH_PIN_ANCHORS_3D note: their posed position isn't recoverable from the
+// flat 2D box) — the crosshair simply won't find a pinnable hit on them.
+//
+// Aim-then-confirm rather than tap-the-exact-spot on purpose: a raw
+// tap/click has to be told apart from the start of an orbit-drag, which
+// needs a movement-distance threshold — reliable enough with a mouse, but
+// touch naturally drifts more than that even on a stationary tap (plus
+// two-finger pinch-zoom involves a second touch mid-gesture), so it
+// mis-fired on mobile. Reading a fixed screen-center point instead removes
+// the ambiguity entirely: orbiting never gets misread as a pin, on any
+// input device, and pinch-zoom lets you line the crosshair up precisely
+// even on a small screen.
 //
 // Two coordinate frames matter here, matching the ones resolveHandTarget3D
 // itself uses: torso/head/neck hang directly off the SPINE pivot with no
-// joint of their own, so converting a click into spineGroup's local space
+// joint of their own, so converting the hit into spineGroup's local space
 // (spineGroup.worldToLocal) lands EXACTLY back on the box's own rest
 // coordinates, however much the spine is currently bent/twisted. Waist/legs/
 // feet hang off the PELVIS (bodyGroup3D) instead — waist has no joint of
@@ -443,62 +455,57 @@ let raycaster3D = null;
 const PIN_GROUP_ANCHOR_3D = { head: 'head', neck: 'neck', torso: 'torso', waistbox: 'waist' };
 const round2 = n => Math.round(n * 100) / 100;
 
-function setupMeshPinPicking3D() {
-  const canvas = document.getElementById('body3DCanvas');
-  if (!canvas || canvas._pinPickBound) return;
-  canvas._pinPickBound = true;
-  raycaster3D = new THREE.Raycaster();
-  // pointerdown/pointerup with a small drag-distance threshold, rather than
-  // a plain 'click' listener, so orbiting/panning the camera (which starts
-  // and ends on the same canvas) never gets misread as a pin placement.
-  let downAt = null;
-  canvas.addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY }; });
-  canvas.addEventListener('pointerup', (e) => {
-    const start = downAt; downAt = null;
-    if (!pinArmedSide || !start) return;
-    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) return; // was a drag, not a pick
-    handleMeshPinClick3D(e);
-  });
+function initMeshPinRaycaster3D() {
+  if (!raycaster3D) raycaster3D = new THREE.Raycaster();
 }
 
-function handleMeshPinClick3D(e) {
-  if (!raycaster3D || !camera3D || !renderer3D || !bodyGroup3D || !rig3D.spine) return;
-  const rect = renderer3D.domElement.getBoundingClientRect();
-  const ndc = new THREE.Vector2(
-    ((e.clientX - rect.left) / rect.width) * 2 - 1,
-    -((e.clientY - rect.top) / rect.height) * 2 + 1
-  );
-  raycaster3D.setFromCamera(ndc, camera3D);
+// Resolves whatever's currently under the screen-center crosshair to a
+// {box, x, y, z} mesh-pin descriptor, or null if nothing pinnable is there.
+function resolveMeshPinAtCrosshair3D() {
+  if (!raycaster3D || !camera3D || !bodyGroup3D || !rig3D.spine) return null;
+  raycaster3D.setFromCamera(new THREE.Vector2(0, 0), camera3D); // dead center of the viewport
   const pinnable = meshRecords3D.filter(r => PIN_GROUP_ANCHOR_3D[r.group] || r.group === 'legs' || r.group === 'feet');
   const hits = raycaster3D.intersectObjects(pinnable.map(r => r.mesh), false);
-  if (!hits.length) return;
+  if (!hits.length) return null;
   const hit = hits[0];
   const rec = pinnable.find(r => r.mesh === hit.object);
-  if (!rec) return;
+  if (!rec) return null;
 
   const bodyLocal = bodyGroup3D.worldToLocal(hit.point.clone());
   let anchorKey = PIN_GROUP_ANCHOR_3D[rec.group];
   if (rec.group === 'legs') anchorKey = bodyLocal.x < 0 ? 'leftLeg' : 'rightLeg';
   if (rec.group === 'feet') anchorKey = bodyLocal.x < 0 ? 'leftFoot' : 'rightFoot';
-  if (!anchorKey) return;
+  if (!anchorKey) return null;
 
   const anchor = MESH_PIN_ANCHORS_3D[anchorKey];
   const box = anchor.get(ikContext3D);
-  if (!box) return;
+  if (!box) return null;
   const { depthCm, zOffset } = computeBodyDepth3D(box);
   const local = anchor.pelvisAnchored ? bodyLocal : rig3D.spine.worldToLocal(hit.point.clone());
   const yLocal = anchor.pelvisAnchored ? local.y : local.y + ikContext3D.waistTopY;
 
-  const xFrac = round2((local.x - box.xCm) / box.wCm);
-  const yFrac = round2((yLocal - box.bottomCm) / box.hCm);
-  const zFrac = round2((local.z - zOffset) / depthCm);
-
-  applyMeshPin3D(pinArmedSide, anchorKey, xFrac, yFrac, zFrac);
+  return {
+    box: anchorKey,
+    x: round2((local.x - box.xCm) / box.wCm),
+    y: round2((yLocal - box.bottomCm) / box.hCm),
+    z: round2((local.z - zOffset) / depthCm),
+  };
 }
 
-// Arms/disarms click-to-pin mode for one side. Clicking the button again
-// (or switching the side selector) disarms it. 'both' can't be armed —
-// a click is one point, and left/right need their own separate points.
+// "📍 Pin Here" button — confirms whatever's currently under the crosshair
+// for the armed side. Left armed afterward on purpose (unlike the old
+// tap-to-pin, which disarmed itself) so re-aiming and pinning the OTHER
+// hand right after is just: switch side above, re-aim, tap again.
+function confirmMeshPinAtCrosshair3D() {
+  if (!pinArmedSide) return;
+  const resolved = resolveMeshPinAtCrosshair3D();
+  if (!resolved) { alert('Nothing pinnable under the crosshair — orbit/zoom so it lines up with the body first.'); return; }
+  applyMeshPin3D(pinArmedSide, resolved.box, resolved.x, resolved.y, resolved.z);
+}
+
+// Arms/disarms pin-aiming mode for one side, showing the crosshair overlay
+// and the confirm button while armed. 'both' can't be armed — a pin is one
+// point, and left/right need their own separate points.
 function armMeshPin(side) {
   if (side === 'both') { alert('Pick Left Hand or Right Hand above (not Both) before pinning to the mesh.'); return; }
   pinArmedSide = pinArmedSide === side ? null : side;
@@ -506,10 +513,14 @@ function armMeshPin(side) {
 }
 function updatePinModeUI() {
   const btn = document.getElementById('pinMeshBtn');
+  const confirmBtn = document.getElementById('pinConfirmBtn');
+  const reticle = document.getElementById('pinReticle');
   const hint = document.getElementById('body3DHint');
   if (btn) btn.classList.toggle('active', !!pinArmedSide);
+  if (confirmBtn) confirmBtn.style.display = pinArmedSide ? '' : 'none';
+  if (reticle) reticle.style.display = pinArmedSide ? '' : 'none';
   if (hint) hint.textContent = pinArmedSide
-    ? `Click a spot on the body to pin the ${pinArmedSide} hand there`
+    ? `Orbit/pinch to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here"`
     : 'Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan';
 }
 function applyMeshPin3D(side, box, x, y, z) {
@@ -523,8 +534,6 @@ function applyMeshPin3D(side, box, x, y, z) {
   wristRotationOverride[side] = null;
   elbowBendOverride[side] = null;
   elbowLiftOverride[side] = null;
-  pinArmedSide = null;
-  updatePinModeUI();
   refreshHandWristButtons();
   applyPose3D(currentPose3D, { reframe: false });
 }
@@ -1069,7 +1078,7 @@ function initScene3D() {
   scene3D.add(poseRootGroup3D);
 
   window.addEventListener('resize', resizeBody3D);
-  setupMeshPinPicking3D();
+  initMeshPinRaycaster3D();
   sceneInited3D = true;
   animate3D();
 }
