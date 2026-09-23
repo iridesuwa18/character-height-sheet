@@ -825,9 +825,10 @@
     </div><!-- /poseModalMainContent -->
     <div id="pinAimBar">
       <div id="pinAimHint">Orbit/pinch the 3D view above to line the crosshair up, then tap Pin Here.</div>
+      <button type="button" class="btn-primary" style="width:100%;" onclick="confirmMeshPinAtCrosshair3D()">📍 Pin Here</button>
       <div class="pin-aim-row">
         <button type="button" class="pose-btn" onclick="cancelMeshPin()">✕ Cancel</button>
-        <button type="button" class="btn-primary" style="flex:1;" onclick="confirmMeshPinAtCrosshair3D()">📍 Pin Here</button>
+        <button type="button" class="pose-btn" id="pinDoneBtn" style="flex:1;" onclick="finishMeshPin()">✓ Done</button>
       </div>
     </div>
     </div>

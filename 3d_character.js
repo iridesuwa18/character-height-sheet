@@ -45,6 +45,7 @@ let rig3D={}; // pivot groups from the last build: leftHip/rightHip, leftKnee/ri
               // leftAnkle/rightAnkle, leftShoulder/rightShoulder, leftElbow/rightElbow
 
 const deg2rad = d => d * Math.PI / 180;
+const rad2deg = r => r * 180 / Math.PI;
 
 // ---- Poses ----------------------------------------------------------------
 // Every joint angle is in degrees and describes how far THAT joint bends
@@ -460,7 +461,16 @@ function initMeshPinRaycaster3D() {
 }
 
 // Resolves whatever's currently under the screen-center crosshair to a
-// {box, x, y, z} mesh-pin descriptor, or null if nothing pinnable is there.
+// {box, x, y, z, normal} mesh-pin descriptor, or null if nothing pinnable
+// is there. `normal` is the surface's outward direction at the hit point,
+// expressed in the SAME local frame as x/y/z (spine-local, or pelvis-local
+// pre-spine-rotation for a pelvis-anchored box) — computed by transforming
+// two points (the hit point and a point nudged along the world-space face
+// normal) through that frame's own worldToLocal and taking the direction
+// between them, rather than juggling quaternions directly. That keeps it
+// correct through however many rotated parents (spine bend/twist, pelvis)
+// sit between the mesh and that frame, the same way the point itself
+// already gets un-rotated by worldToLocal above.
 function resolveMeshPinAtCrosshair3D() {
   if (!raycaster3D || !camera3D || !bodyGroup3D || !rig3D.spine) return null;
   raycaster3D.setFromCamera(new THREE.Vector2(0, 0), camera3D); // dead center of the viewport
@@ -484,23 +494,33 @@ function resolveMeshPinAtCrosshair3D() {
   const local = anchor.pelvisAnchored ? bodyLocal : rig3D.spine.worldToLocal(hit.point.clone());
   const yLocal = anchor.pelvisAnchored ? local.y : local.y + ikContext3D.waistTopY;
 
+  const frameObj = anchor.pelvisAnchored ? bodyGroup3D : rig3D.spine;
+  const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
+  const p1local = frameObj.worldToLocal(hit.point.clone());
+  const p2local = frameObj.worldToLocal(hit.point.clone().addScaledVector(worldNormal, 1));
+  const normal = v3norm(v3sub(p2local, p1local));
+
   return {
     box: anchorKey,
     x: round2((local.x - box.xCm) / box.wCm),
     y: round2((yLocal - box.bottomCm) / box.hCm),
     z: round2((local.z - zOffset) / depthCm),
+    normal,
   };
 }
 
 // "📍 Pin Here" button — confirms whatever's currently under the crosshair
 // for the armed side. Left armed afterward on purpose (unlike the old
 // tap-to-pin, which disarmed itself) so re-aiming and pinning the OTHER
-// hand right after is just: switch side above, re-aim, tap again.
+// hand right after is just: switch side above, re-aim, tap again. Returns
+// true/false so "✓ Done" (finishMeshPin) knows whether the pin actually
+// landed before it closes the aim bar.
 function confirmMeshPinAtCrosshair3D() {
-  if (!pinArmedSide) return;
+  if (!pinArmedSide) return false;
   const resolved = resolveMeshPinAtCrosshair3D();
-  if (!resolved) { alert('Nothing pinnable under the crosshair — orbit/zoom so it lines up with the body first.'); return; }
-  applyMeshPin3D(pinArmedSide, resolved.box, resolved.x, resolved.y, resolved.z);
+  if (!resolved) { alert('Nothing pinnable under the crosshair — orbit/zoom so it lines up with the body first.'); return false; }
+  applyMeshPin3D(pinArmedSide, resolved.box, resolved.x, resolved.y, resolved.z, resolved.normal);
+  return true;
 }
 
 // Arms/disarms pin-aiming mode for one side, showing the crosshair overlay
@@ -546,17 +566,29 @@ function updatePinModeUI() {
     ? `Orbit/pinch the 3D view above to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here".`
     : '';
 }
+// "✓ Done" — pins whatever's under the crosshair right now (same as one
+// last "Pin Here" tap) AND exits aim mode, so a single tap both confirms
+// the position and closes the aim bar. Kept separate from "📍 Pin Here"
+// (which stays armed, for re-aiming/re-pinning the same spot) since the
+// two most-needed actions — "place it" and "I'm done placing it" — were
+// otherwise the same button, easy to miss on mobile.
+function finishMeshPin() {
+  if (!pinArmedSide) return;
+  if (confirmMeshPinAtCrosshair3D()) cancelMeshPin();
+}
 // "✕ Cancel" on the aim bar — disarms without pinning, same as tapping
 // "🎯 Aim & Pin" again to toggle it off.
 function cancelMeshPin() {
   pinArmedSide = null;
   updatePinModeUI();
 }
-function applyMeshPin3D(side, box, x, y, z) {
+function applyMeshPin3D(side, box, x, y, z, normal) {
   const pose = POSES3D[currentPose3D];
   if (!pose) return;
   pose[side] = pose[side] || {};
-  pose[side].handTarget = { box, x, y, z };
+  pose[side].handTarget = normal
+    ? { box, x, y, z, nx: round2(normal.x), ny: round2(normal.y), nz: round2(normal.z) }
+    : { box, x, y, z };
   // An IK-driven side ignores the fixed-angle overrides entirely (see
   // applyPose3D) — clear them so the panel doesn't keep showing dead values.
   handRotationOverride[side] = null;
@@ -1226,7 +1258,7 @@ function computeBodyDepth3D(b) {
 // ikContext3D is filled in during buildBody3D/buildArmSide with whatever
 // current geometry (shoulder positions, arm segment lengths, head box) an
 // IK-driven pose needs, so it always reflects the body size on screen.
-let ikContext3D = { headBox: null, neckBox: null, torsoBox: null, waistBox: null, legBoxes: { left: null, right: null }, footBoxes: { left: null, right: null }, waistTopY: 0, shoulders: {}, armLens: {}, spineDeg: { bend: 0, twist: 0, side: 0 } };
+let ikContext3D = { headBox: null, neckBox: null, torsoBox: null, waistBox: null, legBoxes: { left: null, right: null }, footBoxes: { left: null, right: null }, waistTopY: 0, shoulders: {}, armLens: {}, handDepths: {}, spineDeg: { bend: 0, twist: 0, side: 0 } };
 
 // Shared helper: a point on/near the front face of a body box (head, torso,
 // waist/hip...), given as fractions of that box's own width/height/depth —
@@ -1400,11 +1432,23 @@ function resolveHandTarget3D(side, targetSpec, geom) {
   const anchor = MESH_PIN_ANCHORS_3D[targetSpec.box];
   const box = anchor ? anchor.get(geom) : null;
   let point = boxTargetPoint3D(box, targetSpec.x ?? 0, targetSpec.y ?? 0.5, targetSpec.z ?? 0.5);
+  const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
   if (point && anchor.pelvisAnchored) {
-    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
     point = pelvisPointToSpineLocal3D(point, sd.bend, sd.twist, sd.side);
   }
-  return point ? { point, poleAngles: targetSpec.poleAngles } : null;
+  if (!point) return null;
+  // A crosshair-pinned target also carries the surface normal it was
+  // picked on (see resolveMeshPinAtCrosshair3D) — named string presets
+  // above never have one, so they fall back to the old behavior (no
+  // orientation solve, just the fixed-angle wrist values as authored). A
+  // pelvis-anchored normal needs the exact same spine-bend correction the
+  // point above just got — it's a pure rotation, so pelvisPointToSpineLocal3D
+  // (built for points) works unchanged as a direction transform too.
+  let normal = (targetSpec.nx != null) ? { x: targetSpec.nx, y: targetSpec.ny, z: targetSpec.nz } : null;
+  if (normal && anchor.pelvisAnchored) {
+    normal = pelvisPointToSpineLocal3D(normal, sd.bend, sd.twist, sd.side);
+  }
+  return { point, poleAngles: targetSpec.poleAngles, normal };
 }
 
 const v3 = (x, y, z) => ({ x, y, z });
@@ -1493,14 +1537,71 @@ function solveArmIK(shoulderPos, target, L1, L2, pole) {
   return { flexRad: euler.flexRad, rollRad: euler.rollRad, zRad: euler.zRad, elbowDeg, overreachCm };
 }
 
+// Given the arm's already-solved shoulder/elbow rotation (sol, from
+// solveArmIK) and a target surface normal in the SAME local frame the IK
+// solve itself works in, finds the wrist turn/hinge that makes the hand's
+// flat face (its local Z axis — the axis makeBoxMesh's thin "thickness"
+// dimension runs along, i.e. exactly the axis wristTurn's 180°-about-Y flip
+// already swaps between the two flat faces) point along that normal — so
+// the hand lies flush against the surface instead of the pose's leftover/
+// default wrist angle potentially clipping it edge-first into the mesh.
+// Tries both flat faces (the normal and its opposite) since either one
+// could be the face that ends up resting on the surface, and keeps
+// whichever needs LESS wristTurn than the physical pronation/supination
+// range (WRIST_TURN_RANGE) allows — i.e. "whichever face it can manage"
+// rather than always forcing one specific face and fighting the wrist's
+// own limit to get there. Deliberately does NOT add elbow-lift
+// compensation for whatever's left over (unlike the fixed-angle path) —
+// the wrist's own reach is already the more forgiving of the two once both
+// faces are considered, and lifting the elbow here would nudge the wrist
+// off the position IK just solved for.
+function solveHandOrientationForNormal(side, sol, normalLocal) {
+  const shoulderQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(sol.flexRad, sol.rollRad, sol.zRad, 'XYZ'));
+  const elbowQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(deg2rad(sol.elbowDeg), 0, 0, 'XYZ'));
+  const toElbowLocal = shoulderQuat.clone().multiply(elbowQuat).invert();
+  const dA = new THREE.Vector3(normalLocal.x, normalLocal.y, normalLocal.z).applyQuaternion(toElbowLocal);
+
+  const candidate = (d) => {
+    // Two-angle aim solve for wristGroup's Euler(rotX, rotY, 0, 'XYZ')
+    // mapping its local Z axis (0,0,1) onto direction d — see the
+    // derivation in the file's IK notes: with rotZ fixed at 0, XYZ order
+    // gives local Z -> (cos(x)sin(y), -sin(x), cos(x)cos(y)).
+    const y = Math.max(-1, Math.min(1, d.y));
+    const rotXRad = -Math.asin(y);
+    const rotYRad = Math.atan2(d.x, d.z);
+    const hingeDeg = Math.max(-80, Math.min(80, rad2deg(rotXRad)));
+    const rawTurnDeg = side === 'left' ? -rad2deg(rotYRad) : rad2deg(rotYRad);
+    const { clamped, elbowLift } = clampWristTurn(side, rawTurnDeg);
+    return { turnDeg: clamped, hingeDeg, overshoot: elbowLift };
+  };
+
+  const a = candidate(dA);
+  const b = candidate(dA.clone().negate());
+  let best = a.overshoot <= b.overshoot ? a : b;
+  // Tie-break (within a few degrees of overshoot, so it's not a hard cutoff)
+  // toward whichever candidate reads as dorsum — matches the "dorsum facing
+  // down by default" preference when either face works about as well.
+  if (Math.abs(a.overshoot - b.overshoot) < 5) {
+    const aFlipped = isHandFlipped(side, a.turnDeg), bFlipped = isHandFlipped(side, b.turnDeg);
+    if (aFlipped && !bFlipped) best = b;
+    else if (!aFlipped && bFlipped) best = a;
+  }
+  return { wristTurnDeg: best.turnDeg, wristHingeDeg: best.hingeDeg };
+}
+
 // Runs the IK above for one arm and applies the result straight to the rig,
 // using whatever the CURRENT body proportions are (from ikContext3D).
-// Returns false if IK couldn't run at all, or an object {wristTurnBoost}
-// on success — wristTurnBoost is 0 for a normal in-reach solve, and a small
+// Returns false if IK couldn't run at all, or an object {wristTurnBoost,
+// orientedWristTurnDeg?, orientedWristHingeDeg?} on success —
+// wristTurnBoost is 0 for a normal in-reach solve, and a small
 // outward-rotation nudge (degrees, unsigned) when the target was farther
 // than the arm can physically reach, so the caller can add it to the pose's
 // own wristTurn and visibly sell the hand "reaching" rather than the arm
-// silently coming up short of the mesh it was supposed to lock onto.
+// silently coming up short of the mesh it was supposed to lock onto. The
+// oriented* fields are only present for a mesh-pinned target that carries a
+// surface normal (see resolveHandTarget3D) — the caller uses them in place
+// of the pose's own wristTurn/wrist so the hand actually lies flush against
+// whatever it got pinned to instead of keeping a stale fixed-angle facing.
 // targetSpec is whatever the pose's handTarget field holds — a named preset
 // string or a generic mesh-pin descriptor object; see resolveHandTarget3D.
 function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
@@ -1514,7 +1615,20 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
   const pole = resolved.poleAngles
     ? poleFromAngles3D(side, resolved.poleAngles.flex, resolved.poleAngles.abd, resolved.poleAngles.roll)
     : { x: sideSign * 0.5, y: -0.3, z: 0.8 };
-  const sol = solveArmIK(shoulderPos, resolved.point, lens.upper, lens.lower, pole);
+  // Pinned-to-a-surface targets: aim the WRIST (not the hand's face) at a
+  // point pulled off the surface by half the hand's own thickness, so once
+  // the hand is oriented face-down onto the normal below, its near face —
+  // not its center — is the thing actually touching the surface.
+  let targetPoint = resolved.point;
+  if (resolved.normal) {
+    const halfThick = (ikContext3D.handDepths[side] || 0) / 2;
+    targetPoint = v3(
+      resolved.point.x + resolved.normal.x * halfThick,
+      resolved.point.y + resolved.normal.y * halfThick,
+      resolved.point.z + resolved.normal.z * halfThick
+    );
+  }
+  const sol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower, pole);
   if (!sol) return false;
   shoulderGrp.rotation.x = sol.flexRad;
   shoulderGrp.rotation.y = sol.rollRad;
@@ -1522,7 +1636,13 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
   elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
   const maxReach = (lens.upper + lens.lower) || 1;
   const wristTurnBoost = Math.min(30, (sol.overreachCm / maxReach) * 90);
-  return { wristTurnBoost };
+  const result = { wristTurnBoost };
+  if (resolved.normal) {
+    const oriented = solveHandOrientationForNormal(side, sol, resolved.normal);
+    result.orientedWristTurnDeg = oriented.wristTurnDeg;
+    result.orientedWristHingeDeg = oriented.wristHingeDeg;
+  }
+  return result;
 }
 
 // (Re)builds every box mesh from the current 2D layout. Called automatically
@@ -1572,7 +1692,7 @@ function buildBody3D() {
   // Refresh the IK context with this build's actual geometry — any
   // handTarget-driven pose reads current body size from here, never stale
   // numbers from a previous Generate/slider change.
-  ikContext3D = { headBox, neckBox, torsoBox, waistBox, legBoxes, footBoxes, waistTopY, shoulders: {}, armLens: {}, spineDeg: ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 } };
+  ikContext3D = { headBox, neckBox, torsoBox, waistBox, legBoxes, footBoxes, waistTopY, shoulders: {}, armLens: {}, handDepths: {}, spineDeg: ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 } };
 
   const spineGroup = new THREE.Group();
   spineGroup.position.set(0, waistTopY, 0);
@@ -1721,6 +1841,7 @@ function buildBody3D() {
 
     if (handBox) {
       const handDepthCm = computeBodyDepth3D(handBox).depthCm;
+      ikContext3D.handDepths[side] = handDepthCm;
       const wristJointCm = handBox.wCm * 0.6;
       const wristJoint = makeJointSphere(wristJointCm);
       wristJoint.position.set(0, 0, 0);
@@ -1935,17 +2056,26 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     setBallJoint(rig3D.leftShoulder, p.shoulderL, (p.shoulderAbdL || 0) + leftElbowLift, -1);
     if (rig3D.leftShoulder) rig3D.leftShoulder.rotation.y = deg2rad((p.shoulderRollL || 0) * -1);
     setHinge(rig3D.leftElbow, leftElbowBend);
-  } else if (leftIK.wristTurnBoost) {
-    // Target was farther than the arm can reach — rotate the wrist a bit
-    // further outward on top of whatever the pose authored, instead of
-    // letting the hand quietly stop short of the mesh it's locked onto.
-    // Added the same way other shared "outward" fields (hipAbd/shoulderAbd)
-    // are authored — the per-side ×(-1)/×(+1) mirroring below turns this
-    // single positive number into "outward" on whichever side it's on.
-    // IK already fixed the shoulder/elbow to reach the target, so an
-    // overshoot here just clamps (no elbow-lift compensation — lifting the
-    // elbow now would pull the hand off the target it's locked onto).
-    p.wristTurnL = clampWristTurn('left', (p.wristTurnL || 0) + leftIK.wristTurnBoost).clamped;
+  } else {
+    // A mesh-pinned target with a surface normal fully determines the
+    // hand's facing (see applyArmIK/solveHandOrientationForNormal) — that
+    // wins over whatever wristTurn/wrist the pose itself authored, the same
+    // way the position IK above already wins over the pose's fixed shoulder/
+    // elbow numbers. Named presets with no normal (hip-side, head-side...)
+    // leave these fields untouched, same as before.
+    if (leftIK.orientedWristTurnDeg !== undefined) {
+      p.wristTurnL = leftIK.orientedWristTurnDeg;
+      p.wristL = leftIK.orientedWristHingeDeg;
+    }
+    if (leftIK.wristTurnBoost) {
+      // Target was farther than the arm can reach — rotate the wrist a bit
+      // further outward on top of whatever's set above, instead of letting
+      // the hand quietly stop short of the mesh it's locked onto. IK
+      // already fixed the shoulder/elbow to reach the target, so an
+      // overshoot here just clamps (no elbow-lift compensation — lifting
+      // the elbow now would pull the hand off the target it's locked onto).
+      p.wristTurnL = clampWristTurn('left', (p.wristTurnL || 0) + leftIK.wristTurnBoost).clamped;
+    }
   }
   const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
   let rightElbowBend = p.elbowR, rightElbowLift = 0;
@@ -1960,8 +2090,14 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     // elbow's hinge axis without disturbing flex/abd.
     if (rig3D.rightShoulder) rig3D.rightShoulder.rotation.y = deg2rad((p.shoulderRollR || 0) * 1);
     setHinge(rig3D.rightElbow, rightElbowBend);
-  } else if (rightIK.wristTurnBoost) {
-    p.wristTurnR = clampWristTurn('right', (p.wristTurnR || 0) + rightIK.wristTurnBoost).clamped;
+  } else {
+    if (rightIK.orientedWristTurnDeg !== undefined) {
+      p.wristTurnR = rightIK.orientedWristTurnDeg;
+      p.wristR = rightIK.orientedWristHingeDeg;
+    }
+    if (rightIK.wristTurnBoost) {
+      p.wristTurnR = clampWristTurn('right', (p.wristTurnR || 0) + rightIK.wristTurnBoost).clamped;
+    }
   }
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
