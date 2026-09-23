@@ -95,6 +95,23 @@ const deg2rad = d => d * Math.PI / 180;
 //     opposite forearm, palms together when clasped, etc. Same signed/
 //     mirrored convention as shoulderRoll/hipTurn.
 //
+// SHORTHAND FOR INSTRUCTING A POSE IN WORDS instead of raw degrees — use
+// these when describing a new pose (to Claude or anyone else) so "which way
+// is the hand twisted / bent" doesn't have to be guessed as a number:
+//   handRotation: 'front' | 'side' | 'back' — coarse alias for wristTurn
+//     (which way the flat hand block is twisted about the forearm's long
+//     axis). front:0°, side:90°, back:180°. Give it per-side the same way
+//     as any other field (e.g. right:{handRotation:'side'}).
+//   wristRotation: 'up' | 'front' | 'down' — coarse alias for the wrist
+//     hinge (`wrist`), i.e. which way the fingers point relative to the
+//     forearm. front:0° (fingers continue the forearm's own direction),
+//     up:+60° (wrist extended back, fingers lift up), down:-60° (wrist
+//     curled/flexed, fingers drop down). Matches the wrist sign convention
+//     above (negative curls inward, positive extends back).
+// Either alias is just a preset for its raw numeric field — set wristTurn/
+// wrist directly instead for a value the alias doesn't cover. If both are
+// given, the raw numeric field wins.
+//
 // AUTHORING A NEW ARM POSE — work HAND FIRST, never from formulas alone:
 //   1. Decide where the hand needs to end up and which way it should face
 //      for the pose to actually read (e.g. crossed arms: each hand tucks
@@ -128,11 +145,27 @@ const deg2rad = d => d * Math.PI / 180;
 // re-apply it instead of snapping back to a T-pose.
 let currentPose3D = 'stand-relaxed';
 
+// Word-based presets for handRotation/wristRotation (see the comment block
+// above) — coarse degree values an author can reach for instead of tuning
+// wristTurn/wrist by trial and error.
+const HAND_ROTATION_DEG = { front: 0, side: 90, back: 180 };
+const WRIST_ROTATION_DEG = { front: 0, up: 60, down: -60 };
+
 // Expands a POSES3D entry (shared fields + optional left/right overrides)
 // into the explicit per-side values applyPose3D() actually sets on the rig.
 function expandPose3D(pose) {
   const L = pose.left || {}, R = pose.right || {};
   const pick = (side, key) => (side[key] !== undefined ? side[key] : (pose[key] || 0));
+  // Same override order as pick() (side raw > side alias > pose raw > pose
+  // alias > 0), but resolves a word alias (e.g. handRotation:'side') into
+  // its degree value whenever the matching raw numeric field isn't given.
+  const pickWithAlias = (side, rawKey, aliasKey, table) => {
+    if (side[rawKey] !== undefined) return side[rawKey];
+    if (side[aliasKey] !== undefined) return table[side[aliasKey]] || 0;
+    if (pose[rawKey] !== undefined) return pose[rawKey];
+    if (pose[aliasKey] !== undefined) return table[pose[aliasKey]] || 0;
+    return 0;
+  };
   return {
     hipL: pick(L, 'hip'), hipR: pick(R, 'hip'),
     hipAbdL: pick(L, 'hipAbd'), hipAbdR: pick(R, 'hipAbd'),
@@ -144,8 +177,10 @@ function expandPose3D(pose) {
     shoulderAbdL: pick(L, 'shoulderAbd'), shoulderAbdR: pick(R, 'shoulderAbd'),
     shoulderRollL: pick(L, 'shoulderRoll'), shoulderRollR: pick(R, 'shoulderRoll'),
     elbowL: pick(L, 'elbow'), elbowR: pick(R, 'elbow'),
-    wristL: pick(L, 'wrist'), wristR: pick(R, 'wrist'),
-    wristTurnL: pick(L, 'wristTurn'), wristTurnR: pick(R, 'wristTurn'),
+    wristL: pickWithAlias(L, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
+    wristR: pickWithAlias(R, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
+    wristTurnL: pickWithAlias(L, 'wristTurn', 'handRotation', HAND_ROTATION_DEG),
+    wristTurnR: pickWithAlias(R, 'wristTurn', 'handRotation', HAND_ROTATION_DEG),
     spineBend: pose.spineBend || 0, spineSide: pose.spineSide || 0, spineTwist: pose.spineTwist || 0,
     root: pose.root || 0, rootZ: pose.rootZ || 0,
   };
@@ -173,7 +208,7 @@ const POSES3D = {
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-75, shoulderAbd:20, shoulderRoll:-21, elbow:-143, wrist:37, wristTurn:-32} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-75, shoulderAbd:14, shoulderRoll:-35, elbow:-151, wrist:47, wristTurn:-20} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -744,6 +779,23 @@ function buildBody3D() {
       hand.position.set(0, -handBox.hCm/2, 0);
       wristGroup.add(hand);
       meshRecords3D.push({ mesh: hand, group: 'hands', wCm: handBox.wCm, hCm: handBox.hCm });
+
+      // Thumb: a small block on the hand's edge, near the wrist end, so the
+      // hand's facing (which way is palm vs. back, which edge is which) is
+      // readable at a glance instead of guessed from a flat rectangle. Sits
+      // on the +x edge for the right hand / -x edge for the left hand (the
+      // same right:+1/left:-1 side convention used everywhere else), angled
+      // out a little from the hand's own plane to read clearly in 3D.
+      const thumbSign = side === 'right' ? 1 : -1;
+      const thumbW = handBox.wCm * 0.32, thumbH = handBox.hCm * 0.4, thumbD = handDepthCm * 0.8;
+      const thumb = makeBoxMesh({ wCm: thumbW, hCm: thumbH, group: 'hands' }, thumbD);
+      const thumbPivot = new THREE.Group();
+      thumbPivot.position.set(thumbSign * handBox.wCm * 0.42, -handBox.hCm * 0.18, 0);
+      thumbPivot.rotation.z = deg2rad(thumbSign * -35);
+      thumb.position.set(0, -thumbH/2, 0);
+      thumbPivot.add(thumb);
+      wristGroup.add(thumbPivot);
+      meshRecords3D.push({ mesh: thumb, group: 'hands', wCm: thumbW, hCm: thumbH });
     }
 
     noteY(armBox);
