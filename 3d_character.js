@@ -493,6 +493,7 @@ const round2 = n => Math.round(n * 100) / 100;
 // pinnable mesh — a "smart" targeted pin instead of whatever's nearest.
 // Null = old behavior (nearest pinnable mesh under the crosshair, any group).
 let pinFilterGroup3D = null;
+let pinFilterUserSet3D = false; // true once the person picks something in "Pin Hand To"
 
 function initMeshPinRaycaster3D() {
   if (!raycaster3D) raycaster3D = new THREE.Raycaster();
@@ -736,6 +737,14 @@ function updateJePinStatus3D() {
   const ex = pose ? expandPose3D(pose) : null;
   const ht = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
   el.textContent = ht ? `Pinned to: ${describePin3D(ht)}` : 'Not pinned';
+  // The "Pin Hand To" dropdown shows where this hand is pinned right now. If you
+  // pick something in it yourself, that choice limits the next Aim & Pin (until
+  // a pin lands, which resets it back to showing the current pin).
+  const sel = document.getElementById('jePinTarget');
+  if (sel && !pinFilterUserSet3D) {
+    const grp = ht && typeof ht === 'object' ? ({ head: 'head', neck: 'neck', torso: 'torso', waist: 'waistbox', leftLeg: 'legs', rightLeg: 'legs', leftFoot: 'feet', rightFoot: 'feet' })[ht.box] : '';
+    sel.value = grp || '';
+  }
 }
 // Live readout while aiming: what (and which face) is under the crosshair.
 let pinLiveLastT3D = 0;
@@ -802,6 +811,8 @@ function applyMeshPin3D(side, box, x, y, z, normal, extras, persist = true) {
   elbowLiftOverride[side] = null;
   refreshHandWristButtons();
   applyPose3D(currentPose3D, { reframe: false });
+  pinFilterGroup3D = null; pinFilterUserSet3D = false;
+  updateJePinStatus3D();
   setPinSaveStatus3D(`Pinned ${side} hand to ${describePin3D(pose[side].handTarget)}` + (persist ? '' : ' (not saved yet)'));
   if (persist) schedulePinSave3D(currentPose3D, side);
 }
@@ -2325,6 +2336,9 @@ function applyPose3D(poseName, { reframe = false } = {}) {
       // the elbow now would pull the hand off the target it's locked onto).
       p.wristTurnL = clampWristTurn('left', (p.wristTurnL || 0) + leftIK.wristTurnBoost).clamped;
     }
+    // A mirrored pin carries the exact hand facing to use (see mirrorPinSpec3D).
+    const flL = p.handTargetL && p.handTargetL.faceLock;
+    if (flL) { p.wristTurnL = clampWristTurn('left', flL.turn).clamped; p.wristL = clampWristBend(flL.hinge); }
   }
   const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
   let rightElbowBend = p.elbowR, rightElbowLift = 0;
@@ -2347,6 +2361,8 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     if (rightIK.wristTurnBoost) {
       p.wristTurnR = clampWristTurn('right', (p.wristTurnR || 0) + rightIK.wristTurnBoost).clamped;
     }
+    const flR = p.handTargetR && p.handTargetR.faceLock;
+    if (flR) { p.wristTurnR = clampWristTurn('right', flR.turn).clamped; p.wristR = clampWristBend(flR.hinge); }
   }
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
@@ -2659,7 +2675,7 @@ function aimBoneToWorldPoint3D(boneGroup, restLocalVec, targetWorldPos) {
 
 function selectJoint3D(side, jointType) {
   selectedJoint3D = { side, jointType };
-  pinFilterGroup3D = null;
+  pinFilterGroup3D = null; pinFilterUserSet3D = false;
   transformControls3D.enabled = true;
   transformControls3D.visible = true;
   attachGizmoToSelection3D();
@@ -3066,7 +3082,7 @@ function mirrorQuat3D(q) {
 // Reflects a hand pin across the body's midline: same surface spot on the
 // opposite side (leg/foot boxes swap sides, x and the surface normal flip), plus
 // the stored offset / elbow direction / saved joint rotations of keep-position pins.
-function mirrorPinSpec3D(ht) {
+function mirrorPinSpec3D(ht, wr) {
   if (!ht || typeof ht === 'string') return ht; // named presets are already side-aware
   const c = JSON.parse(JSON.stringify(ht));
   const swap = { leftLeg: 'rightLeg', rightLeg: 'leftLeg', leftFoot: 'rightFoot', rightFoot: 'leftFoot' };
@@ -3074,6 +3090,10 @@ function mirrorPinSpec3D(ht) {
   const flipX = o => { if (o && typeof o.x === 'number') o.x = round2(-o.x); };
   flipX(c);
   if (typeof c.nx === 'number') c.nx = round2(-c.nx);
+  // The opposite hand's IK would re-derive its own facing (not always an exact
+  // reflection), so pin the reflected Bend/Turn on the pin itself.
+  delete c.faceLock;
+  if (wr) c.faceLock = { turn: round1(-wr.wristTurn), hinge: round1(wr.wrist) };
   flipX(c.offset); flipX(c.pole); flipX(c.target);
   if (c.joints) Object.keys(c.joints).forEach(k => {
     const q = c.joints[k];
@@ -3097,7 +3117,7 @@ function mirrorSelectedJoint3D() {
     // arm and hand facing from it (manual arm angles would fight the pin).
     snapshotPinsForCancel3D();
     pose[other] = pose[other] || {};
-    pose[other].handTarget = mirrorPinSpec3D(srcPin);
+    pose[other].handTarget = mirrorPinSpec3D(srcPin, wr);
     jointEditorPinDirty3D[other] = true;
     handRotationOverride[other] = null; wristRotationOverride[other] = null;
     elbowBendOverride[other] = null; elbowLiftOverride[other] = null;
@@ -3400,12 +3420,14 @@ function jointPanelUnpin3D() {
   snapshotPinsForCancel3D();
   delete pose[side].handTarget;
   jointEditorPinDirty3D[side] = true;
+  pinFilterGroup3D = null; pinFilterUserSet3D = false;
   applyPose3D(currentPose3D, { reframe: false });
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
 }
 function setPinFilterGroup3D(value) {
   pinFilterGroup3D = value || null;
+  pinFilterUserSet3D = true;
 }
 
 function openJointPanel3D() {
