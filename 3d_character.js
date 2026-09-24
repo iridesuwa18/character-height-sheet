@@ -2477,6 +2477,15 @@ function setPose3D(poseName) {
   // Facing overrides belong to one pose — unsaved ones don't carry to the next.
   handRotationOverride = { left: null, right: null };
   wristRotationOverride = { left: null, right: null };
+  // Also clear elbow bend/lift overrides and any manual joint-editor drags
+  // (shoulder/elbow/wrist) — otherwise leftover nudges from the previous
+  // pose silently ride along, and Mirror copies them onto the other arm.
+  elbowBendOverride = { left: null, right: null };
+  elbowLiftOverride = { left: null, right: null };
+  manualJointEdits3D = {
+    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+  };
   applyPose3D(poseName, { reframe: true });
   document.querySelectorAll('.pose-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.pose === currentPose3D);
@@ -2636,7 +2645,7 @@ function initJointEditor3D() {
   jointEditorInited3D = true;
 
   transformControls3D = new THREE.TransformControls(camera3D, renderer3D.domElement);
-  transformControls3D.setSize(isTouchLikely3D() ? 1.6 : 1.0);
+  transformControls3D.setSize(isTouchLikely3D() ? 0.9 : 0.55);
   transformControls3D.enabled = false;
   transformControls3D.visible = false;
   scene3D.add(transformControls3D);
@@ -3195,6 +3204,9 @@ function attachGizmoToSelection3D() {
   if (!grp) return;
   if (gizmoMode3D === 'rotate') {
     transformControls3D.setMode('rotate');
+    // Rotate rings read much bigger than the translate arrows at the same
+    // size value, so shrink them a bit further.
+    transformControls3D.setSize(isTouchLikely3D() ? 0.6 : 0.35);
     transformControls3D.setSpace('local');
     if (jointType === 'wrist') {
       // Wrist Bend/Turn share one Euler (x=Bend, y=Turn), so attaching
@@ -3226,6 +3238,7 @@ function attachGizmoToSelection3D() {
     // moving the joint's own position directly, which would visibly detach
     // it from the fixed-length arm mesh above it.
     transformControls3D.setMode('translate');
+    transformControls3D.setSize(isTouchLikely3D() ? 0.9 : 0.55);
     transformControls3D.setSpace('world');
     const world = new THREE.Vector3();
     grp.getWorldPosition(world);
