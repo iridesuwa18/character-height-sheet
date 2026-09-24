@@ -257,6 +257,38 @@
   }
   .jec-actions #jeCopyBtn { border-color: var(--accent-gold); background: rgba(240,192,64,0.18); color: var(--accent-gold); }
 
+  /* Pin Mode: everything but the camera row and the pin bar goes away. */
+  #preview3D.je-pin-mode #jointToggleBar,
+  #preview3D.je-pin-mode #jeCopyBar,
+  #preview3D.je-pin-mode #jointEditorBottomBar,
+  #preview3D.je-pin-mode #jeMirrorStatus,
+  #preview3D.je-pin-mode #jointEditorPanel { display: none !important; }
+  #jePinModeBar {
+    display: none; position: absolute; top: calc(40px + env(safe-area-inset-top, 0px)); left: 6px; right: 6px;
+    z-index: 9012; flex-direction: column; gap: 4px;
+  }
+  #preview3D.je-pin-mode #jePinModeBar { display: flex; }
+  .jpm-actions { display: flex; gap: 4px; }
+  .jpm-actions button {
+    flex: 1; height: 34px; border-radius: 7px; cursor: pointer; font-family: 'Space Mono', monospace;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    background: rgba(22,22,24,0.92); border: 1px solid var(--accent-red); color: var(--accent-red);
+  }
+  .jpm-actions .jpm-apply { border-color: var(--accent-gold); background: rgba(240,192,64,0.22); color: var(--accent-gold); }
+  .jpm-keep {
+    display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer;
+    background: rgba(20,20,24,0.9); border: 1px solid var(--border); border-radius: 8px;
+    font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text);
+  }
+  .jpm-keep input { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--accent-gold); }
+  .jpm-info {
+    padding: 6px 8px; background: rgba(20,20,24,0.9); border: 1px solid var(--accent-gold); border-radius: 8px;
+    font-family: 'Space Mono', monospace; font-size: 10px; line-height: 1.5; color: var(--text);
+  }
+  .jpm-info > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #jpmWorking { color: var(--accent-gold); font-weight: 700; }
+  #jpmCurrent { color: var(--muted); }
+  #pinReticle { z-index: 9005; }
   #jointEditorBottomBar {
     position: absolute; left: 6px; right: 6px; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 9010;
     display: flex; gap: 4px;
@@ -1011,9 +1043,23 @@
       </div>
     </div>
 
+    <!-- Pin Mode bar (Aim & Pin): shown instead of the other bars. -->
+    <div id="jePinModeBar">
+      <div class="jpm-actions">
+        <button type="button" class="jpm-cancel" onclick="exitEditorPinMode3D(false)">✕ Cancel</button>
+        <button type="button" class="jpm-apply" onclick="exitEditorPinMode3D(true)">✓ Apply pin</button>
+      </div>
+      <label class="jpm-keep"><input type="checkbox" id="jpmKeepChk" checked>
+        <span>Keep hand where it is (save offset from face)</span></label>
+      <div class="jpm-info">
+        <div id="jpmWorking"></div>
+        <div id="jpmDetecting"></div>
+        <div id="jpmCurrent"></div>
+      </div>
+    </div>
+
     <div id="jointEditorBottomBar" style="display:none;">
       <button type="button" class="je-bottom-btn je-cancel" onclick="cancelJointEditorMode3D()">✕ Cancel</button>
-      <button type="button" class="je-bottom-btn" id="jeQuickLoadBtn" onclick="quickLoadJointsFromGitHub3D()">⬇ Load</button>
       <button type="button" class="je-bottom-btn" id="jeQuickSaveBtn" onclick="quickSaveJointsToGitHub3D()">⬆ Save</button>
       <button type="button" class="je-bottom-btn je-apply" onclick="applyJointEditorMode3D()">✓ Apply</button>
     </div>

@@ -319,6 +319,14 @@ let handWristTargetSide = 'right';
 // click on the 3D canvas locks that hand to whatever mesh spot gets
 // clicked. Only one side at a time — see armMeshPin.
 let pinArmedSide = null;
+// Saved 3D-editor joint edits (from presets/pose-overrides.json), cached so they
+// can be re-applied automatically — on page load and after every model rebuild.
+let jointEditsSaved3D = null;
+let jointEditsInitialApplied3D = false;
+let jointEditsFetching3D = false;
+// Editor "Pin Mode" (Aim & Pin from the wrist settings): menus closed, crosshair
+// in the center, Apply/Cancel bar on top.
+let jePinModeActive3D = false;
 // Snapshot of the last applyPose3D() call's fully-resolved per-side values
 // (post-override, post-clamp) — see where it's written at the end of
 // applyPose3D for exactly what it holds. null until the first pose is
@@ -518,6 +526,43 @@ function resolveMeshPinAtCrosshair3D() {
   };
 }
 
+// "Keep hand where it is": instead of snapping the wrist onto the surface, bind
+// the pin to the picked surface point but remember where the wrist currently
+// is as an offset from it (plus which way the elbow currently points, so the
+// arm doesn't flip when the IK re-solves). Both are measured in the IK's own
+// spine-local frame, so they follow the mesh through pose changes.
+function computeKeepPositionExtras3D(side, resolved) {
+  const wristGrp = rig3D[side + 'Wrist'], elbowGrp = rig3D[side + 'Elbow'], shGrp = rig3D[side + 'Shoulder'];
+  if (!wristGrp || !elbowGrp || !shGrp || !rig3D.spine) return null;
+  rig3D.spine.updateMatrixWorld(true);
+  const toSpine = g => { const w = new THREE.Vector3(); g.getWorldPosition(w); return rig3D.spine.worldToLocal(w); };
+  const W = toSpine(wristGrp), E = toSpine(elbowGrp), S = toSpine(shGrp);
+  // Re-anchor on the IK's own shoulder position so both frames agree exactly.
+  const ikS = ikContext3D.shoulders && ikContext3D.shoulders[side];
+  const shift = ikS ? new THREE.Vector3(ikS.x - S.x, ikS.y - S.y, ikS.z - S.z) : new THREE.Vector3();
+  W.add(shift); E.add(shift);
+  const ikShoulder = ikS ? new THREE.Vector3(ikS.x, ikS.y, ikS.z) : S;
+  const spec = { box: resolved.box, x: resolved.x, y: resolved.y, z: resolved.z,
+                 nx: resolved.normal.x, ny: resolved.normal.y, nz: resolved.normal.z };
+  const r = resolveHandTarget3D(side, spec, ikContext3D);
+  if (!r) return null;
+  let off = new THREE.Vector3(W.x - r.point.x, W.y - r.point.y, W.z - r.point.z);
+  const anchor = MESH_PIN_ANCHORS_3D[resolved.box];
+  if (anchor && anchor.pelvisAnchored) {
+    // Store in the pelvis frame (resolveHandTarget3D re-applies the spine correction).
+    const sd = ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 };
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(deg2rad(sd.bend || 0), deg2rad(sd.twist || 0), deg2rad(sd.side || 0), 'XYZ'));
+    off.applyQuaternion(q);
+  }
+  const pole = E.clone().sub(ikShoulder);
+  if (pole.length() < 1e-6) return null;
+  pole.normalize();
+  return {
+    offset: { x: round2(off.x), y: round2(off.y), z: round2(off.z) },
+    pole: { x: round2(pole.x), y: round2(pole.y), z: round2(pole.z) },
+  };
+}
+
 // "📍 Pin Here" button — confirms whatever's currently under the crosshair
 // for the armed side. Left armed afterward on purpose (unlike the old
 // tap-to-pin, which disarmed itself) so re-aiming and pinning the OTHER
@@ -528,7 +573,10 @@ function confirmMeshPinAtCrosshair3D() {
   if (!pinArmedSide) return false;
   const resolved = resolveMeshPinAtCrosshair3D();
   if (!resolved) { alert('Nothing pinnable under the crosshair — orbit/zoom so it lines up with the body first.'); return false; }
-  applyMeshPin3D(pinArmedSide, resolved.box, resolved.x, resolved.y, resolved.z, resolved.normal);
+  const keepChk = document.getElementById('jpmKeepChk');
+  const extras = (jePinModeActive3D && keepChk && keepChk.checked)
+    ? computeKeepPositionExtras3D(pinArmedSide, resolved) : null;
+  applyMeshPin3D(pinArmedSide, resolved.box, resolved.x, resolved.y, resolved.z, resolved.normal, extras);
   return true;
 }
 
@@ -555,7 +603,8 @@ function updatePinModeUI() {
   if (confirmBtn) confirmBtn.style.display = pinArmedSide ? '' : 'none';
   if (reticle) reticle.style.display = pinArmedSide ? '' : 'none';
   if (hint) hint.textContent = pinArmedSide
-    ? `Orbit/pinch to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here"`
+    ? (jePinModeActive3D ? `Orbit/pinch to line the crosshair up, then tap Apply`
+       : `Orbit/pinch to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here"`)
     : 'Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan';
 
   // Armed: shrink the popup down to just a small aim bar and let clicks/
@@ -618,7 +667,14 @@ function describePin3D(ht) {
   const part = PIN_BOX_NAMES_3D[ht.box] || ht.box;
   if (ht.fromPreset) return `${part} (converted preset — re-pin for face)`;
   const face = pinFaceLabel3D(ht);
-  return face ? `${part} — ${face}` : part;
+  const off = pinOffsetText3D(ht);
+  return (face ? `${part} — ${face}` : part) + off;
+}
+// ", 3.2 cm off" for a kept-position pin (hand stays put, offset from the face).
+function pinOffsetText3D(ht) {
+  if (!ht || typeof ht === 'string' || !ht.offset) return '';
+  const d = Math.hypot(ht.offset.x || 0, ht.offset.y || 0, ht.offset.z || 0);
+  return `, ${d.toFixed(1)} cm off`;
 }
 // Editor wrist-panel readout for the selected side's current pin.
 function updateJePinStatus3D() {
@@ -638,12 +694,12 @@ function updatePinLiveFace3D() {
   const now = performance.now();
   if (now - pinLiveLastT3D < 200) return;
   pinLiveLastT3D = now;
-  const el = document.getElementById('pinLiveFace');
-  if (!el) return;
   const r = resolveMeshPinAtCrosshair3D();
-  el.textContent = r
-    ? `Crosshair on: ${describePin3D({ box: r.box, nx: r.normal.x, ny: r.normal.y, nz: r.normal.z })}`
-    : 'Crosshair on: nothing pinnable';
+  const hit = r ? { box: r.box, nx: r.normal.x, ny: r.normal.y, nz: r.normal.z } : null;
+  const el = document.getElementById('pinLiveFace');
+  if (el) el.textContent = r ? `Crosshair on: ${describePin3D(hit)}` : 'Crosshair on: nothing pinnable';
+  const det = document.getElementById('jpmDetecting');
+  if (det && jePinModeActive3D) det.textContent = 'Now detecting: ' + (pinPartsText3D(hit) || 'nothing under the crosshair');
 }
 
 // ---- Saving pins to GitHub (same pose-overrides.json as pose edits) ----
@@ -680,13 +736,14 @@ function schedulePinSave3D(poseKey, side) {
   pinPushTimers3D[k] = setTimeout(() => { delete pinPushTimers3D[k]; flushPinSave3D(poseKey, side); }, 1200);
 }
 
-function applyMeshPin3D(side, box, x, y, z, normal) {
+function applyMeshPin3D(side, box, x, y, z, normal, extras) {
   const pose = POSES3D[currentPose3D];
   if (!pose) return;
   pose[side] = pose[side] || {};
   pose[side].handTarget = normal
     ? { box, x, y, z, nx: round2(normal.x), ny: round2(normal.y), nz: round2(normal.z) }
     : { box, x, y, z };
+  if (extras) Object.assign(pose[side].handTarget, extras); // { offset, pole } for kept-position pins
   // An IK-driven side ignores the fixed-angle overrides entirely (see
   // applyPose3D) — clear them so the panel doesn't keep showing dead values.
   handRotationOverride[side] = null;
@@ -760,6 +817,9 @@ async function pullPoseOverridesFromGitHub() {
     // The overrides may have landed after the pose panel's first paint —
     // re-apply the currently-selected pose so any edit to it shows up.
     if (typeof applyPose3D === 'function' && sceneInited3D) applyPose3D(currentPose3D, { reframe: false });
+    // Saved 3D-editor joint edits ride in the same file — load them right now
+    // (no Load button needed).
+    if (all._jointEdits) { jointEditsSaved3D = all._jointEdits; applySavedJointEdits3D(); }
   } catch (e) { console.warn('Could not load pose edits from GitHub:', e); }
 }
 // Pushes one side's saved fields for one pose up to the GitHub file,
@@ -1481,7 +1541,15 @@ function resolveHandTarget3D(side, targetSpec, geom) {
   if (normal && anchor.pelvisAnchored) {
     normal = pelvisPointToSpineLocal3D(normal, sd.bend, sd.twist, sd.side);
   }
-  return { point, poleAngles: targetSpec.poleAngles, normal };
+  // "Keep hand where it is" pins also carry the wrist's offset from the picked
+  // surface point (stored in the SAME frame as the point, so it takes the same
+  // pelvis→spine correction) and the elbow-direction hint it was pinned with.
+  let offset = null;
+  if (targetSpec.offset) {
+    offset = { x: targetSpec.offset.x || 0, y: targetSpec.offset.y || 0, z: targetSpec.offset.z || 0 };
+    if (anchor.pelvisAnchored) offset = pelvisPointToSpineLocal3D(offset, sd.bend, sd.twist, sd.side);
+  }
+  return { point, poleAngles: targetSpec.poleAngles, normal, offset, pole: targetSpec.pole || null };
 }
 
 const v3 = (x, y, z) => ({ x, y, z });
@@ -1659,7 +1727,9 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
   const lens = ikContext3D.armLens[side];
   if (!shoulderPos || !lens) return false;
   const sideSign = side === 'right' ? 1 : -1;
-  const pole = resolved.poleAngles
+  const pole = resolved.pole
+    ? { x: resolved.pole.x, y: resolved.pole.y, z: resolved.pole.z }
+    : resolved.poleAngles
     ? poleFromAngles3D(side, resolved.poleAngles.flex, resolved.poleAngles.abd, resolved.poleAngles.roll)
     : { x: sideSign * 0.5, y: -0.3, z: 0.8 };
   // Pinned-to-a-surface targets: aim the WRIST (not the hand's face) at a
@@ -1667,7 +1737,15 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
   // the hand is oriented face-down onto the normal below, its near face —
   // not its center — is the thing actually touching the surface.
   let targetPoint = resolved.point;
-  if (resolved.normal) {
+  if (resolved.offset) {
+    // Kept-position pin: the wrist sits at the surface point plus the stored
+    // offset — exactly where the hand was when it was pinned.
+    targetPoint = v3(
+      resolved.point.x + resolved.offset.x,
+      resolved.point.y + resolved.offset.y,
+      resolved.point.z + resolved.offset.z
+    );
+  } else if (resolved.normal) {
     const halfThick = (ikContext3D.handDepths[side] || 0) / 2;
     targetPoint = v3(
       resolved.point.x + resolved.normal.x * halfThick,
@@ -1684,7 +1762,7 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
   const maxReach = (lens.upper + lens.lower) || 1;
   const wristTurnBoost = Math.min(30, (sol.overreachCm / maxReach) * 90);
   const result = { wristTurnBoost };
-  if (resolved.normal) {
+  if (resolved.normal && !resolved.offset) { // a kept-position pin doesn't re-aim the hand at the surface
     const oriented = solveHandOrientationForNormal(side, sol, resolved.normal);
     result.orientedWristTurnDeg = oriented.wristTurnDeg;
     result.orientedWristHingeDeg = oriented.wristHingeDeg;
@@ -2036,6 +2114,8 @@ function buildBody3D() {
   // re-apply whichever pose was active (without yanking the camera —
   // that only happens when the person explicitly picks a pose).
   applyPose3D(currentPose3D, { reframe: false });
+  // A rebuild wipes manual joint edits (above) — put the saved ones back.
+  applySavedJointEdits3D();
 }
 
 // Sets every joint pivot's rotation from a POSES3D entry, tilts the whole
@@ -2308,7 +2388,8 @@ function switchBodyView(view) {
     el2D.style.display = 'none'; el3D.style.display = 'block'; depthPanel.style.display = 'block';
     if (poseModalToggle) poseModalToggle.classList.add('visible');
     btn2D.classList.remove('active'); btn3D.classList.add('active');
-    if (!sceneInited3D) { initScene3D(); buildBody3D(); autoLoadJointsFromGitHub3D(); }
+    if (!sceneInited3D) { initScene3D(); buildBody3D(); }
+    autoLoadJointsFromGitHub3D();
     requestAnimationFrame(resizeBody3D);
   } else {
     el2D.style.display = 'flex'; el3D.style.display = 'none'; depthPanel.style.display = 'none';
@@ -2554,6 +2635,7 @@ function closeJointEditorModeUI3D() {
   const toggleBar = document.getElementById('jointToggleBar'); if (toggleBar) toggleBar.style.display = 'none';
   const bottomBar = document.getElementById('jointEditorBottomBar'); if (bottomBar) bottomBar.style.display = 'none';
   const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = 'none';
+  exitEditorPinMode3D(false);
   closeCopyPopup3D();
   jointEditorCopyLog3D = [];
   updateCopyBadge3D();
@@ -3008,11 +3090,75 @@ function setJointHandFacing3D(kind, value) {
 // "nearest anything."
 function jointPanelAimAndPin3D() {
   if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') return;
-  const side = selectedJoint3D.side;
-  openPoseModal();
-  switchPoseModalTab('hand');
-  setHandWristTargetSide(side);
-  armMeshPin(side);
+  enterEditorPinMode3D(selectedJoint3D.side);
+}
+// ---- Editor Pin Mode ----
+// Closes every open menu (joint settings, copy pop-up, pose modal) and the
+// gizmo so the model is unobstructed, shows the crosshair in the center and a
+// small bar on top: Apply pins whatever's under the crosshair, Cancel leaves
+// without changing anything.
+function enterEditorPinMode3D(side) {
+  if (side !== 'left' && side !== 'right') return;
+  closeCopyPopup3D();
+  closePoseModal();               // also disarms any old pin state
+  deselectJoint3D();              // hides the ⚙ panel + gizmo
+  jePinModeActive3D = true;
+  pinArmedSide = side;
+  const preview = document.getElementById('preview3D');
+  if (preview) preview.classList.add('je-pin-mode');
+  updatePinModeUI();
+  refreshPinModeInfo3D();
+  const det = document.getElementById('jpmDetecting');
+  if (det) det.textContent = 'Now detecting: …';
+}
+function exitEditorPinMode3D(apply) {
+  if (!jePinModeActive3D) return;
+  const side = pinArmedSide;
+  if (apply) {
+    if (!confirmMeshPinAtCrosshair3D()) return; // nothing under the crosshair — stay in Pin Mode
+    // A pinned arm is solved by IK; leftover manual shoulder/elbow/wrist
+    // edits on that side would be stamped on top and pull the hand off the pin.
+    if (side && manualJointEdits3D[side]) {
+      manualJointEdits3D[side].shoulderQuat = null;
+      manualJointEdits3D[side].elbowQuat = null;
+      manualJointEdits3D[side].wristQuat = null;
+      applyPose3D(currentPose3D, { reframe: false });
+    }
+  }
+  jePinModeActive3D = false;
+  pinArmedSide = null;
+  const preview = document.getElementById('preview3D');
+  if (preview) preview.classList.remove('je-pin-mode');
+  updatePinModeUI();
+  const status = document.getElementById('jeMirrorStatus');
+  if (status) {
+    const pose = POSES3D[currentPose3D], ex = pose ? expandPose3D(pose) : null;
+    const ht = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
+    status.textContent = apply ? `Pinned ${side} hand: ${pinPartsText3D(ht) || 'done'}` : 'Pin cancelled';
+    status.style.opacity = '1';
+    clearTimeout(copyElbowWristFromPose3D._t);
+    copyElbowWristFromPose3D._t = setTimeout(() => { status.style.opacity = '0'; }, 2400);
+  }
+}
+// "Face · Mesh" wording for a pin (or a live crosshair hit).
+function pinPartsText3D(ht) {
+  if (!ht) return null;
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+  if (typeof ht === 'string') return `${cap(ht)} (preset)`;
+  const mesh = cap(PIN_BOX_NAMES_3D[ht.box] || ht.box || 'mesh');
+  const face = pinFaceLabel3D(ht);
+  return (face ? `${face} · ${mesh}` : mesh) + pinOffsetText3D(ht);
+}
+function refreshPinModeInfo3D() {
+  const side = pinArmedSide;
+  const work = document.getElementById('jpmWorking');
+  if (work) work.textContent = `Working on: ${side === 'left' ? 'Left' : 'Right'} hand`;
+  const cur = document.getElementById('jpmCurrent');
+  if (cur) {
+    const pose = POSES3D[currentPose3D], ex = pose ? expandPose3D(pose) : null;
+    const ht = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
+    cur.textContent = 'Current face: ' + (pinPartsText3D(ht) || 'not pinned');
+  }
 }
 function setPinFilterGroup3D(value) {
   pinFilterGroup3D = value || null;
@@ -3073,10 +3219,10 @@ function collectJointEditsState3D() {
     },
   };
 }
-function applyJointEditsState3D(jstate) {
+function applyJointEditsState3D(jstate, { keepPose = false } = {}) {
   if (!jstate) return;
   const a2q = (a) => (Array.isArray(a) && a.length === 4) ? new THREE.Quaternion(a[0], a[1], a[2], a[3]) : null;
-  if (jstate.pose && typeof POSES3D !== 'undefined' && POSES3D[jstate.pose]) currentPose3D = jstate.pose;
+  if (!keepPose && jstate.pose && typeof POSES3D !== 'undefined' && POSES3D[jstate.pose]) currentPose3D = jstate.pose;
   const m = jstate.manualJointEdits || {};
   ['left', 'right'].forEach(side => {
     const src = m[side] || {};
@@ -3084,7 +3230,7 @@ function applyJointEditsState3D(jstate) {
     manualJointEdits3D[side].elbowQuat    = a2q(src.elbowQuat);
     manualJointEdits3D[side].wristQuat    = a2q(src.wristQuat);
   });
-  applyPose3D(currentPose3D, { reframe: true });
+  applyPose3D(currentPose3D, { reframe: !keepPose });
 }
 // Fetches pose-overrides.json (whole file). Returns { all, sha } — `all` is {}
 // and sha undefined when the file doesn't exist yet.
@@ -3115,6 +3261,7 @@ async function quickSaveJointsToGitHub3D() {
     // Fetch fresh so pose edits saved elsewhere aren't clobbered.
     const { all, sha } = await fetchPoseOverridesFile(s);
     all[JOINT_EDITS_KEY] = collectJointEditsState3D();
+    jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
     const body = { message: 'Quick save 3D joint edits', content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
     if (sha) body.sha = sha;
     const putResp = await fetch(poseOverridesApiUrl(s), { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
@@ -3136,7 +3283,9 @@ async function quickLoadJointsFromGitHub3D() {
   try {
     const { all } = await fetchPoseOverridesFile(s);
     if (!all[JOINT_EDITS_KEY]) throw new Error('No saved joint edits found yet.');
+    jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
     applyJointEditsState3D(all[JOINT_EDITS_KEY]);
+    reapplyManualJointEdits3D(); groundBody3D(false);
     if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
     setBtn('✓ Loaded', false);
     setTimeout(() => setBtn('⬇ Load', false), 1600);
@@ -3149,17 +3298,29 @@ async function quickLoadJointsFromGitHub3D() {
 // builds (called from switchBodyView the first time the 3D view opens), so a
 // refresh on any browser comes back with them applied. Quiet no-op if GitHub
 // isn't configured or nothing's been saved yet.
-let jointEditsAutoLoaded3D = false;
+// Stamps the cached saved joint edits onto the model. The first time it also
+// restores the saved pose; after a later rebuild (Generate, depth sliders) it
+// only puts the edits back and leaves whatever pose is showing alone.
+function applySavedJointEdits3D() {
+  if (!jointEditsSaved3D || !sceneInited3D || !rig3D || !rig3D.leftShoulder || !rig3D.rightShoulder) return;
+  const first = !jointEditsInitialApplied3D;
+  jointEditsInitialApplied3D = true;
+  applyJointEditsState3D(jointEditsSaved3D, { keepPose: !first });
+  reapplyManualJointEdits3D(); // works even before the editor has been opened
+  groundBody3D(false);
+  if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+}
+// Fallback fetch (e.g. GitHub settings were filled in after page load). The
+// normal path is pullPoseOverridesFromGitHub, which caches the same data.
 async function autoLoadJointsFromGitHub3D() {
-  if (jointEditsAutoLoaded3D) return;
-  jointEditsAutoLoaded3D = true;
-  if (typeof ghGetSettings !== 'function') return;
+  if (jointEditsSaved3D) { if (!jointEditsInitialApplied3D) applySavedJointEdits3D(); return; }
+  if (jointEditsFetching3D || typeof ghGetSettings !== 'function') return;
   const s = ghGetSettings();
   if (!s.token || !s.owner || !s.repo) return;
+  jointEditsFetching3D = true;
   try {
     const { all } = await fetchPoseOverridesFile(s);
-    if (!all[JOINT_EDITS_KEY]) return;
-    applyJointEditsState3D(all[JOINT_EDITS_KEY]);
-    if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+    if (all[JOINT_EDITS_KEY]) { jointEditsSaved3D = all[JOINT_EDITS_KEY]; applySavedJointEdits3D(); }
   } catch (e) { console.warn('Could not auto-load joint edits from GitHub:', e); }
+  finally { jointEditsFetching3D = false; }
 }
