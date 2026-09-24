@@ -2655,7 +2655,17 @@ function initJointEditor3D() {
     // position, undoing any orbiting the person had just done. The camera
     // now only moves when a Front/Back/Side/Free view button is explicitly
     // pressed (see setJointEditorCameraView3D).
-    if (!e.value && selectedJoint3D) { groundBody3D(false); updateJointPanelValues3D(); }
+    if (!e.value && selectedJoint3D) {
+      groundBody3D(false);
+      // Wrist rotate mode drags a proxy snapshotted to the elbow's
+      // orientation at attach time (see attachGizmoToSelection3D); once a
+      // drag has moved it away from that baseline, re-attach to reset the
+      // proxy back to a fresh elbow-aligned snapshot (same resulting
+      // Bend/Turn, just re-zeroed axes) so the NEXT drag's rings start
+      // clean instead of inheriting wherever the last drag left them.
+      if (gizmoMode3D === 'rotate' && selectedJoint3D.jointType === 'wrist') attachGizmoToSelection3D();
+      updateJointPanelValues3D();
+    }
   });
   transformControls3D.addEventListener('change', () => {
     if (selectedJoint3D && transformControls3D.dragging) onJointGizmoChange3D();
@@ -3184,14 +3194,31 @@ function attachGizmoToSelection3D() {
   const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
   if (!grp) return;
   if (gizmoMode3D === 'rotate') {
-    // Rotate mode controls the joint's OWN group directly — TransformControls
-    // handles a nested/rotated parent chain natively, so this just IS elbow
-    // bend/twist (drags forearm+wrist+hand with it) or wrist hinge/turn
-    // (hand only), exactly matching what applyPose3D already does with these
-    // same rotations.
     transformControls3D.setMode('rotate');
     transformControls3D.setSpace('local');
-    transformControls3D.attach(grp);
+    if (jointType === 'wrist') {
+      // Wrist Bend/Turn share one Euler (x=Bend, y=Turn), so attaching
+      // straight to the wrist group would show its rings in the group's OWN
+      // current local axes — once Turn swings past ~90° those axes have
+      // rotated along with it, so the ring that used to bend the hand
+      // up/down now visibly slides toward doing a side-to-side motion
+      // instead (and vice versa). Attach to a proxy oriented to the
+      // ELBOW's world rotation instead (Turn's own contribution left out),
+      // so the ring that bends the hand stays the same ring no matter what
+      // Turn is currently set to — see onJointGizmoChange3D for how the
+      // proxy's drag gets converted back into Bend/Turn on the real wrist.
+      const elbowGrp = rig3D[side + 'Elbow'];
+      const world = new THREE.Vector3(); grp.getWorldPosition(world);
+      gizmoProxy3D.position.copy(world);
+      if (elbowGrp) elbowGrp.getWorldQuaternion(gizmoProxy3D.quaternion); else gizmoProxy3D.quaternion.identity();
+      transformControls3D.attach(gizmoProxy3D);
+    } else {
+      // Elbow has no such issue (its own bend is the only rotation on the
+      // group, nothing to twist the ring around) — TransformControls can
+      // just control it directly, exactly matching what applyPose3D does
+      // with this same rotation.
+      transformControls3D.attach(grp);
+    }
   } else {
     // Translate mode drags a free-floating proxy in world space; its motion
     // gets converted into a bone-length-preserving rotation on the PARENT
@@ -3227,9 +3254,19 @@ function onJointGizmoChange3D() {
     const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
     if (!grp) return;
     if (jointType === 'wrist') {
+      // The gizmo is dragging gizmoProxy3D (a world-space stand-in oriented
+      // to the ELBOW, not the wrist — see attachGizmoToSelection3D), so
+      // first convert its world orientation back into the wrist's own
+      // LOCAL rotation (relative to the elbow) before it can be read as
+      // Bend/Turn: local = elbowWorldQuat⁻¹ × proxyWorldQuat.
+      const elbowGrp = rig3D[side + 'Elbow'];
+      if (!elbowGrp) return;
+      const elbowWorldQuat = new THREE.Quaternion();
+      elbowGrp.getWorldQuaternion(elbowWorldQuat);
+      const localQuat = elbowWorldQuat.invert().multiply(gizmoProxy3D.quaternion);
       // Drag -> Bend/Turn only (clamped). XYZ Euler has two equivalent
       // solutions; take the one closest to the current values.
-      const e = new THREE.Euler().setFromQuaternion(grp.quaternion, 'XYZ');
+      const e = new THREE.Euler().setFromQuaternion(localQuat, 'XYZ');
       const norm = d => { d = ((d + 180) % 360 + 360) % 360 - 180; return d; };
       const sgn = side === 'left' ? -1 : 1; // rotation.y = turn * sgn
       const r = lastPoseResolved3D && lastPoseResolved3D[side];
@@ -3315,7 +3352,12 @@ function setWristNumbers3D(side, axis, n) {
   else handRotationOverride[side] = clampTurnFree(n);
   manualJointEdits3D[side].wristQuat = null;
   applyPose3D(currentPose3D, { reframe: false });
-  if (gizmoMode3D !== 'rotate') attachGizmoToSelection3D();
+  // Always re-attach (even in rotate mode): the rotate gizmo sits on a
+  // proxy snapshotted to the elbow's orientation (see
+  // attachGizmoToSelection3D), which only re-syncs to the new Turn/Bend on
+  // reattach — unlike the old direct-attach approach, it won't just track
+  // a typed change on its own.
+  attachGizmoToSelection3D();
   updateJointPanelValues3D();
 }
 function onJointRotInput(axis, rawVal) {
@@ -3346,6 +3388,9 @@ function setJointHandFacing3D(kind, value) {
   if (kind === 'hand') setHandRotationInput(v); else setWristRotationInput(v);
   handWristTargetSide = prevSide;
   refreshHandWristButtons();
+  // Same reason as setWristNumbers3D: this can change Turn/Bend while the
+  // rotate gizmo's proxy is still sitting at its old elbow-aligned snapshot.
+  attachGizmoToSelection3D();
   updateJointPanelValues3D();
 }
 // "Aim & Pin" in the wrist panel — opens the proven Hand/Wrist Facing aim-bar
