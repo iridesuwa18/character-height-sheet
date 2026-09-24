@@ -33,5 +33,18 @@
         ]
       }
     }
+  },
+  "stand-hands-hips": {
+    "right": {
+      "handTarget": {
+        "box": "rightLeg",
+        "x": 0.5,
+        "y": 0.83,
+        "z": 0.07,
+        "nx": 1,
+        "ny": 0,
+        "nz": 0
+      }
+    }
   }
 }
