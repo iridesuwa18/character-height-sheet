@@ -2028,8 +2028,28 @@ function buildBody3D() {
     meshRecords3D.push({ mesh: upper, group: box.group, wCm: box.wCm, hCm: halfH });
     noteY(box);
   }
-  addTorsoOrWaistBox(torsoBox, gender === 'male', spineGroup, waistTopY);
-  addTorsoOrWaistBox(waistBox, gender === 'female', bodyGroup3D, 0);
+  // Female: the waistline sits where the torso meets the hip box. The pinch
+  // shrinks the BOTTOM of the torso box and the TOP of the waist/hip box to
+  // the same seam width (waistlinePct of the hip box's width), so the two
+  // boxes together read as an hourglass. 100% = plain boxes, no pinch.
+  function addTaperedBox(box, topWidthCm, bottomWidthCm, targetGroup, yOffset) {
+    if (!box) return;
+    const { depthCm, zOffset } = computeBodyDepth3D(box);
+    const color = groupColor3D[box.group] || 0xaaaaaa;
+    const mesh = makeTrapezoidMesh(topWidthCm, bottomWidthCm, box.hCm, depthCm, color);
+    mesh.position.set(box.xCm, box.bottomCm + box.hCm / 2 - yOffset, zOffset);
+    targetGroup.add(mesh);
+    meshRecords3D.push({ mesh, group: box.group, wCm: box.wCm, hCm: box.hCm });
+    noteY(box);
+  }
+  if (gender === 'female' && torsoBox && waistBox && waistlinePct < 100) {
+    const seamCm = (waistlinePct / 100) * waistBox.wCm;
+    addTaperedBox(torsoBox, torsoBox.wCm, Math.min(seamCm, torsoBox.wCm), spineGroup, waistTopY);
+    addTaperedBox(waistBox, Math.min(seamCm, waistBox.wCm), waistBox.wCm, bodyGroup3D, 0);
+  } else {
+    addTorsoOrWaistBox(torsoBox, gender === 'male', spineGroup, waistTopY);
+    addTorsoOrWaistBox(waistBox, false, bodyGroup3D, 0);
+  }
 
   // ---- Everything else — just head & neck now, also hung off the spine
   // pivot. Arms/hands and legs/feet are handled below separately so they can
