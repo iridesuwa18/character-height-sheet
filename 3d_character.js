@@ -195,7 +195,7 @@ const clampWristBend = (deg) => Math.min(WRIST_BEND_RANGE[1], Math.max(WRIST_BEN
 function literalFacing3D(poseName, side) {
   const pose = POSES3D[poseName]; if (!pose) return { turn: 0, wrist: 0 };
   const rec = Object.assign({}, pose[side]);
-  ['wristTurn', 'wrist', 'handRotation', 'wristRotation'].forEach(f => delete rec[f]);
+  ['wristTurn', 'wrist', 'handRotation', 'wristRotation', 'wristTurnEdit'].forEach(f => delete rec[f]);
   Object.assign(rec, (poseLiteralFacing3D && poseLiteralFacing3D[poseName] && poseLiteralFacing3D[poseName][side]) || {});
   const ex = expandPose3D(Object.assign({}, pose, { [side]: rec }));
   return side === 'left' ? { turn: ex.wristTurnL, wrist: ex.wristL } : { turn: ex.wristTurnR, wrist: ex.wristR };
@@ -203,6 +203,7 @@ function literalFacing3D(poseName, side) {
 const ovSet = (v) => v !== null && v !== undefined && v !== '';
 const handOvDeg = (side, v) => typeof v === 'number' ? v : HAND_ROTATION_DEG[side][v];
 const wristOvDeg = (v) => typeof v === 'number' ? v : WRIST_ROTATION_DEG[v];
+const clampTurnFree = (deg) => Math.min(180, Math.max(-180, deg || 0));
 function clampWristTurn(side, deg) {
   const [min, max] = WRIST_TURN_RANGE[side];
   const clamped = Math.min(max, Math.max(min, deg || 0));
@@ -234,8 +235,14 @@ function clampWristTurn(side, deg) {
 const FOREARM_FLIPPED_COLOR = 0xff4444;   // red  = flipped   = palm view
 const FOREARM_UNFLIPPED_COLOR = 0x4488ff; // blue = unflipped = dorsum view
 function isHandFlipped(side, wristTurnDeg) {
+  // Palm vs back is decided by how far the hand is actually turned about the
+  // forearm (left turns by -t, right by +t), so it also reads correctly for
+  // mirrored values outside a hand's usual range. Same result as before for
+  // in-range values.
   const t = wristTurnDeg || 0;
-  return side === 'left' ? t < 90 : t > -90;
+  let y = side === 'left' ? -t : t;
+  y = ((y + 180) % 360 + 360) % 360 - 180;
+  return Math.abs(y) < 90;
 }
 
 // Applies the flip state (derived live from wristTurn, never authored) to
@@ -293,6 +300,7 @@ function expandPose3D(pose) {
     elbowL: pick(L, 'elbow'), elbowR: pick(R, 'elbow'),
     wristL: pickWithAlias(L, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
     wristR: pickWithAlias(R, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
+    wristTurnEditL: L.wristTurnEdit, wristTurnEditR: R.wristTurnEdit, // saved edits: not limited to the hand's usual range (so a mirrored hand can be saved)
     wristTurnL: pickWithAlias(L, 'wristTurn', 'handRotation', HAND_ROTATION_DEG.left),
     wristTurnR: pickWithAlias(R, 'wristTurn', 'handRotation', HAND_ROTATION_DEG.right),
     spineBend: pose.spineBend || 0, spineSide: pose.spineSide || 0, spineTwist: pose.spineTwist || 0,
@@ -2253,6 +2261,11 @@ function applyPose3D(poseName, { reframe = false } = {}) {
 
   // Hand/Wrist Facing panel overrides win over whatever the named pose set,
   // on whichever side(s) have an override active.
+  let turnFreeL = false, turnFreeR = false; // edited turns may use the full -180..180 (mirror needs this)
+  if (p.wristTurnEditL !== undefined) { p.wristTurnL = p.wristTurnEditL; turnFreeL = true; }
+  if (p.wristTurnEditR !== undefined) { p.wristTurnR = p.wristTurnEditR; turnFreeR = true; }
+  if (ovSet(handRotationOverride.left)) turnFreeL = handRotationOverride.left !== 'default';
+  if (ovSet(handRotationOverride.right)) turnFreeR = handRotationOverride.right !== 'default';
   if (ovSet(handRotationOverride.left)) p.wristTurnL = handRotationOverride.left === 'default' ? literalFacing3D(currentPose3D, 'left').turn : handOvDeg('left', handRotationOverride.left);
   if (ovSet(handRotationOverride.right)) p.wristTurnR = handRotationOverride.right === 'default' ? literalFacing3D(currentPose3D, 'right').turn : handOvDeg('right', handRotationOverride.right);
   if (ovSet(wristRotationOverride.left)) p.wristL = wristRotationOverride.left === 'default' ? literalFacing3D(currentPose3D, 'left').wrist : wristOvDeg(wristRotationOverride.left);
@@ -2309,7 +2322,7 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     // above: elbowLiftOverride ADDS to the auto lift (manual lift on top of
     // whatever the wristTurn clamp already contributed), while
     // elbowBendOverride REPLACES the pose's own elbow angle outright.
-    const leftWrist = clampWristTurn('left', p.wristTurnL);
+    const leftWrist = turnFreeL ? { clamped: clampTurnFree(p.wristTurnL), elbowLift: 0 } : clampWristTurn('left', p.wristTurnL);
     p.wristTurnL = leftWrist.clamped;
     leftElbowLift = leftWrist.elbowLift + (elbowLiftOverride.left || 0);
     leftElbowBend = elbowBendOverride.left != null ? elbowBendOverride.left : p.elbowL;
@@ -2338,12 +2351,12 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     }
     // A mirrored pin carries the exact hand facing to use (see mirrorPinSpec3D).
     const flL = p.handTargetL && p.handTargetL.faceLock;
-    if (flL) { p.wristTurnL = clampWristTurn('left', flL.turn).clamped; p.wristL = clampWristBend(flL.hinge); }
+    if (flL) { p.wristTurnL = clampTurnFree(flL.turn); p.wristL = clampWristBend(flL.hinge); }
   }
   const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
   let rightElbowBend = p.elbowR, rightElbowLift = 0;
   if (!rightIK) {
-    const rightWrist = clampWristTurn('right', p.wristTurnR);
+    const rightWrist = turnFreeR ? { clamped: clampTurnFree(p.wristTurnR), elbowLift: 0 } : clampWristTurn('right', p.wristTurnR);
     p.wristTurnR = rightWrist.clamped;
     rightElbowLift = rightWrist.elbowLift + (elbowLiftOverride.right || 0);
     rightElbowBend = elbowBendOverride.right != null ? elbowBendOverride.right : p.elbowR;
@@ -2362,7 +2375,7 @@ function applyPose3D(poseName, { reframe = false } = {}) {
       p.wristTurnR = clampWristTurn('right', (p.wristTurnR || 0) + rightIK.wristTurnBoost).clamped;
     }
     const flR = p.handTargetR && p.handTargetR.faceLock;
-    if (flR) { p.wristTurnR = clampWristTurn('right', flR.turn).clamped; p.wristR = clampWristBend(flR.hinge); }
+    if (flR) { p.wristTurnR = clampTurnFree(flR.turn); p.wristR = clampWristBend(flR.hinge); }
   }
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
@@ -3093,7 +3106,7 @@ function mirrorPinSpec3D(ht, wr) {
   // The opposite hand's IK would re-derive its own facing (not always an exact
   // reflection), so pin the reflected Bend/Turn on the pin itself.
   delete c.faceLock;
-  if (wr) c.faceLock = { turn: round1(-wr.wristTurn), hinge: round1(wr.wrist) };
+  if (wr) c.faceLock = { turn: round1(wr.wristTurn), hinge: round1(wr.wrist) };
   flipX(c.offset); flipX(c.pole); flipX(c.target);
   if (c.joints) Object.keys(c.joints).forEach(k => {
     const q = c.joints[k];
@@ -3125,8 +3138,9 @@ function mirrorSelectedJoint3D() {
     m.shoulderQuat = null; m.elbowQuat = null; m.wristQuat = null;
   } else {
     // Unpinned source: mirror the whole arm (shoulder + elbow aim, so the hand
-    // lands in the reflected spot) and the hand: wrist Bend is copied and Turn
-    // negated (left is 0..180, right is 0..-180) as the dropdowns' own numbers.
+    // lands in the reflected spot) and the hand: wrist Bend and Turn are
+    // copied unchanged (the two hands turn in opposite directions for the same
+    // number, so an equal Turn is a mirrored pair), as the dropdowns' own numbers.
     // A pinned opposite hand would ignore all of that, so free it first (saved
     // with ⬆ Save, undone by Cancel).
     if (pose && pose[other] && pose[other].handTarget !== undefined) {
@@ -3138,7 +3152,7 @@ function mirrorSelectedJoint3D() {
     if (elbowGrp)    manualJointEdits3D[other].elbowQuat    = mirrorQuat3D(elbowGrp.quaternion);
     if (wr) {
       wristRotationOverride[other] = clampWristBend(wr.wrist);
-      handRotationOverride[other] = clampWristTurn(other, -wr.wristTurn).clamped;
+      handRotationOverride[other] = clampTurnFree(wr.wristTurn); // same number = mirrored hand
       manualJointEdits3D[other].wristQuat = null;
     }
   }
@@ -3225,7 +3239,7 @@ function onJointGizmoChange3D() {
       const dist = c => Math.abs(norm(c[0] - curX)) + Math.abs(norm(c[1] - curY));
       const pick = dist(a) <= dist(b) ? a : b;
       wristRotationOverride[side] = clampWristBend(pick[0]);
-      handRotationOverride[side] = clampWristTurn(side, pick[1] * sgn).clamped;
+      handRotationOverride[side] = clampTurnFree(pick[1] * sgn);
       manualJointEdits3D[side].wristQuat = null;
       const turn = handRotationOverride[side];
       grp.rotation.set(deg2rad(wristRotationOverride[side]), deg2rad(turn * sgn), 0);
@@ -3298,7 +3312,7 @@ function onJointPosInput(axis, rawVal) {
 function setWristNumbers3D(side, axis, n) {
   if (axis === 'z') return;
   if (axis === 'x') wristRotationOverride[side] = clampWristBend(n);
-  else handRotationOverride[side] = (side === 'left' ? 1 : -1) * Math.min(180, Math.max(0, Math.abs(n)));
+  else handRotationOverride[side] = clampTurnFree(n);
   manualJointEdits3D[side].wristQuat = null;
   applyPose3D(currentPose3D, { reframe: false });
   if (gizmoMode3D !== 'rotate') attachGizmoToSelection3D();
@@ -3481,7 +3495,8 @@ function updateJointPanelValues3D() {
   syncSel(hSel, res && res.wristTurn, HAND_ROTATION_DEG[side]);
   syncSel(wSel, res && res.wrist, WRIST_ROTATION_DEG);
   // Wrist rotation fields are the wrist's own numbers, not raw Euler angles:
-  // X = Bend (-80..80), Y = Turn (0..180, either hand), Z unused.
+  // X = Bend (-80..80), Y = Turn (-180..180), Z unused. The same Turn number on
+  // both hands is a mirrored pair.
   const rotLabels = ['X', 'Y', 'Z'];
   ['jeRotX', 'jeRotY', 'jeRotZ'].forEach((id, i) => {
     const el = document.getElementById(id), sp = el && el.parentElement && el.parentElement.querySelector('span');
@@ -3489,8 +3504,8 @@ function updateJointPanelValues3D() {
     if (jointType === 'wrist') {
       sp.textContent = ['Bend', 'Turn', '–'][i]; el.disabled = (i === 2);
       if (i === 2) el.value = '';
-      else if (res && document.activeElement !== el) el.value = i === 0 ? round1(res.wrist) : round1(Math.abs(res.wristTurn));
-      el.min = i === 0 ? WRIST_BEND_RANGE[0] : 0; el.max = i === 0 ? WRIST_BEND_RANGE[1] : 180;
+      else if (res && document.activeElement !== el) el.value = i === 0 ? round1(res.wrist) : round1(res.wristTurn);
+      el.min = i === 0 ? WRIST_BEND_RANGE[0] : -180; el.max = i === 0 ? WRIST_BEND_RANGE[1] : 180;
     } else { sp.textContent = rotLabels[i]; el.disabled = false; el.removeAttribute('min'); el.removeAttribute('max'); }
   });
 }
@@ -3560,10 +3575,10 @@ function bakeHandFacingIntoPose3D() {
     pose[side] = pose[side] || {};
     if (hv === 'default') {
       // back to the built-in value: drop the saved fields, restore the literal ones
-      ['wristTurn', 'handRotation'].forEach(f => { delete pose[side][f]; fields[f] = null; if (lit[side] && lit[side][f] !== undefined) pose[side][f] = lit[side][f]; });
+      ['wristTurn', 'handRotation', 'wristTurnEdit'].forEach(f => { delete pose[side][f]; fields[f] = null; if (lit[side] && lit[side][f] !== undefined) pose[side][f] = lit[side][f]; });
     } else if (ovSet(hv) && handOvDeg(side, hv) !== undefined) {
-      fields.wristTurn = round1(clampWristTurn(side, handOvDeg(side, hv)).clamped);
-      pose[side].wristTurn = fields.wristTurn; delete pose[side].handRotation; fields.handRotation = null;
+      fields.wristTurnEdit = round1(clampTurnFree(handOvDeg(side, hv)));
+      pose[side].wristTurnEdit = fields.wristTurnEdit; delete pose[side].handRotation; fields.handRotation = null;
     }
     if (wv === 'default') {
       ['wrist', 'wristRotation'].forEach(f => { delete pose[side][f]; fields[f] = null; if (lit[side] && lit[side][f] !== undefined) pose[side][f] = lit[side][f]; });
