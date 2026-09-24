@@ -206,6 +206,11 @@
     font-family: 'Space Mono', monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; white-space: nowrap;
   }
   #jeCopyOpenBtn.has-copy { background: rgba(240,192,64,0.22); }
+  #jeResetAllBtn {
+    flex: 0 0 72px; margin-left: auto; height: 28px; padding: 0; border-radius: 7px; cursor: pointer;
+    background: rgba(22,22,24,0.92); border: 1px solid var(--accent-red); color: var(--accent-red);
+    font-family: 'Space Mono', monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; white-space: nowrap;
+  }
   #jeCopyBadge {
     display: none; flex: 1 1 auto; min-width: 0; height: 28px; line-height: 26px; padding: 0 8px;
     background: rgba(22,22,24,0.92); border: 1px solid var(--accent-gold); border-radius: 7px;
@@ -975,6 +980,7 @@
     <div id="jeCopyBar" style="display:none;">
       <button type="button" id="jeCopyOpenBtn" onclick="openCopyPopup3D()">📋 Copy poses</button>
       <span id="jeCopyBadge"></span>
+      <button type="button" id="jeResetAllBtn" onclick="resetAllJointEdits3D()" title="Reset all joint edits to the pose's defaults">↺ Reset</button>
     </div>
 
     <!-- Copy Poses pop-up: tap "Copy poses" to open, then Copy or Close. -->

@@ -2730,6 +2730,39 @@ function copyElbowWristFromPose3D() {
   }
 }
 
+// ---- Reset to defaults: drops every manual elbow/wrist/shoulder edit (drags,
+// typed values, mirrors, copies) and any copied hand pins, so the arms go
+// back to whatever the current pose itself defines. Cancel/Apply still work
+// afterwards; ⬆ Save persists the cleared state. ----
+function resetAllJointEdits3D() {
+  if (!confirm('Reset all joint edits to this pose\'s defaults?')) return;
+  if (jointEditorPinCopySnapshot3D) {
+    const snap = jointEditorPinCopySnapshot3D, pose = POSES3D[snap.key];
+    if (pose) ['left', 'right'].forEach(side => {
+      if (snap[side] === undefined) { if (pose[side]) delete pose[side].handTarget; }
+      else { pose[side] = pose[side] || {}; pose[side].handTarget = JSON.parse(JSON.stringify(snap[side])); }
+    });
+    jointEditorPinCopySnapshot3D = null;
+  }
+  jointEditorPinDirty3D = { left: false, right: false };
+  manualJointEdits3D = {
+    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+  };
+  applyPose3D(currentPose3D, { reframe: false });
+  refreshHandWristButtons();
+  if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  jointEditorCopyLog3D = [];
+  updateCopyBadge3D();
+  const status = document.getElementById('jeMirrorStatus');
+  if (status) {
+    status.textContent = 'Reset to pose defaults';
+    status.style.opacity = '1';
+    clearTimeout(copyElbowWristFromPose3D._t);
+    copyElbowWristFromPose3D._t = setTimeout(() => { status.style.opacity = '0'; }, 2000);
+  }
+}
+
 // ---- Copy Poses pop-up + "copied from" chip ----
 function openCopyPopup3D() {
   const popup = document.getElementById('jeCopyPopup');
