@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Character Height Sheet</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
@@ -930,7 +933,7 @@
 
 <button id="floatingGenerate" onclick="generateFace()">⟳ Generate</button>
 <button id="boxDragToggle" onclick="toggleBoxDragMode()" title="Toggle direct box dragging on the face canvas">✥ Edit Boxes</button>
-<button id="poseModalToggle" onclick="openPoseModal()">🕺 Pose &amp; Hands</button>
+<button id="poseModalToggle" onclick="openPoseModal()">🕺 Pose</button>
 
 <!-- Sticky mini face preview -->
 <div id="faceMiniHud">
@@ -1012,7 +1015,7 @@
     <div id="jeCopyBar" style="display:none;">
       <button type="button" id="jeCopyOpenBtn" onclick="openCopyPopup3D()">📋 Copy poses</button>
       <span id="jeCopyBadge"></span>
-      <button type="button" id="jeResetAllBtn" onclick="resetAllJointEdits3D()" title="Reset all joint edits to the pose's defaults">↺ Reset</button>
+      <button type="button" id="jeResetAllBtn" onclick="resetAllJointEdits3D()" title="Reset to your last saved file">↺ Reset</button>
     </div>
 
     <!-- Copy Poses pop-up: tap "Copy poses" to open, then Copy or Close. -->
@@ -1095,13 +1098,13 @@
 
       <div id="jeWristOnlyRow">
         <div class="je-section-label">Hand Facing</div>
-        <select class="je-select" onchange="setJointHandFacing3D('hand', this.value)">
+        <select class="je-select" id="jeHandFacingSel" onchange="setJointHandFacing3D('hand', this.value)">
           <option value="">Pose default</option>
           <option value="front">Front</option>
           <option value="side">Side</option>
           <option value="back">Back</option>
         </select>
-        <select class="je-select" onchange="setJointHandFacing3D('wrist', this.value)">
+        <select class="je-select" id="jeWristFacingSel" onchange="setJointHandFacing3D('wrist', this.value)">
           <option value="">Pose default</option>
           <option value="up">Fingers Up</option>
           <option value="front">Fingers Front</option>
@@ -1119,6 +1122,7 @@
           <option value="feet">Feet</option>
         </select>
         <button type="button" class="je-btn" onclick="jointPanelAimAndPin3D()">🎯 Aim &amp; Pin</button>
+        <button type="button" class="je-btn" onclick="jointPanelUnpin3D()">✕ Unpin</button>
         <div id="jePinStatus" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:-2px 0 8px;"></div>
       </div>
 
@@ -1139,12 +1143,8 @@
     <div class="pose-modal-box" id="poseModalBox">
     <div id="poseModalMainContent">
       <div class="pose-modal-header">
-        <h2>Pose &amp; Hand Controls</h2>
+        <h2>Pose</h2>
         <button type="button" class="pose-modal-close" onclick="closePoseModal()">✕</button>
-      </div>
-      <div class="body-view-nav pose-modal-tab-nav">
-        <button class="body-view-btn pose-modal-tab-btn active" id="poseModalTabPoseBtn" onclick="switchPoseModalTab('pose')">🕺 <span class="tab-label-full">Pose</span></button>
-        <button class="body-view-btn pose-modal-tab-btn" id="poseModalTabHandBtn" onclick="switchPoseModalTab('hand')">✋ <span class="tab-label-full">Hand / Wrist</span><span class="tab-label-short">Hand</span></button>
       </div>
       <div class="pose-modal-tab-panel active" id="poseModalTabPose">
         <div class="panel" style="width:100%; margin-bottom:0;" id="posePanel">
@@ -1152,57 +1152,7 @@
           <div id="poseSections"></div>
         </div>
       </div>
-      <div class="pose-modal-tab-panel" id="poseModalTabHand">
-        <div class="panel" style="width:100%; margin-bottom:0;" id="handWristPanel">
-          <div class="panel-title">Hand / Wrist Facing</div>
-          <div class="pose-btn-row" style="margin-bottom:10px;">
-            <button type="button" class="pose-btn hw-side-btn active" data-side="right" onclick="setHandWristTargetSide('right')">Right Hand</button>
-            <button type="button" class="pose-btn hw-side-btn" data-side="left" onclick="setHandWristTargetSide('left')">Left Hand</button>
-            <button type="button" class="pose-btn hw-side-btn" data-side="both" onclick="setHandWristTargetSide('both')">Both</button>
-          </div>
-          <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">HAND ROTATION</div>
-          <div class="pose-btn-row" style="margin-bottom:10px;">
-            <button type="button" class="pose-btn hw-hand-btn" data-value="front" onclick="setHandRotationInput('front')">Front</button>
-            <button type="button" class="pose-btn hw-hand-btn" data-value="side" onclick="setHandRotationInput('side')">Side</button>
-            <button type="button" class="pose-btn hw-hand-btn" data-value="back" onclick="setHandRotationInput('back')">Back</button>
-          </div>
-          <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">WRIST ROTATION</div>
-          <div class="pose-btn-row" style="margin-bottom:10px;">
-            <button type="button" class="pose-btn hw-wrist-btn" data-value="up" onclick="setWristRotationInput('up')">Fingers Up</button>
-            <button type="button" class="pose-btn hw-wrist-btn" data-value="front" onclick="setWristRotationInput('front')">Fingers Front</button>
-            <button type="button" class="pose-btn hw-wrist-btn" data-value="down" onclick="setWristRotationInput('down')">Fingers Down</button>
-          </div>
-          <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">ELBOW POSITION</div>
-          <div class="field-grid" style="margin-bottom:10px;">
-            <div class="field"><label>Bend (°)</label><input type="number" id="hwElbowBend" placeholder="pose default" oninput="setElbowBendInput(this.value)"/></div>
-            <div class="field"><label>Extra Lift (°)</label><input type="number" id="hwElbowLift" placeholder="0" oninput="setElbowLiftInput(this.value)"/></div>
-          </div>
-          <div style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 4px;">MESH PIN (lock hand to a spot on the body)</div>
-          <div class="pose-btn-row" style="margin-bottom:4px;">
-            <button type="button" class="pose-btn" id="pinMeshBtn" onclick="armMeshPin(handWristTargetSide)">🎯 Aim &amp; Pin</button>
-            <button type="button" class="pose-btn" id="pinConfirmBtn" style="display:none;" onclick="confirmMeshPinAtCrosshair3D()">📍 Pin Here</button>
-            <button type="button" class="pose-btn" onclick="unpinHandWrist()">✕ Unpin</button>
-          </div>
-          <div id="pinStatusLine" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:0 0 10px;"></div>
-          <button class="btn-secondary" style="width:100%;" onclick="clearHandWristOverrides()">↺ Reset to Pose Default</button>
-          <button class="btn-primary" style="width:100%;margin-top:8px;" onclick="savePoseFromHandWristPanel()">💾 Save to This Pose</button>
-          <div id="hwSaveStatus" style="font-size:9px;color:var(--accent-gold);font-family:'Space Mono',monospace;text-align:center;margin-top:6px;opacity:0;transition:opacity 0.3s;">&nbsp;</div>
-          <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:14px 0 6px;line-height:1.5;">
-            Saved edits (including the ⬆ Save joint edits) are pushed to <b>presets/pose-overrides.json</b> in the repo configured below (GitHub Presets panel) and reload automatically next time, on any browser/computer. Needs owner/repo/token filled in there first.
-          </p>
-          <button class="btn-secondary" style="width:100%;font-size:9px;" onclick="clearAllSavedPoseEdits()">⚠ Clear All Saved Pose Edits (from GitHub)</button>
-        </div>
-      </div>
     </div><!-- /poseModalMainContent -->
-    <div id="pinAimBar">
-      <div id="pinAimHint">Orbit/pinch the 3D view above to line the crosshair up, then tap Pin Here.</div>
-      <div id="pinLiveFace" style="font-size:10px;color:var(--accent-gold);font-family:'Space Mono',monospace;"></div>
-      <button type="button" class="btn-primary" style="width:100%;" onclick="confirmMeshPinAtCrosshair3D()">📍 Pin Here</button>
-      <div class="pin-aim-row">
-        <button type="button" class="pose-btn" onclick="cancelMeshPin()">✕ Cancel</button>
-        <button type="button" class="pose-btn" id="pinDoneBtn" style="flex:1;" onclick="finishMeshPin()">✓ Done</button>
-      </div>
-    </div>
     </div>
   </div>
   <div class="panel vis-panel" style="width:100%;">
@@ -5039,6 +4989,6 @@ function importFaceExcel(event) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<script src="3d_character.js"></script>
+<script>document.write('<script src="3d_character.js?v=' + Date.now() + '"><\/script>');</script>
 </body>
 </html>

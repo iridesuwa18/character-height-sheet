@@ -1425,6 +1425,7 @@ function animate3D() {
   controls3D.update();
   renderer3D.render(scene3D, camera3D);
   if (pinArmedSide) updatePinLiveFace3D();
+  updateWristSliderOverlay3D();
 }
 
 // Recursively frees GPU resources for a mesh/group tree before it's discarded.
@@ -3198,6 +3199,109 @@ function mirrorSelectedJoint3D() {
     mirrorSelectedJoint3D._t = setTimeout(() => { status.style.opacity = '0'; }, 1600);
   }
 }
+// ---- Wrist Bend / Turn sliders (replace the rotate rings for wrists) ------
+// A small floating card that follows the selected wrist on screen while
+// Rotate is on. Limits: Bend -80..80 (WRIST_BEND_RANGE), Turn -180..180.
+// They write the same per-side overrides the number fields use, so Save,
+// Mirror and the dropdowns all stay in sync.
+let wristSliderEl3D = null;
+let wristSliderDragging3D = false;
+function ensureWristSliders3D() {
+  if (wristSliderEl3D) return wristSliderEl3D;
+  const host = document.getElementById('preview3D');
+  if (!host) return null;
+  if (!document.getElementById('wristSliderCss3D')) {
+    const st = document.createElement('style');
+    st.id = 'wristSliderCss3D';
+    st.textContent = `
+      #wristSliders3D { position:absolute; z-index:30; width:168px; padding:8px 10px 6px;
+        background:rgba(20,20,24,0.88); border:1px solid #f0c040; border-radius:10px;
+        font-family:'Space Mono',monospace; font-size:10px; color:#eee; display:none;
+        touch-action:none; user-select:none; -webkit-user-select:none; }
+      #wristSliders3D .ws-row { display:flex; align-items:center; gap:6px; margin:4px 0; }
+      #wristSliders3D .ws-lab { width:20px; color:#f0c040; font-weight:700; }
+      #wristSliders3D .ws-val { width:34px; text-align:right; }
+      #wristSliders3D input[type=range] { flex:1; min-width:0; height:28px; margin:0; accent-color:#f0c040; touch-action:none; }
+      #wristSliders3D .ws-note { color:#aaa; font-size:9px; margin-top:2px; display:none; }
+    `;
+    document.head.appendChild(st);
+  }
+  const el = document.createElement('div');
+  el.id = 'wristSliders3D';
+  el.innerHTML = `
+    <div class="ws-row"><span class="ws-lab">Be</span><input type="range" id="wsBend3D" min="${WRIST_BEND_RANGE[0]}" max="${WRIST_BEND_RANGE[1]}" step="1" value="0"><span class="ws-val" id="wsBendVal3D">0</span></div>
+    <div class="ws-row"><span class="ws-lab">Tu</span><input type="range" id="wsTurn3D" min="-180" max="180" step="1" value="0"><span class="ws-val" id="wsTurnVal3D">0</span></div>
+    <div class="ws-note" id="wsNote3D">Hand is pinned — unpin to use sliders.</div>`;
+  // Keep touches/clicks on the card away from orbit/pan on the canvas.
+  ['pointerdown','pointermove','pointerup','touchstart','touchmove','mousedown','wheel'].forEach(ev =>
+    el.addEventListener(ev, e => e.stopPropagation(), { passive: true }));
+  host.appendChild(el);
+  const bind = (id, axis) => {
+    const inp = el.querySelector('#' + id);
+    inp.addEventListener('input', () => onWristSlider3D(axis, parseFloat(inp.value)));
+    inp.addEventListener('pointerdown', () => { wristSliderDragging3D = true; });
+    const end = () => { wristSliderDragging3D = false; syncWristSliders3D(); };
+    inp.addEventListener('pointerup', end); inp.addEventListener('pointercancel', end); inp.addEventListener('change', end);
+  };
+  bind('wsBend3D', 'x'); bind('wsTurn3D', 'y');
+  wristSliderEl3D = el;
+  return el;
+}
+function syncWristSliders3D() {
+  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') return;
+  const el = ensureWristSliders3D(); if (!el) return;
+  const res = lastPoseResolved3D && lastPoseResolved3D[selectedJoint3D.side];
+  if (!res) return;
+  const bend = el.querySelector('#wsBend3D'), turn = el.querySelector('#wsTurn3D');
+  if (!wristSliderDragging3D) {
+    bend.value = clampWristBend(res.wrist);
+    turn.value = clampTurnFree(res.wristTurn);
+  }
+  el.querySelector('#wsBendVal3D').textContent = Math.round(parseFloat(bend.value));
+  el.querySelector('#wsTurnVal3D').textContent = Math.round(parseFloat(turn.value));
+  const locked = !!res.isIK;
+  bend.disabled = locked; turn.disabled = locked;
+  el.querySelector('#wsNote3D').style.display = locked ? 'block' : 'none';
+}
+function onWristSlider3D(axis, n) {
+  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist' || isNaN(n)) return;
+  const { side } = selectedJoint3D;
+  if (axis === 'x') wristRotationOverride[side] = clampWristBend(n);
+  else handRotationOverride[side] = clampTurnFree(n);
+  manualJointEdits3D[side].wristQuat = null;
+  applyPose3D(currentPose3D, { reframe: false });
+  updateJointPanelValues3D();
+  syncWristSliders3D();
+}
+// Runs every frame: shows the card only for a selected wrist in Rotate mode
+// inside the editor, and pins it beside the wrist's on-screen position.
+function updateWristSliderOverlay3D() {
+  const el = wristSliderEl3D;
+  const show = !!(selectedJoint3D && selectedJoint3D.jointType === 'wrist' && gizmoMode3D === 'rotate' && jointEditorModeActive3D);
+  if (!show) { if (el && el.style.display !== 'none') el.style.display = 'none'; return; }
+  const card = ensureWristSliders3D(); if (!card) return;
+  const grp = rig3D[selectedJoint3D.side + 'Wrist']; if (!grp) return;
+  const host = document.getElementById('preview3D');
+  const W = host.clientWidth, H = host.clientHeight;
+  const v = new THREE.Vector3(); grp.getWorldPosition(v); v.project(camera3D);
+  const sx = (v.x * 0.5 + 0.5) * W, sy = (-v.y * 0.5 + 0.5) * H;
+  if (card.style.display !== 'block') { card.style.display = 'block'; syncWristSliders3D(); }
+  const cw = card.offsetWidth || 168, ch = card.offsetHeight || 80;
+  // Sit on the outer side of the wrist (away from screen centre) so the card
+  // doesn't cover the body; then clamp inside the viewport.
+  let x = sx < W / 2 ? sx - cw - 24 : sx + 24;
+  if (x < 4 || x + cw > W - 4) x = sx < W / 2 ? sx + 24 : sx - cw - 24;
+  x = Math.max(4, Math.min(W - cw - 4, x));
+  // Stay below the editor's top button rows.
+  let minY = 4; const hostTop = host.getBoundingClientRect().top;
+  ['jointEditorTopBar', 'jointToggleBar', 'jeCopyBar'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b && b.offsetParent !== null) minY = Math.max(minY, b.getBoundingClientRect().bottom - hostTop + 6);
+  });
+  const y = Math.max(minY, Math.min(H - ch - 4, sy - ch / 2));
+  card.style.left = Math.round(x) + 'px';
+  card.style.top = Math.round(y) + 'px';
+}
 function setGizmoMode3D(mode) {
   gizmoMode3D = mode;
   if (selectedJoint3D) attachGizmoToSelection3D();
@@ -3205,7 +3309,9 @@ function setGizmoMode3D(mode) {
   if (panel) panel.querySelectorAll('.je-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   const note = document.getElementById('jeNote');
   if (note) note.textContent = mode === 'rotate'
-    ? 'Drag the rotate rings on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.'
+    ? (selectedJoint3D && selectedJoint3D.jointType === 'wrist'
+        ? 'Use the Bend / Turn sliders next to the wrist on the model, or type exact numbers below.'
+        : 'Drag the rotate rings on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.')
     : 'Drag the move handles on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.';
 }
 function attachGizmoToSelection3D() {
@@ -3213,6 +3319,17 @@ function attachGizmoToSelection3D() {
   const { side, jointType } = selectedJoint3D;
   const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
   if (!grp) return;
+  // Wrist + Rotate: no ring gizmo at all — two Bend/Turn sliders float next
+  // to the joint instead (see updateWristSliderOverlay3D). Elbow keeps rings.
+  if (gizmoMode3D === 'rotate' && jointType === 'wrist') {
+    transformControls3D.detach();
+    transformControls3D.enabled = false;
+    transformControls3D.visible = false;
+    syncWristSliders3D();
+    return;
+  }
+  transformControls3D.enabled = true;
+  transformControls3D.visible = true;
   if (gizmoMode3D === 'rotate') {
     transformControls3D.setMode('rotate');
     // Rotate rings read much bigger than the translate arrows at the same
@@ -3527,6 +3644,7 @@ function closeJointPanel3D() {
 }
 function updateJointPanelValues3D() {
   if (!selectedJoint3D) return;
+  syncWristSliders3D();
   const { side, jointType } = selectedJoint3D;
   const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
   if (!grp || !bodyGroup3D) return;
