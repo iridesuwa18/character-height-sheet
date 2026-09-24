@@ -2386,6 +2386,7 @@ let jointEditorModeSnapshot3D = null;  // deep clone of manualJointEdits3D taken
 let jointEditorPinDirty3D = { left: false, right: false }; // sides whose pin was changed by "copy pins" and not yet saved (saved on Apply / ⬆ Save)
 let jointEditorPinCopySnapshot3D = null; // pre-copy handTargets of the current pose, taken lazily by "copy pins" so Cancel can restore them
 let jointSettingsPopupOpen3D = false;  // whether the ⚙ settings popup is currently shown
+let jointEditorCopyLog3D = [];         // what "Copy poses" has pulled onto the current pose this editor session (drives the status chip)
 let jointEditorCameraView3D = 'free';  // 'front' | 'back' | 'side-left' | 'side-right' | 'free'
 // Per-side manual overrides. null = "use whatever the pose/IK just computed";
 // otherwise a THREE.Quaternion snapshot of that group's LOCAL rotation,
@@ -2532,6 +2533,8 @@ function openJointEditorMode3D() {
   const toggleBar = document.getElementById('jointToggleBar'); if (toggleBar) toggleBar.style.display = '';
   const bottomBar = document.getElementById('jointEditorBottomBar'); if (bottomBar) bottomBar.style.display = '';
   populateCopyPoseSelect3D();
+  jointEditorCopyLog3D = [];
+  updateCopyBadge3D();
   const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = '';
   setJointEditorCameraView3D('free');
   // Let the layout/CSS settle into fullscreen before telling three.js the
@@ -2551,6 +2554,9 @@ function closeJointEditorModeUI3D() {
   const toggleBar = document.getElementById('jointToggleBar'); if (toggleBar) toggleBar.style.display = 'none';
   const bottomBar = document.getElementById('jointEditorBottomBar'); if (bottomBar) bottomBar.style.display = 'none';
   const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = 'none';
+  closeCopyPopup3D();
+  jointEditorCopyLog3D = [];
+  updateCopyBadge3D();
   deselectJoint3D();
   setTimeout(resizeBody3D, 0);
 }
@@ -2596,6 +2602,9 @@ function populateCopyPoseSelect3D() {
   if (!sel || typeof POSES3D === 'undefined') return;
   const prev = sel.value;
   sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = ''; ph.textContent = 'Choose a pose…';
+  sel.appendChild(ph);
   const groups = {};
   Object.keys(POSES3D).forEach(key => {
     if (key === currentPose3D) return; // copying a pose onto itself is a no-op
@@ -2612,6 +2621,7 @@ function populateCopyPoseSelect3D() {
     groups[sec].appendChild(opt);
   });
   if (prev && POSES3D[prev] && prev !== currentPose3D) sel.value = prev;
+  else sel.value = '';
 }
 function readPoseElbowWristQuats3D(poseKey) {
   // Render the source pose "clean" — no manual edits, no hand/wrist-facing or
@@ -2646,8 +2656,10 @@ function readPoseElbowWristQuats3D(poseKey) {
 function copyElbowWristFromPose3D() {
   const sel = document.getElementById('jeCopyPoseSelect');
   const sideSel = document.getElementById('jeCopySideSelect');
-  const btn = document.getElementById('jeCopyBtn');
-  if (!sel || !sel.value || !POSES3D[sel.value]) return;
+  const msg = document.getElementById('jeCopyMsg');
+  if (!sel) return;
+  if (!sel.value || !POSES3D[sel.value]) { if (msg) msg.textContent = 'Choose a pose to copy from first.'; return; }
+  if (msg) msg.textContent = '';
   const sides = (sideSel && sideSel.value === 'left') ? ['left']
               : (sideSel && sideSel.value === 'right') ? ['right'] : ['left', 'right'];
   const src = readPoseElbowWristQuats3D(sel.value);
@@ -2698,11 +2710,55 @@ function copyElbowWristFromPose3D() {
   reapplyManualJointEdits3D();
   groundBody3D(false);
   if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
-  if (btn) {
-    btn.textContent = '✓ Copied';
-    clearTimeout(btn._t);
-    btn._t = setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+  // Feedback: log it (drives the chip under the top bars), close the pop-up
+  // so the result is visible, and flash a short confirmation.
+  const srcLabel = POSES3D[sel.value].label || sel.value;
+  const sideWord = sides.length === 2 ? 'both arms' : (sides[0] === 'left' ? 'left arm' : 'right arm');
+  const parts = ['elbow', 'wrist'];
+  if (matchElbowPos) parts.push('shoulder');
+  if (pinned.left || pinned.right) parts.push('hand pins');
+  jointEditorCopyLog3D.push({ label: srcLabel, side: sideWord, parts: parts.join(', ') });
+  updateCopyBadge3D();
+  closeCopyPopup3D();
+  const status = document.getElementById('jeMirrorStatus');
+  if (status) {
+    status.textContent = `Copied ${parts.join(' + ')} from "${srcLabel}" (${sideWord})`;
+    status.style.opacity = '1';
+    clearTimeout(mirrorSelectedJoint3D._t);
+    clearTimeout(copyElbowWristFromPose3D._t);
+    copyElbowWristFromPose3D._t = setTimeout(() => { status.style.opacity = '0'; }, 2400);
   }
+}
+
+// ---- Copy Poses pop-up + "copied from" chip ----
+function openCopyPopup3D() {
+  const popup = document.getElementById('jeCopyPopup');
+  if (!popup) return;
+  populateCopyPoseSelect3D();
+  const msg = document.getElementById('jeCopyMsg'); if (msg) msg.textContent = '';
+  const target = document.getElementById('jeCopyTarget');
+  if (target && typeof POSES3D !== 'undefined' && POSES3D[currentPose3D]) {
+    target.textContent = `Copying onto: ${POSES3D[currentPose3D].label || currentPose3D}`;
+  }
+  popup.classList.add('open');
+}
+function closeCopyPopup3D() {
+  const popup = document.getElementById('jeCopyPopup');
+  if (popup) popup.classList.remove('open');
+}
+// Shows what's been copied onto the current pose (persists until Apply/Cancel,
+// unlike the brief toast), and marks the Copy poses button as "used".
+function updateCopyBadge3D() {
+  const badge = document.getElementById('jeCopyBadge');
+  const btn = document.getElementById('jeCopyOpenBtn');
+  const log = jointEditorCopyLog3D;
+  if (btn) btn.classList.toggle('has-copy', log.length > 0);
+  if (!badge) return;
+  if (!log.length) { badge.style.display = 'none'; badge.textContent = ''; badge.title = ''; return; }
+  const last = log[log.length - 1];
+  badge.textContent = `✓ Copied from ${last.label}` + (log.length > 1 ? ` (+${log.length - 1} more)` : '');
+  badge.title = log.map(e => `${e.label} — ${e.side}: ${e.parts}`).join('\n');
+  badge.style.display = 'block';
 }
 
 // Front/Back/Left-side/Right-side snap the camera to a clean view of the
