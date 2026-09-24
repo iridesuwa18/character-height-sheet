@@ -1,0 +1,37 @@
+{
+  "_jointEdits": {
+    "pose": "stand-hands-hips",
+    "manualJointEdits": {
+      "left": {
+        "shoulderQuat": null,
+        "elbowQuat": [
+          -0.4563,
+          0,
+          -0.0671,
+          0.8873
+        ],
+        "wristQuat": [
+          -0.0541,
+          -0.8539,
+          -0.2859,
+          0.4316
+        ]
+      },
+      "right": {
+        "shoulderQuat": null,
+        "elbowQuat": [
+          -0.4698,
+          0,
+          0.0879,
+          0.8784
+        ],
+        "wristQuat": [
+          -0.0541,
+          0.8539,
+          0.2859,
+          0.4316
+        ]
+      }
+    }
+  }
+}
