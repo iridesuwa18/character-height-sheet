@@ -190,6 +190,11 @@ const MAX_ELBOW_LIFT_DEG = 45;           // cap so a wildly out-of-range value c
 // extension). Applied to every source (poses, dropdowns, typed numbers, drag).
 const WRIST_BEND_RANGE = [-80, 80];
 const clampWristBend = (deg) => Math.min(WRIST_BEND_RANGE[1], Math.max(WRIST_BEND_RANGE[0], deg || 0));
+// Wrist swing (side-to-side, in the HAND's own frame — radial/ulnar deviation).
+// Positive = toward the thumb side (radial, small range), negative = toward the
+// pinky side (ulnar, larger range). Same number on both hands = mirrored pair.
+const WRIST_SWING_RANGE = [-40, 20];
+const clampWristSwing = (deg) => Math.min(WRIST_SWING_RANGE[1], Math.max(WRIST_SWING_RANGE[0], deg || 0));
 // Overrides hold a preset word ('front'...) or a plain number of degrees.
 // The pose's own built-in facing for one side, ignoring anything saved on top.
 function literalFacing3D(poseName, side) {
@@ -300,6 +305,7 @@ function expandPose3D(pose) {
     elbowL: pick(L, 'elbow'), elbowR: pick(R, 'elbow'),
     wristL: pickWithAlias(L, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
     wristR: pickWithAlias(R, 'wrist', 'wristRotation', WRIST_ROTATION_DEG),
+    wristSwingL: pick(L, 'wristSwing'), wristSwingR: pick(R, 'wristSwing'),
     wristTurnEditL: L.wristTurnEdit, wristTurnEditR: R.wristTurnEdit, // saved edits: not limited to the hand's usual range (so a mirrored hand can be saved)
     wristTurnL: pickWithAlias(L, 'wristTurn', 'handRotation', HAND_ROTATION_DEG.left),
     wristTurnR: pickWithAlias(R, 'wristTurn', 'handRotation', HAND_ROTATION_DEG.right),
@@ -325,6 +331,7 @@ function expandPose3D(pose) {
 // the same hand facing against several poses in a row.
 let handRotationOverride = { left: null, right: null };   // 'front'|'side'|'back'|null
 let wristRotationOverride = { left: null, right: null };  // 'up'|'front'|'down'|null
+let wristSwingOverride = { left: null, right: null };     // degrees (number) | null
 // Elbow position overrides — raw degree numbers (not word aliases, unlike
 // the two above) since there's no small fixed vocabulary for "where the
 // elbow sits". elbowBendOverride replaces the pose's own `elbow` flexion
@@ -406,6 +413,7 @@ function setElbowLiftInput(value) {
 function clearHandWristOverrides() {
   handRotationOverride = { left: null, right: null };
   wristRotationOverride = { left: null, right: null };
+  wristSwingOverride = { left: null, right: null };
   elbowBendOverride = { left: null, right: null };
   elbowLiftOverride = { left: null, right: null };
   refreshHandWristButtons();
@@ -814,7 +822,7 @@ function applyMeshPin3D(side, box, x, y, z, normal, extras, persist = true) {
   // An IK-driven side ignores the fixed-angle overrides entirely (see
   // applyPose3D) — clear them so the panel doesn't keep showing dead values.
   handRotationOverride[side] = null;
-  wristRotationOverride[side] = null;
+  wristRotationOverride[side] = null; wristSwingOverride[side] = null;
   elbowBendOverride[side] = null;
   elbowLiftOverride[side] = null;
   refreshHandWristButtons();
@@ -1005,6 +1013,7 @@ async function savePoseFromHandWristPanel() {
     pose[side] = pose[side] || {};
     pose[side].wristTurn = round1(resolved.wristTurn);
     pose[side].wrist = round1(resolved.wrist);
+    pose[side].wristSwing = round1(resolved.swing || 0);
     pose[side].elbow = round1(resolved.elbow);
     pose[side].shoulderAbd = round1(resolved.shoulderAbd);
     // The values above are now the per-side source of truth going forward,
@@ -1015,7 +1024,7 @@ async function savePoseFromHandWristPanel() {
     delete pose[side].handRotation;
     delete pose[side].wristRotation;
     toPush.push({ side, fields: {
-      wristTurn: pose[side].wristTurn, wrist: pose[side].wrist,
+      wristTurn: pose[side].wristTurn, wrist: pose[side].wrist, wristSwing: pose[side].wristSwing,
       elbow: pose[side].elbow, shoulderAbd: pose[side].shoulderAbd,
     }});
   });
@@ -1024,6 +1033,7 @@ async function savePoseFromHandWristPanel() {
   // silently re-applying the same values on top of their new home.
   handRotationOverride = { left: null, right: null };
   wristRotationOverride = { left: null, right: null };
+  wristSwingOverride = { left: null, right: null };
   elbowBendOverride = { left: null, right: null };
   elbowLiftOverride = { left: null, right: null };
   refreshHandWristButtons();
@@ -2099,6 +2109,10 @@ function buildBody3D() {
     // under an opposite forearm, or curl to support a chin — without it the
     // hand can only ever trail along as a rigid extension of the forearm.
     const wristGroup = new THREE.Group();
+    // Turn first (about the forearm's long axis), THEN Bend in the hand's own
+    // frame — so Bend is always finger-flexion toward/away from the palm, no
+    // matter how far the hand is turned (order 'YXZ' = Ry(turn)·Rx(bend)).
+    wristGroup.rotation.order = 'YXZ';
     wristGroup.position.set(0, -lowerH, 0);
     elbowGroup.add(wristGroup);
     rig3D[side + 'Wrist'] = wristGroup;
@@ -2272,6 +2286,9 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   if (ovSet(wristRotationOverride.left)) p.wristL = wristRotationOverride.left === 'default' ? literalFacing3D(currentPose3D, 'left').wrist : wristOvDeg(wristRotationOverride.left);
   if (ovSet(wristRotationOverride.right)) p.wristR = wristRotationOverride.right === 'default' ? literalFacing3D(currentPose3D, 'right').wrist : wristOvDeg(wristRotationOverride.right);
   p.wristL = clampWristBend(p.wristL); p.wristR = clampWristBend(p.wristR);
+  if (ovSet(wristSwingOverride.left))  p.wristSwingL = wristSwingOverride.left;
+  if (ovSet(wristSwingOverride.right)) p.wristSwingR = wristSwingOverride.right;
+  p.wristSwingL = clampWristSwing(p.wristSwingL); p.wristSwingR = clampWristSwing(p.wristSwingR);
 
   // side is -1 for left, +1 for right, so a positive hipAbd/shoulderAbd in
   // pose data always reads as "swing outward, away from the midline" on
@@ -2388,6 +2405,11 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   setHinge(rig3D.leftWrist, p.wristL); setHinge(rig3D.rightWrist, p.wristR);
   if (rig3D.leftWrist)  rig3D.leftWrist.rotation.y  = deg2rad((p.wristTurnL || 0) * -1);
   if (rig3D.rightWrist) rig3D.rightWrist.rotation.y = deg2rad((p.wristTurnR || 0) *  1);
+  // Swing: side-to-side about the hand's own front-back axis (applied last in
+  // the 'YXZ' order, so it follows Turn and Bend). Left is sign-flipped like
+  // Turn, so the same number on both hands is a mirrored pair.
+  if (rig3D.leftWrist)  rig3D.leftWrist.rotation.z  = deg2rad((p.wristSwingL || 0) * -1);
+  if (rig3D.rightWrist) rig3D.rightWrist.rotation.z = deg2rad((p.wristSwingR || 0) *  1);
 
   // Forearm flip state, color AND thumb edge — all derived from the same
   // wristTurn values just applied above, in one place, so they can never
@@ -2410,8 +2432,8 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   // sides are flagged so Save knows to leave their handTarget-driven fields
   // alone instead of writing dead angle numbers the IK path would ignore.
   lastPoseResolved3D = {
-    left:  { wristTurn: p.wristTurnL, wrist: p.wristL, elbow: leftElbowBend,  shoulderAbd: (p.shoulderAbdL || 0) + leftElbowLift,  isIK: !!leftIK },
-    right: { wristTurn: p.wristTurnR, wrist: p.wristR, elbow: rightElbowBend, shoulderAbd: (p.shoulderAbdR || 0) + rightElbowLift, isIK: !!rightIK },
+    left:  { wristTurn: p.wristTurnL, wrist: p.wristL, swing: p.wristSwingL, elbow: leftElbowBend,  shoulderAbd: (p.shoulderAbdL || 0) + leftElbowLift,  isIK: !!leftIK },
+    right: { wristTurn: p.wristTurnR, wrist: p.wristR, swing: p.wristSwingR, elbow: rightElbowBend, shoulderAbd: (p.shoulderAbdR || 0) + rightElbowLift, isIK: !!rightIK },
   };
   // Re-stamp any manual Joint Editor drags on top of what the pose/IK just
   // computed above, so a hand-dragged elbow/wrist survives pose switches,
@@ -2478,6 +2500,7 @@ function setPose3D(poseName) {
   // Facing overrides belong to one pose — unsaved ones don't carry to the next.
   handRotationOverride = { left: null, right: null };
   wristRotationOverride = { left: null, right: null };
+  wristSwingOverride = { left: null, right: null };
   // Also clear elbow bend/lift overrides and any manual joint-editor drags
   // (shoulder/elbow/wrist) — otherwise leftover nudges from the previous
   // pose silently ride along, and Mirror copies them onto the other arm.
@@ -2773,7 +2796,7 @@ function openJointEditorMode3D() {
   if (!sceneInited3D) return;
   if (!jointEditorInited3D) initJointEditor3D();
   jointEditorModeSnapshot3D = cloneManualJointEdits3D(manualJointEdits3D);
-  jointEditorFacingSnapshot3D = { hand: Object.assign({}, handRotationOverride), wrist: Object.assign({}, wristRotationOverride) };
+  jointEditorFacingSnapshot3D = { hand: Object.assign({}, handRotationOverride), wrist: Object.assign({}, wristRotationOverride), swing: Object.assign({}, wristSwingOverride) };
   jointEditorModeActive3D = true;
   const preview = document.getElementById('preview3D');
   if (preview) preview.classList.add('je-fullscreen');
@@ -2835,6 +2858,7 @@ function cancelJointEditorMode3D() {
   if (jointEditorFacingSnapshot3D) {
     handRotationOverride = jointEditorFacingSnapshot3D.hand;
     wristRotationOverride = jointEditorFacingSnapshot3D.wrist;
+    wristSwingOverride = jointEditorFacingSnapshot3D.swing || { left: null, right: null };
     refreshHandWristButtons();
     applyPose3D(currentPose3D, { reframe: false });
   }
@@ -2885,7 +2909,7 @@ function readPoseElbowWristQuats3D(poseKey) {
   // elbow overrides — read the joint rotations, then put everything back.
   const savedPose = currentPose3D;
   const savedManual = cloneManualJointEdits3D(manualJointEdits3D);
-  const savedOv = [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride];
+  const savedOv = [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride, wristSwingOverride];
   const out = { left: {}, right: {} };
   try {
     manualJointEdits3D = {
@@ -2894,8 +2918,10 @@ function readPoseElbowWristQuats3D(poseKey) {
     };
     handRotationOverride = { left: null, right: null };
     wristRotationOverride = { left: null, right: null };
+    wristSwingOverride = { left: null, right: null };
     elbowBendOverride = { left: null, right: null };
     elbowLiftOverride = { left: null, right: null };
+    wristSwingOverride = { left: null, right: null };
     applyPose3D(poseKey, { reframe: false });
     ['left', 'right'].forEach(side => {
       const sh = rig3D[side + 'Shoulder'], e = rig3D[side + 'Elbow'], w = rig3D[side + 'Wrist'];
@@ -2905,7 +2931,7 @@ function readPoseElbowWristQuats3D(poseKey) {
     });
   } finally {
     manualJointEdits3D = savedManual;
-    [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride] = savedOv;
+    [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride, wristSwingOverride] = savedOv;
     applyPose3D(savedPose, { reframe: false });
   }
   return out;
@@ -2946,7 +2972,7 @@ function copyElbowWristFromPose3D() {
       }
       cur[side] = cur[side] || {};
       cur[side].handTarget = (typeof ht === 'string') ? ht : Object.assign({}, ht);
-      handRotationOverride[side] = null; wristRotationOverride[side] = null;
+      handRotationOverride[side] = null; wristRotationOverride[side] = null; wristSwingOverride[side] = null;
       elbowBendOverride[side] = null; elbowLiftOverride[side] = null;
       manualJointEdits3D[side].shoulderQuat = null;
       manualJointEdits3D[side].elbowQuat = null;
@@ -3022,6 +3048,7 @@ async function resetAllJointEdits3D() {
   jointEditorPinDirty3D = { left: false, right: false };
   handRotationOverride = { left: null, right: null };
   wristRotationOverride = { left: null, right: null };
+  wristSwingOverride = { left: null, right: null };
   elbowBendOverride = { left: null, right: null };
   elbowLiftOverride = { left: null, right: null };
   manualJointEdits3D = {
@@ -3152,7 +3179,7 @@ function mirrorSelectedJoint3D() {
     pose[other] = pose[other] || {};
     pose[other].handTarget = mirrorPinSpec3D(srcPin, wr);
     jointEditorPinDirty3D[other] = true;
-    handRotationOverride[other] = null; wristRotationOverride[other] = null;
+    handRotationOverride[other] = null; wristRotationOverride[other] = null; wristSwingOverride[other] = null;
     elbowBendOverride[other] = null; elbowLiftOverride[other] = null;
     // The opposite hand's IK is NOT an exact reflection of the source arm
     // (it re-derives elbow swing and hand facing on its own), which is what
@@ -3180,6 +3207,7 @@ function mirrorSelectedJoint3D() {
     if (elbowGrp)    manualJointEdits3D[other].elbowQuat    = mirrorQuat3D(elbowGrp.quaternion);
     if (wr) {
       wristRotationOverride[other] = clampWristBend(wr.wrist);
+      wristSwingOverride[other] = clampWristSwing(wr.swing || 0); // same number = mirrored hand
       handRotationOverride[other] = clampTurnFree(wr.wristTurn); // same number = mirrored hand
       // Exact reflection of the source hand's actual rotation (not just its
       // Bend/Turn numbers), so anything beyond those two numbers mirrors too.
@@ -3201,7 +3229,7 @@ function mirrorSelectedJoint3D() {
 }
 // ---- Wrist Bend / Turn sliders (replace the rotate rings for wrists) ------
 // A small floating card that follows the selected wrist on screen while
-// Rotate is on. Limits: Bend -80..80 (WRIST_BEND_RANGE), Turn -180..180.
+// Rotate is on. Limits: Bend -80..80, Turn -180..180, Swing -40..20.
 // They write the same per-side overrides the number fields use, so Save,
 // Mirror and the dropdowns all stay in sync.
 let wristSliderEl3D = null;
@@ -3231,6 +3259,7 @@ function ensureWristSliders3D() {
   el.innerHTML = `
     <div class="ws-row"><span class="ws-lab">Be</span><input type="range" id="wsBend3D" min="${WRIST_BEND_RANGE[0]}" max="${WRIST_BEND_RANGE[1]}" step="1" value="0"><span class="ws-val" id="wsBendVal3D">0</span></div>
     <div class="ws-row"><span class="ws-lab">Tu</span><input type="range" id="wsTurn3D" min="-180" max="180" step="1" value="0"><span class="ws-val" id="wsTurnVal3D">0</span></div>
+    <div class="ws-row"><span class="ws-lab">Sw</span><input type="range" id="wsSwing3D" min="${WRIST_SWING_RANGE[0]}" max="${WRIST_SWING_RANGE[1]}" step="1" value="0"><span class="ws-val" id="wsSwingVal3D">0</span></div>
     <div class="ws-note" id="wsNote3D">Hand is pinned — unpin to use sliders.</div>`;
   // Keep touches/clicks on the card away from orbit/pan on the canvas.
   ['pointerdown','pointermove','pointerup','touchstart','touchmove','mousedown','wheel'].forEach(ev =>
@@ -3243,7 +3272,7 @@ function ensureWristSliders3D() {
     const end = () => { wristSliderDragging3D = false; syncWristSliders3D(); };
     inp.addEventListener('pointerup', end); inp.addEventListener('pointercancel', end); inp.addEventListener('change', end);
   };
-  bind('wsBend3D', 'x'); bind('wsTurn3D', 'y');
+  bind('wsBend3D', 'x'); bind('wsTurn3D', 'y'); bind('wsSwing3D', 'z');
   wristSliderEl3D = el;
   return el;
 }
@@ -3252,21 +3281,24 @@ function syncWristSliders3D() {
   const el = ensureWristSliders3D(); if (!el) return;
   const res = lastPoseResolved3D && lastPoseResolved3D[selectedJoint3D.side];
   if (!res) return;
-  const bend = el.querySelector('#wsBend3D'), turn = el.querySelector('#wsTurn3D');
+  const bend = el.querySelector('#wsBend3D'), turn = el.querySelector('#wsTurn3D'), swing = el.querySelector('#wsSwing3D');
   if (!wristSliderDragging3D) {
     bend.value = clampWristBend(res.wrist);
     turn.value = clampTurnFree(res.wristTurn);
+    swing.value = clampWristSwing(res.swing || 0);
   }
+  el.querySelector('#wsSwingVal3D').textContent = Math.round(parseFloat(swing.value));
   el.querySelector('#wsBendVal3D').textContent = Math.round(parseFloat(bend.value));
   el.querySelector('#wsTurnVal3D').textContent = Math.round(parseFloat(turn.value));
   const locked = !!res.isIK;
-  bend.disabled = locked; turn.disabled = locked;
+  bend.disabled = locked; turn.disabled = locked; swing.disabled = locked;
   el.querySelector('#wsNote3D').style.display = locked ? 'block' : 'none';
 }
 function onWristSlider3D(axis, n) {
   if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist' || isNaN(n)) return;
   const { side } = selectedJoint3D;
   if (axis === 'x') wristRotationOverride[side] = clampWristBend(n);
+  else if (axis === 'z') wristSwingOverride[side] = clampWristSwing(n);
   else handRotationOverride[side] = clampTurnFree(n);
   manualJointEdits3D[side].wristQuat = null;
   applyPose3D(currentPose3D, { reframe: false });
@@ -3488,8 +3520,8 @@ function onJointPosInput(axis, rawVal) {
 // they set the same per-side overrides the dropdowns use (clamped), which ⬆ Save
 // then bakes into the pose. Any old free-form wrist rotation is dropped.
 function setWristNumbers3D(side, axis, n) {
-  if (axis === 'z') return;
   if (axis === 'x') wristRotationOverride[side] = clampWristBend(n);
+  else if (axis === 'z') wristSwingOverride[side] = clampWristSwing(n);
   else handRotationOverride[side] = clampTurnFree(n);
   manualJointEdits3D[side].wristQuat = null;
   applyPose3D(currentPose3D, { reframe: false });
@@ -3689,10 +3721,10 @@ function updateJointPanelValues3D() {
     const el = document.getElementById(id), sp = el && el.parentElement && el.parentElement.querySelector('span');
     if (!el || !sp) return;
     if (jointType === 'wrist') {
-      sp.textContent = ['Bend', 'Turn', '–'][i]; el.disabled = (i === 2);
-      if (i === 2) el.value = '';
-      else if (res && document.activeElement !== el) el.value = i === 0 ? round1(res.wrist) : round1(res.wristTurn);
-      el.min = i === 0 ? WRIST_BEND_RANGE[0] : -180; el.max = i === 0 ? WRIST_BEND_RANGE[1] : 180;
+      sp.textContent = ['Bend', 'Turn', 'Swing'][i]; el.disabled = false;
+      if (res && document.activeElement !== el) el.value = i === 0 ? round1(res.wrist) : i === 1 ? round1(res.wristTurn) : round1(res.swing || 0);
+      el.min = i === 0 ? WRIST_BEND_RANGE[0] : i === 1 ? -180 : WRIST_SWING_RANGE[0];
+      el.max = i === 0 ? WRIST_BEND_RANGE[1] : i === 1 ? 180 : WRIST_SWING_RANGE[1];
     } else { sp.textContent = rotLabels[i]; el.disabled = false; el.removeAttribute('min'); el.removeAttribute('max'); }
   });
 }
@@ -3774,11 +3806,11 @@ function bakeHandFacingIntoPose3D() {
       pose[side].wrist = fields.wrist; delete pose[side].wristRotation; fields.wristRotation = null;
     }
     if (!Object.keys(fields).length) return;
-    handRotationOverride[side] = null; wristRotationOverride[side] = null;
+    handRotationOverride[side] = null; wristRotationOverride[side] = null; wristSwingOverride[side] = null;
     out.push({ side, fields });
   });
   if (out.length) {
-    jointEditorFacingSnapshot3D = { hand: Object.assign({}, handRotationOverride), wrist: Object.assign({}, wristRotationOverride) };
+    jointEditorFacingSnapshot3D = { hand: Object.assign({}, handRotationOverride), wrist: Object.assign({}, wristRotationOverride), swing: Object.assign({}, wristSwingOverride) };
     refreshHandWristButtons();
     applyPose3D(currentPose3D, { reframe: false });
   }
