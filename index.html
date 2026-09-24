@@ -126,10 +126,6 @@
 
   /* ── Joint Editor (tap a wrist/elbow in the 3D view) ── */
   /* ── Joint Editor (pick a wrist/elbow, then drag or type) ── */
-  #jointPickerBar {
-    position: absolute; top: 8px; left: 8px; right: 8px; z-index: 55;
-    display: flex; gap: 6px;
-  }
   .jp-btn {
     flex: 1; padding: 9px 4px; background: rgba(22,22,24,0.92); border: 1px solid var(--border);
     border-radius: 8px; color: var(--text); font-family: 'Space Mono', monospace;
@@ -139,11 +135,79 @@
   .jp-btn.active { background: rgba(240,192,64,0.22); border-color: var(--accent-gold); color: var(--accent-gold); }
   .je-note { font-size: 9px; color: var(--muted); line-height: 1.5; margin: 0 0 10px; }
   #jointEditorPanel {
-    position: absolute; top: 10px; right: 10px; width: 220px; z-index: 60;
+    position: absolute; top: 10px; right: 10px; width: 220px; z-index: 9020;
     background: rgba(20,20,24,0.97); border: 1px solid var(--accent-gold);
     border-radius: 10px; padding: 12px; font-family: 'Space Mono', monospace;
     box-shadow: 0 6px 20px rgba(0,0,0,0.5); max-height: calc(100% - 20px); overflow-y: auto;
   }
+
+  /* ── Fullscreen 3D Editor mode ──
+     #preview3D.je-fullscreen floods the entire viewport with the 3D canvas;
+     these bars are the ONLY overlay while it's active. z-index is high
+     enough to clear the floating Generate button (8001) and other fixed
+     page chrome (9999-ish), but stays below the Pose/Hand modal (10000)
+     since the two are never open at the same time. */
+  #jointEditorEntryBar { position: absolute; top: 8px; left: 8px; z-index: 55; }
+  .je-entry-btn {
+    padding: 9px 14px; background: rgba(22,22,24,0.92); border: 1px solid var(--accent-gold);
+    border-radius: 8px; color: var(--accent-gold); font-family: 'Space Mono', monospace;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    cursor: pointer; min-height: 38px;
+  }
+  #preview3D.je-fullscreen {
+    position: fixed; inset: 0; width: 100vw; height: 100dvh;
+    z-index: 9000; border-radius: 0; border: none;
+  }
+  body.je-fullscreen-active { overflow: hidden; }
+  #jointEditorTopBar {
+    position: absolute; top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; z-index: 9010;
+  }
+  .je-cam-row { display: flex; gap: 5px; }
+  .je-cam-btn {
+    flex: 1; padding: 8px 2px; background: rgba(22,22,24,0.92); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-family: 'Space Mono', monospace;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; cursor: pointer; min-height: 36px;
+  }
+  .je-cam-btn.active { background: rgba(240,192,64,0.22); border-color: var(--accent-gold); color: var(--accent-gold); }
+  #jeMirrorStatus {
+    position: absolute; top: calc(50px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; z-index: 9010;
+    text-align: center; font-family: 'Space Mono', monospace; font-size: 9px; color: var(--accent-gold);
+    pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  }
+  #jointToggleBar {
+    position: absolute; top: calc(50px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; z-index: 9010;
+    display: flex; gap: 5px; flex-wrap: wrap;
+  }
+  #jointToggleBar .jp-btn { flex: 1 1 60px; }
+  .jt-icon { flex: 0 0 40px !important; font-size: 15px !important; }
+  #jeCopyBar {
+    position: absolute; top: calc(100px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; z-index: 9010;
+    display: flex; flex-wrap: wrap; gap: 5px; align-items: stretch;
+  }
+  #jeCopyBar label {
+    flex: 1 1 100%; display: flex; align-items: center; gap: 6px; font-family: 'Space Mono', monospace;
+    font-size: 9px; color: var(--text); background: rgba(22,22,24,0.92); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 8px; cursor: pointer;
+  }
+  #jeCopyBar select, #jeCopyBar button {
+    background: rgba(22,22,24,0.92); border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-family: 'Space Mono', monospace; font-size: 10px; min-height: 40px;
+  }
+  #jeCopyBar select { padding: 0 6px; min-width: 0; }
+  #jeCopyPoseSelect { flex: 1 1 auto; }
+  #jeCopySideSelect { flex: 0 0 auto; }
+  #jeCopyBar button { flex: 0 0 auto; padding: 0 12px; font-weight: 700; text-transform: uppercase; cursor: pointer; border-color: var(--accent-gold); color: var(--accent-gold); }
+  #jointEditorBottomBar {
+    position: absolute; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 9010;
+    display: flex; gap: 6px;
+  }
+  .je-bottom-btn {
+    flex: 1; padding: 11px 4px; border-radius: 8px; font-family: 'Space Mono', monospace;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; min-height: 44px;
+    border: 1px solid var(--border); background: rgba(22,22,24,0.92); color: var(--text);
+  }
+  .je-cancel { border-color: var(--accent-red); color: var(--accent-red); }
+  .je-apply { border-color: var(--accent-gold); background: rgba(240,192,64,0.18); color: var(--accent-gold); }
   .je-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   #jeTitle { font-size: 11px; font-weight: 700; color: var(--accent-gold); text-transform: uppercase; letter-spacing: 0.06em; }
   .je-close-btn { background: none; border: none; color: var(--muted); font-size: 14px; cursor: pointer; line-height: 1; padding: 4px; }
@@ -178,11 +242,12 @@
   @media (max-width: 560px) {
     #jointEditorPanel {
       position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto;
-      max-height: 62vh; border-radius: 16px 16px 0 0; z-index: 200;
+      max-height: 62vh; border-radius: 16px 16px 0 0; z-index: 9020;
       padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
     }
     .je-mode-btn, .je-select, .je-btn, .jp-btn { min-height: 44px; }
     .je-xyz-row input[type=number] { min-height: 40px; font-size: 13px; }
+    .je-cam-btn, .je-bottom-btn { min-height: 48px; }
   }
   .depth-row {
     display: grid; grid-template-columns: 70px 1fr 34px; align-items: center;
@@ -816,24 +881,61 @@
     <div id="pinReticle" style="display:none;"></div>
     <div id="body3DHint">Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan</div>
 
-    <!-- Joint picker: direct buttons instead of tap-to-select on the model —
-         a tap on the model can't reliably be told apart from the start of an
-         orbit/pan drag on a touchscreen (same reason the mesh-pin above uses
-         aim-then-confirm rather than tap-to-pick), and unlike a mesh pin we
-         already know exactly where all 4 joints are, so there's nothing to
-         "aim" at — just pick one directly. -->
-    <div id="jointPickerBar">
-      <button type="button" class="jp-btn" data-side="left" data-joint="elbow" onclick="selectJoint3D('left','elbow')">L Elbow</button>
-      <button type="button" class="jp-btn" data-side="right" data-joint="elbow" onclick="selectJoint3D('right','elbow')">R Elbow</button>
-      <button type="button" class="jp-btn" data-side="left" data-joint="wrist" onclick="selectJoint3D('left','wrist')">L Wrist</button>
-      <button type="button" class="jp-btn" data-side="right" data-joint="wrist" onclick="selectJoint3D('right','wrist')">R Wrist</button>
+    <!-- Entry point for the fullscreen 3D Editor. Replaces the old always-on
+         L/R Elbow/Wrist buttons: those now live INSIDE the editor (below),
+         staying visible as toggles rather than acting as one-shot pickers. -->
+    <div id="jointEditorEntryBar">
+      <button type="button" class="je-entry-btn" onclick="openJointEditorMode3D()">🕹 3D Editor</button>
     </div>
 
-    <!-- Joint Editor: appears once a joint is picked above -->
+    <!-- Fullscreen 3D Editor chrome — hidden until openJointEditorMode3D()
+         shows it and adds .je-fullscreen to #preview3D, at which point the
+         model floods the screen and this is the only UI overlaying it. -->
+    <div id="jointEditorTopBar" style="display:none;">
+      <div class="je-cam-row">
+        <button type="button" class="je-cam-btn" data-view="front" onclick="setJointEditorCameraView3D('front')">Front</button>
+        <button type="button" class="je-cam-btn" data-view="back" onclick="setJointEditorCameraView3D('back')">Back</button>
+        <button type="button" class="je-cam-btn" data-view="side-left" onclick="setJointEditorCameraView3D('side-left')">L Side</button>
+        <button type="button" class="je-cam-btn" data-view="side-right" onclick="setJointEditorCameraView3D('side-right')">R Side</button>
+        <button type="button" class="je-cam-btn active" data-view="free" onclick="setJointEditorCameraView3D('free')">Free</button>
+      </div>
+    </div>
+    <div id="jeMirrorStatus"></div>
+
+    <div id="jointToggleBar" style="display:none;">
+      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="elbow" onclick="toggleJoint3D('left','elbow')">L Elbow</button>
+      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="toggleJoint3D('right','elbow')">R Elbow</button>
+      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')">L Wrist</button>
+      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
+      <button type="button" class="jt-btn jp-btn jt-icon" onclick="toggleJointSettingsPopup3D()" title="Joint settings">⚙</button>
+      <button type="button" class="jt-btn jp-btn jt-icon" onclick="mirrorSelectedJoint3D()" title="Mirror to opposite side">⇄</button>
+    </div>
+
+    <div id="jeCopyBar" style="display:none;">
+      <select id="jeCopyPoseSelect" title="Pose to copy elbows &amp; wrists from"></select>
+      <select id="jeCopySideSelect" title="Which arm(s) to copy">
+        <option value="both">Both</option>
+        <option value="left">L</option>
+        <option value="right">R</option>
+      </select>
+      <button type="button" id="jeCopyBtn" onclick="copyElbowWristFromPose3D()">Copy</button>
+      <label><input type="checkbox" id="jeCopyPinsChk"> Copy hand pins (mesh targets) — re-fits to this pose</label>
+      <label><input type="checkbox" id="jeCopyShoulderChk"> Match elbow position (also copies shoulder aim)</label>
+    </div>
+
+    <div id="jointEditorBottomBar" style="display:none;">
+      <button type="button" class="je-bottom-btn je-cancel" onclick="cancelJointEditorMode3D()">✕ Cancel</button>
+      <button type="button" class="je-bottom-btn" id="jeQuickLoadBtn" onclick="quickLoadJointsFromGitHub3D()">⬇ Load</button>
+      <button type="button" class="je-bottom-btn" id="jeQuickSaveBtn" onclick="quickSaveJointsToGitHub3D()">⬆ Save</button>
+      <button type="button" class="je-bottom-btn je-apply" onclick="applyJointEditorMode3D()">✓ Apply</button>
+    </div>
+
+    <!-- Joint settings popup: opened/closed by the ⚙ button above, shows
+         whichever joint is currently toggled on. -->
     <div id="jointEditorPanel" style="display:none;">
       <div class="je-header">
         <span id="jeTitle">Joint</span>
-        <button type="button" class="je-close-btn" onclick="deselectJoint3D()">✕</button>
+        <button type="button" class="je-close-btn" onclick="closeJointSettingsPopup3D()">✕</button>
       </div>
 
       <div class="je-section-label">Gizmo</div>
@@ -879,6 +981,7 @@
           <option value="feet">Feet</option>
         </select>
         <button type="button" class="je-btn" onclick="jointPanelAimAndPin3D()">🎯 Aim &amp; Pin</button>
+        <div id="jePinStatus" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:-2px 0 8px;"></div>
       </div>
 
       <button type="button" class="je-btn je-reset" onclick="resetSelectedJoint3D()">↺ Reset Joint</button>
@@ -947,7 +1050,7 @@
           <button class="btn-primary" style="width:100%;margin-top:8px;" onclick="savePoseFromHandWristPanel()">💾 Save to This Pose</button>
           <div id="hwSaveStatus" style="font-size:9px;color:var(--accent-gold);font-family:'Space Mono',monospace;text-align:center;margin-top:6px;opacity:0;transition:opacity 0.3s;">&nbsp;</div>
           <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:14px 0 6px;line-height:1.5;">
-            Saved edits are pushed to <b>presets/pose-overrides.json</b> in the repo configured below (GitHub Presets panel) and reload automatically next time, on any browser/computer. Needs owner/repo/token filled in there first.
+            Saved edits (including the ⬆ Save joint edits) are pushed to <b>presets/pose-overrides.json</b> in the repo configured below (GitHub Presets panel) and reload automatically next time, on any browser/computer. Needs owner/repo/token filled in there first.
           </p>
           <button class="btn-secondary" style="width:100%;font-size:9px;" onclick="clearAllSavedPoseEdits()">⚠ Clear All Saved Pose Edits (from GitHub)</button>
         </div>
@@ -955,6 +1058,7 @@
     </div><!-- /poseModalMainContent -->
     <div id="pinAimBar">
       <div id="pinAimHint">Orbit/pinch the 3D view above to line the crosshair up, then tap Pin Here.</div>
+      <div id="pinLiveFace" style="font-size:10px;color:var(--accent-gold);font-family:'Space Mono',monospace;"></div>
       <button type="button" class="btn-primary" style="width:100%;" onclick="confirmMeshPinAtCrosshair3D()">📍 Pin Here</button>
       <div class="pin-aim-row">
         <button type="button" class="pose-btn" onclick="cancelMeshPin()">✕ Cancel</button>

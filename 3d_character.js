@@ -412,9 +412,10 @@ function refreshHandWristButtons() {
       const label = s.charAt(0).toUpperCase() + s.slice(1);
       const ht = pose && pose[s] && pose[s].handTarget;
       if (!ht) return `${label}: not pinned`;
-      return `${label}: pinned to ${typeof ht === 'string' ? ht : ht.box}`;
+      return `${label}: pinned to ${describePin3D(ht)}`;
     }).join('  ·  ');
   }
+  updateJePinStatus3D();
 }
 
 // ── Click-to-pin ─────────────────────────────────────────────────────────
@@ -590,6 +591,95 @@ function cancelMeshPin() {
   pinArmedSide = null;
   updatePinModeUI();
 }
+// ---- Which face of a mesh is a pin on? ----
+// A pin stores the exact surface point (box-relative x/y/z) AND the surface's
+// outward normal. The face is just the dominant axis of that normal in the
+// mesh's own frame: +z front, -z back, +x the model's right side, -x the
+// model's left side, +y top, -y bottom. If a second axis is at least half as
+// strong (a rounded/corner spot) it's mentioned too. Named presets
+// (e.g. "hip-side") don't carry a surface normal, so they show just their name.
+const PIN_BOX_NAMES_3D = { head: 'head', neck: 'neck', torso: 'torso', waist: 'waist/hip', leftLeg: 'left leg', rightLeg: 'right leg', leftFoot: 'left foot', rightFoot: 'right foot' };
+function pinFaceLabel3D(ht) {
+  if (!ht || typeof ht === 'string' || ht.nx == null) return '';
+  const axes = [
+    { v: ht.nx || 0, pos: "model's right side", neg: "model's left side" },
+    { v: ht.ny || 0, pos: 'top', neg: 'bottom' },
+    { v: ht.nz || 0, pos: 'front', neg: 'back' },
+  ].map(a => ({ mag: Math.abs(a.v), name: a.v >= 0 ? a.pos : a.neg })).sort((a, b) => b.mag - a.mag);
+  if (axes[0].mag < 0.05) return '';
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+  return axes[1].mag >= axes[0].mag * 0.5
+    ? `${cap(axes[0].name)} face, toward ${axes[1].name}`
+    : `${cap(axes[0].name)} face`;
+}
+function describePin3D(ht) {
+  if (!ht) return 'not pinned';
+  if (typeof ht === 'string') return `${ht} (preset)`;
+  const part = PIN_BOX_NAMES_3D[ht.box] || ht.box;
+  if (ht.fromPreset) return `${part} (converted preset — re-pin for face)`;
+  const face = pinFaceLabel3D(ht);
+  return face ? `${part} — ${face}` : part;
+}
+// Editor wrist-panel readout for the selected side's current pin.
+function updateJePinStatus3D() {
+  const el = document.getElementById('jePinStatus');
+  if (!el) return;
+  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') { el.textContent = ''; return; }
+  const pose = POSES3D[currentPose3D];
+  const side = selectedJoint3D.side;
+  const ex = pose ? expandPose3D(pose) : null;
+  const ht = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
+  el.textContent = ht ? `Pinned to: ${describePin3D(ht)}` : 'Not pinned';
+}
+// Live readout while aiming: what (and which face) is under the crosshair.
+let pinLiveLastT3D = 0;
+function updatePinLiveFace3D() {
+  if (!pinArmedSide) return;
+  const now = performance.now();
+  if (now - pinLiveLastT3D < 200) return;
+  pinLiveLastT3D = now;
+  const el = document.getElementById('pinLiveFace');
+  if (!el) return;
+  const r = resolveMeshPinAtCrosshair3D();
+  el.textContent = r
+    ? `Crosshair on: ${describePin3D({ box: r.box, nx: r.normal.x, ny: r.normal.y, nz: r.normal.z })}`
+    : 'Crosshair on: nothing pinnable';
+}
+
+// ---- Saving pins to GitHub (same pose-overrides.json as pose edits) ----
+// Pins ride in the same per-pose, per-side records as wrist/elbow edits, under
+// a `handTarget` field (null = "unpinned"), so the existing pull re-applies
+// them on load. Debounced and serialized so several quick Pin Here taps
+// become one commit and never race each other's file sha.
+let pinPushChain3D = Promise.resolve();
+const pinPushTimers3D = {};
+function setPinSaveStatus3D(msg, ms) {
+  const el = document.getElementById('hwSaveStatus');
+  if (!el) return;
+  el.textContent = msg; el.style.opacity = '1';
+  clearTimeout(el._fadeTimer);
+  el._fadeTimer = setTimeout(() => { el.style.opacity = '0'; }, ms || 2600);
+}
+function flushPinSave3D(poseKey, side) {
+  const run = async () => {
+    const pose = POSES3D[poseKey];
+    const s = ghGetSettings();
+    if (!pose || !s.token || !s.owner || !s.repo) return; // not configured: session-only, same as other edits
+    const ht = pose[side] && pose[side].handTarget;
+    try {
+      await pushPoseOverrideToGitHub(poseKey, side, { handTarget: ht === undefined ? null : ht });
+      setPinSaveStatus3D(`Saved ${side} hand pin for "${pose.label}" to GitHub`);
+    } catch (e) { setPinSaveStatus3D(`Pin save to GitHub failed: ${e.message}`, 4000); }
+  };
+  pinPushChain3D = pinPushChain3D.then(run, run);
+  return pinPushChain3D;
+}
+function schedulePinSave3D(poseKey, side) {
+  const k = poseKey + '|' + side;
+  clearTimeout(pinPushTimers3D[k]);
+  pinPushTimers3D[k] = setTimeout(() => { delete pinPushTimers3D[k]; flushPinSave3D(poseKey, side); }, 1200);
+}
+
 function applyMeshPin3D(side, box, x, y, z, normal) {
   const pose = POSES3D[currentPose3D];
   if (!pose) return;
@@ -605,6 +695,8 @@ function applyMeshPin3D(side, box, x, y, z, normal) {
   elbowLiftOverride[side] = null;
   refreshHandWristButtons();
   applyPose3D(currentPose3D, { reframe: false });
+  setPinSaveStatus3D(`Pinned ${side} hand to ${describePin3D(pose[side].handTarget)}`);
+  schedulePinSave3D(currentPose3D, side);
 }
 // Clears the pin(s) for whichever side(s) the side selector is currently
 // on, reverting that hand to the pose's own plain fixed angles.
@@ -612,7 +704,7 @@ function unpinHandWrist() {
   const pose = POSES3D[currentPose3D];
   if (!pose) return;
   const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
-  sides.forEach(s => { if (pose[s]) delete pose[s].handTarget; });
+  sides.forEach(s => { if (pose[s]) delete pose[s].handTarget; schedulePinSave3D(currentPose3D, s); });
   refreshHandWristButtons();
   applyPose3D(currentPose3D, { reframe: false });
 }
@@ -652,13 +744,17 @@ async function pullPoseOverridesFromGitHub() {
     const j = await resp.json();
     const all = JSON.parse(ghB64ToUtf8(j.content));
     Object.keys(all).forEach(poseKey => {
+      if (poseKey === '_jointEdits') return; // joint-editor save blob, handled separately
       const pose = POSES3D[poseKey];
       if (!pose) return;
       ['left', 'right'].forEach(side => {
         const fields = all[poseKey][side];
         if (!fields) return;
         pose[side] = pose[side] || {};
-        Object.assign(pose[side], fields);
+        const f = Object.assign({}, fields);
+        // handTarget: null is a saved "unpinned" — remove it rather than assign null
+        if ('handTarget' in f && f.handTarget == null) { delete pose[side].handTarget; delete f.handTarget; }
+        Object.assign(pose[side], f);
       });
     });
     // The overrides may have landed after the pose panel's first paint —
@@ -693,7 +789,7 @@ async function pushPoseOverrideToGitHub(poseKey, side, fields) {
 async function clearAllSavedPoseEdits() {
   const s = ghGetSettings();
   if (!s.token || !s.owner || !s.repo) { alert('Fill in owner/repo/token in the GitHub Presets panel first.'); return; }
-  if (!confirm('Delete the pose-edits file from GitHub and reload the page?')) return;
+  if (!confirm('Delete the pose-edits file from GitHub (pose edits, hand pins AND saved 3D joint edits) and reload the page?')) return;
   try {
     const apiUrl = poseOverridesApiUrl(s);
     const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
@@ -780,29 +876,52 @@ async function savePoseFromHandWristPanel() {
   }
 }
 
+// Hand pins converted from the old named presets (hip-side, chin-rest,
+// behind-back, head-side-salute). Each is a normal mesh pin — box-relative
+// x/y/z + surface normal + elbow pole angles — so it can be re-aimed and
+// saved like any pin. `fromPreset` just marks it as a converted value whose
+// stored normal is the old hand-facing direction (not a true surface face);
+// re-pinning with Aim & Pin replaces it with a real one.
+const PIN_HIP_SIDE = {
+  left:  { box:'waist', x:-0.5, y:0.72, z:-0.05, nx:-0.37, ny:-0.74, nz:-0.56, poleAngles:{ flex:40, abd:25, roll:-30 }, fromPreset:true },
+  right: { box:'waist', x:0.5, y:0.72, z:-0.05, nx:0.37, ny:-0.74, nz:-0.56, poleAngles:{ flex:40, abd:25, roll:-30 }, fromPreset:true },
+};
+const PIN_CHIN_REST = {
+  left:  { box:'head', x:0.04, y:-0.04, z:0.18, nx:0.0, ny:1.0, nz:0.0, poleAngles:{ flex:-40, abd:0, roll:-22 }, fromPreset:true },
+  right: { box:'head', x:0.04, y:-0.04, z:0.18, nx:0.0, ny:1.0, nz:0.0, poleAngles:{ flex:-40, abd:0, roll:-22 }, fromPreset:true },
+};
+const PIN_BEHIND_BACK = {
+  left:  { box:'waist', x:-0.1, y:0.42, z:-0.2, nx:0.0, ny:0.29, nz:-0.96, poleAngles:{ flex:55, abd:0, roll:0 }, fromPreset:true },
+  right: { box:'waist', x:-0.1, y:0.42, z:-0.2, nx:0.0, ny:0.29, nz:-0.96, poleAngles:{ flex:55, abd:0, roll:0 }, fromPreset:true },
+};
+const PIN_SALUTE = {
+  left:  { box:'head', x:-0.48, y:0.8, z:0.58, nx:-0.83, ny:0.45, nz:0.33, poleAngles:{ flex:-65, abd:55, roll:40 }, fromPreset:true },
+  right: { box:'head', x:0.48, y:0.8, z:0.58, nx:0.83, ny:0.45, nz:0.33, poleAngles:{ flex:-65, abd:55, roll:40 }, fromPreset:true },
+};
+
 const POSES3D = {
   // ── Standing ──────────────────────────────────────────────────────────
   'stand-relaxed':        { section:'Standing', label:'Relaxed' },
   'stand-arms-out':        { section:'Standing', label:'Arms Out (T-Pose)', shoulderAbd:85 },
-  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
+  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
   'stand-arms-overhead':   { section:'Standing', label:'Arms Overhead', shoulder:-175, elbow:-5 },
-  'stand-arms-crossed':    { section:'Standing', label:'Arms Crossed', shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
-  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side'} },
+  'stand-arms-crossed':    { section:'Standing', label:'Arms Crossed', shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
+  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right} },
   'stand-weight-shift':    { section:'Standing', label:'Weight on One Hip', spineSide:6, right:{hipAbd:9}, left:{hipAbd:2} },
   'stand-hip-pop':         { section:'Standing', label:'Hip Pop', spineSide:10, right:{hipAbd:15}, left:{hipAbd:-2} },
-  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, handTarget:'behind-back' },
-  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side'} },
-  'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
+  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, right:{handTarget:PIN_BEHIND_BACK.right}, left:{handTarget:PIN_BEHIND_BACK.left} },
+  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right} },
+  'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'stand-look-back':       { section:'Standing', label:'Looking Over Shoulder', spineTwist:35 },
   'stand-lean':            { section:'Standing', label:'Casual Lean', spineSide:-8, shoulder:-70, elbow:-105, shoulderAbd:8, wrist:-15, wristTurn:20 },
   'stand-point':           { section:'Standing', label:'Pointing Forward', right:{shoulder:-95, elbow:-10, wrist:5} },
-  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'} },
+  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
   'stand-arms-open':       { section:'Standing', label:'Arms Wide Open', shoulder:20, shoulderAbd:60 },
   'stand-hands-head':      { section:'Standing', label:'Hands Behind Head', shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, handTarget:'head-side-salute'} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, handTarget:PIN_SALUTE.right} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -832,15 +951,15 @@ const POSES3D = {
   'sit-ankle-on-knee':  { section:'Sitting', label:'Ankle on Knee', right:{hip:-48, hipAbd:0, hipTurn:130, knee:108, ankle:-60}, left:{hip:-90, knee:95, ankle:-8} },
   'sit-lean-fwd':       { section:'Sitting', label:'Elbows on Knees', hip:-90, knee:90, ankle:-8, spineBend:65, shoulder:-69, shoulderAbd:-16, elbow:-45, wrist:-20 },
   'sit-lean-back':      { section:'Sitting', label:'Leaning Back, Relaxed', hip:-90, knee:90, ankle:-8, spineBend:-15, shoulder:10, elbow:-30, wrist:-15 },
-  'sit-arms-crossed':   { section:'Sitting', label:'Arms Crossed', hip:-90, knee:90, ankle:-8, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
+  'sit-arms-crossed':   { section:'Sitting', label:'Arms Crossed', hip:-90, knee:90, ankle:-8, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'sit-hand-on-table':  { section:'Sitting', label:'One Arm Resting Forward', hip:-90, knee:90, ankle:-8, right:{shoulder:-80, elbow:-10, wrist:60}, left:{shoulder:5, elbow:-30, wrist:-15} },
   'sit-phone':          { section:'Sitting', label:'Looking at Phone', hip:-90, knee:90, ankle:-8, spineBend:12, shoulder:-70, elbow:-130, shoulderAbd:6, wrist:-70, wristTurn:-60 },
-  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'} },
+  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
   'sit-legs-apart':     { section:'Sitting', label:'Legs Apart', hip:-90, knee:90, ankle:-8, hipAbd:16 },
   'sit-legs-side':      { section:'Sitting', label:'Legs Tucked to the Side', hip:-90, knee:90, ankle:-8, spineTwist:15, hipAbd:35 },
   'sit-stretch-up':     { section:'Sitting', label:'Stretching Arms Up', hip:-90, knee:90, ankle:-8, spineBend:-8, shoulder:-175, elbow:-5 },
   'sit-hands-head':     { section:'Sitting', label:'Hands Behind Head', hip:-90, knee:90, ankle:-8, shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
-  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'}, left:{shoulder:-10, wrist:-15} },
+  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right}, left:{shoulder:-10, wrist:-15} },
   'sit-look-back':      { section:'Sitting', label:'Looking Back', hip:-90, knee:90, ankle:-8, spineTwist:40 },
   'sit-slouch':         { section:'Sitting', label:'Slouching', spineBend:-20, hip:-80, knee:100, shoulder:5 },
   'sit-one-leg-out':    { section:'Sitting', label:'One Leg Extended', right:{hip:-60, knee:25, ankle:-40}, left:{hip:-90, knee:95} },
@@ -855,11 +974,11 @@ const POSES3D = {
   'perch-grip-edge':    { section:'Sitting on Something', label:'Gripping the Edge', hip:-75, knee:70, ankle:-15, shoulder:35, elbow:-20, wrist:-55 },
   'perch-lean-back':    { section:'Sitting on Something', label:'Leaning Back on Hands', hip:-75, knee:70, ankle:-15, spineBend:-12, shoulder:60, elbow:-15, wrist:60 },
   'perch-foot-on-seat': { section:'Sitting on Something', label:'One Foot Up on the Seat', right:{hip:-95, knee:130, hipAbd:20, ankle:-20}, left:{hip:-80, knee:80} },
-  'perch-arms-crossed': { section:'Sitting on Something', label:'Arms Crossed', hip:-75, knee:70, ankle:-15, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
+  'perch-arms-crossed': { section:'Sitting on Something', label:'Arms Crossed', hip:-75, knee:70, ankle:-15, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'perch-phone':        { section:'Sitting on Something', label:'Checking Phone', hip:-75, knee:70, ankle:-15, spineBend:10, shoulder:-65, elbow:-120, wrist:-70, wristTurn:-60 },
   'perch-legs-apart':   { section:'Sitting on Something', label:'Legs Apart', hip:-75, knee:70, ankle:-15, hipAbd:14 },
   'perch-look-side':    { section:'Sitting on Something', label:'Looking to the Side', hip:-75, knee:70, ankle:-15, spineTwist:30 },
-  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:'chin-rest'} },
+  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
   'perch-lean-elbows':  { section:'Sitting on Something', label:'Forward Lean, Elbows on Knees', hip:-75, knee:70, ankle:-15, spineBend:70, shoulder:-69, shoulderAbd:-13, elbow:-45, wrist:-20 },
   'perch-casual-side':  { section:'Sitting on Something', label:'Casual Side Sit', hip:-75, knee:70, ankle:-15, spineTwist:15, hipAbd:20 },
   'perch-back-support': { section:'Sitting on Something', label:'One Arm Back for Support', hip:-75, knee:70, ankle:-15, right:{shoulder:50, elbow:-10, wrist:60}, left:{shoulder:-60, elbow:-90, wrist:-15} },
@@ -911,7 +1030,7 @@ const POSES3D = {
   'squat-knees-out-low':{ section:'Squatting', label:'Sitting on Heels, Knees Out', hip:-140, knee:170, ankle:-45, hipAbd:35 },
   'squat-look-up':      { section:'Squatting', label:'Squat, Looking Up', hip:-120, knee:140, ankle:-30, spineBend:-20 },
   'squat-lean-fwd':     { section:'Squatting', label:'Squat, Leaning Forward', hip:-125, knee:145, ankle:-35, spineBend:35, shoulder:35, elbow:-15, wrist:-15 },
-  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
+  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
   'squat-relaxed-wide': { section:'Squatting', label:'Relaxed Resting Squat', hip:-130, knee:150, ankle:-35, hipAbd:15, shoulder:-30, elbow:-70, wrist:-15 },
   'squat-shallow':      { section:'Squatting', label:'Shallow Squat', hip:-70, knee:80, ankle:-15 },
   'squat-pickup':       { section:'Squatting', label:'Picking Something Up', hip:-115, knee:135, ankle:-25, spineBend:15, shoulder:-100, elbow:-10, wrist:-30 },
@@ -978,11 +1097,11 @@ const POSES3D = {
   'kick-up-prep':       { section:'Handstand & Inversions', label:'Kicking Up (Donkey Kick)', spineBend:85, shoulder:-90, elbow:-5, wrist:70, right:{hip:60, knee:20, ankle:20}, left:{hip:-95, knee:5, ankle:-60} },
 
   // ── Model Poses ──────────────────────────────────────────────────────
-  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side'}, left:{hipAbd:-3} },
-  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side', right:{hipAbd:16} },
+  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right}, left:{hipAbd:-3} },
+  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right, hipAbd:16}, left:{handTarget:PIN_HIP_SIDE.left} },
   'model-over-shoulder':{ section:'Model Poses', label:'Look Over Shoulder', spineTwist:45, spineSide:8 },
   'model-walk':         { section:'Model Poses', label:'Runway Stride', spineTwist:10, right:{hip:-30, knee:15, ankle:-15, shoulder:20}, left:{hip:35, knee:10, ankle:15, shoulder:-25} },
-  'model-power':        { section:'Model Poses', label:'Power Stance, Arms Crossed', spineSide:-5, hipAbd:16, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder' },
+  'model-power':        { section:'Model Poses', label:'Power Stance, Arms Crossed', spineSide:-5, hipAbd:16, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'model-hair-flip':    { section:'Model Poses', label:'Hair Flip', spineSide:15, spineTwist:-15, right:{shoulder:-170, elbow:-30, wrist:-30, wristTurn:-20}, left:{shoulder:-10, elbow:-150, shoulderAbd:10} },
   'model-side-lean':    { section:'Model Poses', label:'Side Profile Lean', spineSide:20, right:{hipAbd:10}, left:{hipAbd:-14} },
   'model-editorial-crouch': { section:'Model Poses', label:'Editorial Crouch', spineBend:20, hip:-90, knee:110, hipAbd:20, ankle:-25, shoulder:-40, elbow:-70, wrist:-15 },
@@ -991,11 +1110,11 @@ const POSES3D = {
   'model-hand-face':    { section:'Model Poses', label:'Hand to Face', spineTwist:20, right:{shoulder:-60, shoulderAbd:22, elbow:-105, wrist:-35, wristTurn:-20} },
   'model-back-look':    { section:'Model Poses', label:'Back to Camera, Looking Back', spineTwist:70, right:{hipAbd:10} },
   'model-seated':       { section:'Model Poses', label:'Editorial Seated', spineTwist:20, hip:-90, knee:95, shoulder:-30, elbow:-80, wrist:-15, right:{hipAbd:22}, left:{hipAbd:-10} },
-  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
+  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
   'model-runway-swing': { section:'Model Poses', label:'Runway Walk, Arms Swinging', right:{hip:-35, knee:10, shoulder:35}, left:{hip:30, knee:10, shoulder:-30} },
   'model-jacket-over':  { section:'Model Poses', label:'Jacket Over Shoulder', spineTwist:-15, right:{shoulder:60, elbow:-20, wrist:-40}, left:{shoulder:-40, elbow:-110, shoulderAbd:10, wrist:-15} },
-  'model-lean-wall':    { section:'Model Poses', label:'Crossed Legs, Leaning', spineSide:18, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, handTarget:'opposite-shoulder', right:{hipAbd:14}, left:{hip:8, hipAbd:-10} },
-  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:'hip-side' },
+  'model-lean-wall':    { section:'Model Poses', label:'Crossed Legs, Leaning', spineSide:18, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, right:{hipAbd:14}, left:{hip:8, hipAbd:-10} },
+  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
   'model-collarbone':   { section:'Model Poses', label:'Elegant Hand at Collarbone', spineTwist:12, right:{shoulder:90, shoulderAbd:90, elbow:-158, wrist:-30, wristTurn:-20} },
   'model-dynamic-jump': { section:'Model Poses', label:'Dynamic Editorial Jump', spineSide:10, hipAbd:20, knee:20, shoulder:-40, shoulderAbd:65 },
 };
@@ -1128,6 +1247,7 @@ function animate3D() {
   if (!sceneInited3D || document.getElementById('preview3D').style.display === 'none') return;
   controls3D.update();
   renderer3D.render(scene3D, camera3D);
+  if (pinArmedSide) updatePinLiveFace3D();
 }
 
 // Recursively frees GPU resources for a mesh/group tree before it's discarded.
@@ -1282,154 +1402,13 @@ function poleFromAngles3D(side, flexDeg, abdDeg, rollDeg) {
   return { x: dir.x, y: dir.y, z: dir.z };
 }
 
-// Named "where the hand should reach for" presets, each returning a target
-// point in the spine's own local frame (the same frame the shoulders and
-// head already live in) so a pose can just say `handTarget: 'hip-side'`.
-// These are what make a "locked" hand (see HAND_LOCK_SIGNATURES) stay glued
-// to the right spot on the body regardless of shoulder length or height —
-// the target is always read fresh off the CURRENT mesh, every rebuild.
-// A preset can carry a `.poleAngles` property (see poleFromAngles3D) to
-// steer the elbow's bend plane; presets without one fall back to a generic
-// forward/outward/down pole in applyArmIK.
+// Named hand-target presets (a pose saying `handTarget: 'some-name'`). All of
+// the old ones have been converted to normal mesh pins or removed, so this is
+// intentionally empty now — hand targets are mesh-pin objects. The lookup is
+// kept so a stray string name resolves to "no target" instead of throwing.
+// A preset here could return {point, normal} and carry a `.poleAngles`.
 const HAND_TARGET_PRESETS_3D = {
-  // Salute: the TOP-SIDE corner of the head — near the temple/brow but
-  // pulled up toward the top corner rather than dead-center on the side —
-  // pulled forward just past the head's own front surface so fingers reach
-  // the edge instead of stopping short of it. The normal points out to the
-  // side and up at roughly 45°, which is both the angle the flat hand meets
-  // the head at and the direction the fingertips end up pointing.
-  'head-side-salute': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    // Lowered and pulled slightly further forward from the original
-    // (0.48, 0.86, 0.52) — the hand was sitting too high above the temple;
-    // this puts the fingertips (which extend up/out past this point along
-    // the normal below) roughly level with the top of the head instead.
-    const point = boxTargetPoint3D(geom.headBox, sideSign * 0.48, 0.80, 0.58);
-    if (!point) return null;
-    return { point, normal: v3norm({ x: sideSign, y: 0.55, z: 0.4 }) };
-  },
-  // Chin in hand: the underside/front-bottom edge of the head (the chin),
-  // nudged slightly further down and forward than the head box's own
-  // bottom-front corner — an explicit offset so fingertips read as touching
-  // the chin rather than stopping flush at the box's edge. Facing mostly
-  // UP (the palm cups the chin from below) with a little forward lean.
-  'chin-rest': (side, geom) => {
-    // Pulled way back in z (0.42 -> 0.18) — the hand was reaching deep into
-    // the front of the face instead of just meeting the chin's underside.
-    // yFrac nudged up slightly too (-0.06 -> -0.04, still just below the
-    // head box's own bottom face). Normal is now dead vertical (no forward
-    // z-lean) so the hand sits flat/horizontal, tip meeting the bottom of
-    // the head instead of angling forward into it.
-    const point = boxTargetPoint3D(geom.headBox, 0.04, -0.04, 0.18); // yFrac<0 = the offset below the head box's own bottom face
-    if (!point) return null;
-    return { point, normal: v3norm({ x: 0, y: 1, z: 0 }) };
-  },
-  // Hands on hips: the OUTER SIDE face of the hip/waist box (xFrac at the
-  // edge, zFrac near mid-depth — a side face, not the front), at roughly
-  // hip-bone height (0.72 up the box) rather than its vertical middle,
-  // which sits down near the crotch. Pelvis-anchored (see
-  // pelvisPointToSpineLocal3D) so a leaning/twisting torso doesn't pull it
-  // off the actual hip. Fingers point down along that side face.
-  'hip-side': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    const box = geom.waistBox || geom.torsoBox;
-    // zFrac pulled back from 0.1 to -0.05 — the hand was sitting slightly
-    // forward of the hip's actual side face; this tucks it in against the
-    // waist box's own side instead of floating in front of it.
-    const raw = boxTargetPoint3D(box, sideSign * 0.5, 0.72, -0.05);
-    if (!raw) return null;
-    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
-    const point = pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
-    // Normal reworked (was {sideSign*0.3, -1, 0.15}) so this resolves to a
-    // clean dorsum (blue) reading instead of palm — verified numerically
-    // against the actual wrist-orientation solve, not just eyeballed: the
-    // old z:+0.15 (forward-facing) always landed the solved wristTurn in
-    // the palm half of its range; z:-0.3 (backward-facing) lands it near
-    // the dorsum end with zero clamp overshoot across the whole range of
-    // spine lean these hip poses use.
-    const normal = pelvisPointToSpineLocal3D(v3norm({ x: sideSign * 0.2, y: -0.4, z: -0.3 }), sd.bend, sd.twist, sd.side);
-    return { point, normal };
-  },
-  // Hands/forearms crossed over the chest: each hand lands near the
-  // OPPOSITE elbow rather than up near the shoulder itself — pulled down
-  // by most of an upper-arm-length, but only slightly further across the
-  // body than that shoulder's own position (an elbow tucked at the side of
-  // the torso sits close to the shoulder's own x, not out past it — pushing
-  // much further across risks asking the REACHING arm for more than its
-  // own upper+lower arm length can cover). Reads off that side's own actual
-  // shoulder position and arm length (ikContext3D), so it tracks a
-  // widened/narrowed or longer/shorter arm, not just torso size. Both
-  // shoulders live on the SAME spine pivot as the reaching arm, so — unlike
-  // hip-side — no extra pelvis-frame correction is needed even when the
-  // pose leans/twists the torso.
-  'opposite-shoulder': (side, geom) => {
-    const otherSide = side === 'right' ? 'left' : 'right';
-    const otherShoulder = geom.shoulders[otherSide];
-    const lens = geom.armLens[otherSide];
-    if (!otherShoulder || !lens) return null;
-    const otherSign = otherSide === 'right' ? 1 : -1;
-    const unit = headWidthCm3D || 1;
-    // Pulled in from the old (0.12 out past the shoulder, 0.6 of the way
-    // down the upper arm, 0.3 unit forward) — that put the tuck point well
-    // out past the torso's own silhouette. This aims for the OTHER elbow
-    // itself (0.85 of the way down its upper arm, right at the shoulder's
-    // own x rather than past it, and less far forward), matching "imagine
-    // the upper arm at the sides, hands tuck at the elbow joint."
-    const point = {
-      x: otherShoulder.x + otherSign * 0.02 * unit,
-      y: otherShoulder.y - lens.upper * 0.85,
-      z: 0.15 * unit,
-    };
-    const normal = v3norm({ x: otherSign, y: -0.1, z: 0.3 });
-    return { point, normal };
-  },
-  // Arms behind the back: BOTH hands target the exact SAME spot (this
-  // preset ignores `side` and returns an identical point either way) — a
-  // real "hands behind the back" interleaves the two arms (one hand often
-  // resting in/around the other) rather than mirroring them at two separate
-  // points. The point sits just behind the small of the back — close to the
-  // waist box's own back surface rather than deep behind it, since asking
-  // either shoulder to rotate a hand far behind the torso is a much more
-  // extreme angle for the shoulder IK to solve than anything else this rig
-  // does, and sitting it right at the surface reads the same visually.
-  // Facing mostly backward with a slight upward cant, like the backs of
-  // clasped hands.
-  'behind-back': (side, geom) => {
-    const box = geom.waistBox || geom.torsoBox;
-    // yFrac lowered (0.6 -> 0.42) — one hand was sinking into the torso/
-    // waist mesh at the higher spot; the lower target clears it for both
-    // hands (which reach this same shared point from mirrored shoulders,
-    // so a single shared adjustment is the only way to fix both at once).
-    const raw = boxTargetPoint3D(box, -0.1, 0.42, -0.2);
-    if (!raw) return null;
-    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
-    const point = pelvisPointToSpineLocal3D(raw, sd.bend, sd.twist, sd.side);
-    const normal = pelvisPointToSpineLocal3D(v3norm({ x: 0, y: 0.3, z: -1 }), sd.bend, sd.twist, sd.side);
-    return { point, normal };
-  },
-  // Hand flat on the stomach (e.g. lying on the back). Deliberately reads
-  // the TORSO box, not the waist/hip box — the torso already hangs off the
-  // spine pivot, so this needs no pelvis frame correction.
-  'stomach': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.torsoBox, sideSign * 0.15, 0.25, 0.5);
-  },
-  // Hand resting at the chest/collarbone.
-  'collarbone': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.torsoBox, sideSign * 0.18, 0.85, 0.5);
-  },
-  // Hand touching the cheek/side of the face.
-  'face-cheek': (side, geom) => {
-    const sideSign = side === 'right' ? 1 : -1;
-    return boxTargetPoint3D(geom.headBox, sideSign * 0.3, 0.5, 0.55);
-  },
 };
-HAND_TARGET_PRESETS_3D['head-side-salute'].poleAngles = { flex: -65, abd: 55, roll: 40 };
-HAND_TARGET_PRESETS_3D['chin-rest'].poleAngles = { flex: -40, abd: 0, roll: -22 };
-HAND_TARGET_PRESETS_3D['hip-side'].poleAngles = { flex: 40, abd: 25, roll: -30 };
-HAND_TARGET_PRESETS_3D['opposite-shoulder'].poleAngles = { flex: -5, abd: 30, roll: -70 };
-HAND_TARGET_PRESETS_3D['behind-back'].poleAngles = { flex: 55, abd: 0, roll: 0 };
 
 // ---- Generic mesh-face pinning ---------------------------------------------
 // The named presets above are hand-tuned one-off spots. This is the general
@@ -2329,7 +2308,7 @@ function switchBodyView(view) {
     el2D.style.display = 'none'; el3D.style.display = 'block'; depthPanel.style.display = 'block';
     if (poseModalToggle) poseModalToggle.classList.add('visible');
     btn2D.classList.remove('active'); btn3D.classList.add('active');
-    if (!sceneInited3D) { initScene3D(); buildBody3D(); }
+    if (!sceneInited3D) { initScene3D(); buildBody3D(); autoLoadJointsFromGitHub3D(); }
     requestAnimationFrame(resizeBody3D);
   } else {
     el2D.style.display = 'flex'; el3D.style.display = 'none'; depthPanel.style.display = 'none';
@@ -2399,6 +2378,15 @@ let selectedJoint3D = null;            // { side:'left'|'right', jointType:'elbo
 let gizmoMode3D = 'translate';         // 'translate' | 'rotate'
 let transformControls3D = null;
 let gizmoProxy3D = null;               // world-space stand-in TransformControls actually drags in translate mode
+// Fullscreen "3D Editor" mode: the model floods the screen with the joint
+// toggle buttons + a small settings button, and everything else (pose
+// panel, hand/wrist panel, other page chrome) is hidden until Apply/Cancel.
+let jointEditorModeActive3D = false;
+let jointEditorModeSnapshot3D = null;  // deep clone of manualJointEdits3D taken on open, restored on Cancel
+let jointEditorPinDirty3D = { left: false, right: false }; // sides whose pin was changed by "copy pins" and not yet saved (saved on Apply / ⬆ Save)
+let jointEditorPinCopySnapshot3D = null; // pre-copy handTargets of the current pose, taken lazily by "copy pins" so Cancel can restore them
+let jointSettingsPopupOpen3D = false;  // whether the ⚙ settings popup is currently shown
+let jointEditorCameraView3D = 'free';  // 'front' | 'back' | 'side-left' | 'side-right' | 'free'
 // Per-side manual overrides. null = "use whatever the pose/IK just computed";
 // otherwise a THREE.Quaternion snapshot of that group's LOCAL rotation,
 // re-stamped after every applyPose3D() call (see the hook at its end) so a
@@ -2431,19 +2419,25 @@ function initJointEditor3D() {
   // model (a moved elbow/wrist can shift the silhouette's lowest point).
   transformControls3D.addEventListener('dragging-changed', (e) => {
     if (controls3D) controls3D.enabled = !e.value;
-    if (!e.value && selectedJoint3D) { groundBody3D(true); updateJointPanelValues3D(); }
+    // Only re-ground (translate the model back to the floor) on release —
+    // NEVER reframe/reposition the camera here. Reframing used to run on
+    // every release and always snapped the camera back to a fixed front-on
+    // position, undoing any orbiting the person had just done. The camera
+    // now only moves when a Front/Back/Side/Free view button is explicitly
+    // pressed (see setJointEditorCameraView3D).
+    if (!e.value && selectedJoint3D) { groundBody3D(false); updateJointPanelValues3D(); }
   });
   transformControls3D.addEventListener('change', () => {
     if (selectedJoint3D && transformControls3D.dragging) onJointGizmoChange3D();
   });
 
-  // Selection now happens via the always-visible joint-picker buttons
-  // (#jointPickerBar) instead of tapping the model — a tap on the canvas
-  // can't be reliably told apart from the start of an orbit/pan gesture on a
-  // touchscreen, which is exactly the ambiguity the crosshair mesh-pin above
-  // already works around a different way (aim-then-confirm). The gizmo
-  // itself still lives on the canvas and drags normally; only picking WHICH
-  // joint moved off the canvas.
+  // Selection happens via the joint toggle buttons inside the fullscreen 3D
+  // Editor (#jointToggleBar) instead of tapping the model — a tap on the
+  // canvas can't be reliably told apart from the start of an orbit/pan
+  // gesture on a touchscreen, which is exactly the ambiguity the crosshair
+  // mesh-pin above already works around a different way (aim-then-confirm).
+  // The gizmo itself still lives on the canvas and drags normally; only
+  // picking WHICH joint moved off the canvas.
 }
 
 // The rotation that maps a bone's fixed REST local vector (its child
@@ -2470,7 +2464,10 @@ function selectJoint3D(side, jointType) {
   attachGizmoToSelection3D();
   highlightSelectedJoint3D();
   refreshJointPickerButtons3D();
-  openJointPanel3D();
+  // Selecting a joint no longer force-opens the settings popup — the ⚙
+  // button does that. If the popup is already open, keep it in sync with
+  // whichever joint is now selected instead of leaving it stale.
+  if (jointSettingsPopupOpen3D) openJointPanel3D();
 }
 function deselectJoint3D() {
   if (!jointEditorInited3D) { selectedJoint3D = null; return; }
@@ -2480,12 +2477,298 @@ function deselectJoint3D() {
   transformControls3D.visible = false;
   highlightSelectedJoint3D();
   refreshJointPickerButtons3D();
+  jointSettingsPopupOpen3D = false;
   closeJointPanel3D();
 }
+// The L/R Elbow/Wrist buttons are toggles, not one-shot pickers: tapping the
+// already-selected joint's button deselects it; tapping a different one
+// switches straight to it. Nothing about the picker itself ever disappears
+// while in the 3D Editor — only the settings popup opens/closes separately.
+function toggleJoint3D(side, jointType) {
+  if (selectedJoint3D && selectedJoint3D.side === side && selectedJoint3D.jointType === jointType) {
+    deselectJoint3D();
+  } else {
+    selectJoint3D(side, jointType);
+  }
+}
 function refreshJointPickerButtons3D() {
-  document.querySelectorAll('#jointPickerBar .jp-btn').forEach(b => {
+  document.querySelectorAll('#jointToggleBar .jt-btn[data-joint]').forEach(b => {
     b.classList.toggle('active', !!selectedJoint3D && b.dataset.side === selectedJoint3D.side && b.dataset.joint === selectedJoint3D.jointType);
   });
+}
+// ---- ⚙ Settings popup: shows/edits the CURRENTLY selected joint, opened
+// and closed explicitly rather than tied to selection itself. ----
+function toggleJointSettingsPopup3D() {
+  if (!selectedJoint3D) return; // nothing to show yet — pick a joint first
+  jointSettingsPopupOpen3D = !jointSettingsPopupOpen3D;
+  if (jointSettingsPopupOpen3D) openJointPanel3D(); else closeJointPanel3D();
+}
+function closeJointSettingsPopup3D() {
+  jointSettingsPopupOpen3D = false;
+  closeJointPanel3D();
+}
+
+// ---- Fullscreen 3D Editor mode ----
+// Deep-clones the manual joint override quaternions so Cancel can restore
+// them exactly, without the clones being live references that Apply-in-place
+// edits would otherwise mutate.
+function cloneManualJointEdits3D(src) {
+  const c = (q) => q ? q.clone() : null;
+  return {
+    left:  { shoulderQuat: c(src.left.shoulderQuat),  elbowQuat: c(src.left.elbowQuat),  wristQuat: c(src.left.wristQuat) },
+    right: { shoulderQuat: c(src.right.shoulderQuat), elbowQuat: c(src.right.elbowQuat), wristQuat: c(src.right.wristQuat) },
+  };
+}
+function openJointEditorMode3D() {
+  if (!sceneInited3D) return;
+  if (!jointEditorInited3D) initJointEditor3D();
+  jointEditorModeSnapshot3D = cloneManualJointEdits3D(manualJointEdits3D);
+  jointEditorModeActive3D = true;
+  const preview = document.getElementById('preview3D');
+  if (preview) preview.classList.add('je-fullscreen');
+  document.body.classList.add('je-fullscreen-active');
+  const entry = document.getElementById('jointEditorEntryBar'); if (entry) entry.style.display = 'none';
+  const topBar = document.getElementById('jointEditorTopBar'); if (topBar) topBar.style.display = '';
+  const toggleBar = document.getElementById('jointToggleBar'); if (toggleBar) toggleBar.style.display = '';
+  const bottomBar = document.getElementById('jointEditorBottomBar'); if (bottomBar) bottomBar.style.display = '';
+  populateCopyPoseSelect3D();
+  const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = '';
+  setJointEditorCameraView3D('free');
+  // Let the layout/CSS settle into fullscreen before telling three.js the
+  // canvas has a new size, or it measures the old (small) box.
+  setTimeout(resizeBody3D, 0);
+}
+function closeJointEditorModeUI3D() {
+  jointEditorModeActive3D = false;
+  jointEditorModeSnapshot3D = null;
+  jointEditorPinCopySnapshot3D = null;
+  jointSettingsPopupOpen3D = false;
+  const preview = document.getElementById('preview3D');
+  if (preview) preview.classList.remove('je-fullscreen');
+  document.body.classList.remove('je-fullscreen-active');
+  const entry = document.getElementById('jointEditorEntryBar'); if (entry) entry.style.display = '';
+  const topBar = document.getElementById('jointEditorTopBar'); if (topBar) topBar.style.display = 'none';
+  const toggleBar = document.getElementById('jointToggleBar'); if (toggleBar) toggleBar.style.display = 'none';
+  const bottomBar = document.getElementById('jointEditorBottomBar'); if (bottomBar) bottomBar.style.display = 'none';
+  const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = 'none';
+  deselectJoint3D();
+  setTimeout(resizeBody3D, 0);
+}
+// Keeps whatever edits were made — the manual overrides already persist in
+// manualJointEdits3D exactly like they do outside the editor, so Apply just
+// closes the fullscreen UI back down to the normal view.
+function applyJointEditorMode3D() {
+  ['left', 'right'].forEach(sd => { if (jointEditorPinDirty3D[sd]) schedulePinSave3D(currentPose3D, sd); });
+  jointEditorPinDirty3D = { left: false, right: false };
+  closeJointEditorModeUI3D();
+}
+// Reverts every joint back to the snapshot taken when the editor opened,
+// discarding anything changed (or mirrored) since — then closes the UI.
+function cancelJointEditorMode3D() {
+  jointEditorPinDirty3D = { left: false, right: false }; // cancelled copies are never saved
+  if (jointEditorPinCopySnapshot3D) {
+    const snap = jointEditorPinCopySnapshot3D, pose = POSES3D[snap.key];
+    if (pose) ['left', 'right'].forEach(side => {
+      if (snap[side] === undefined) { if (pose[side]) delete pose[side].handTarget; }
+      else { pose[side] = pose[side] || {}; pose[side].handTarget = JSON.parse(JSON.stringify(snap[side])); }
+    });
+    applyPose3D(snap.key, { reframe: false });
+    refreshHandWristButtons();
+  }
+  if (jointEditorModeSnapshot3D) {
+    manualJointEdits3D = jointEditorModeSnapshot3D;
+    reapplyManualJointEdits3D();
+    groundBody3D(false);
+  }
+  closeJointEditorModeUI3D();
+}
+// ---- Copy elbow + wrist from another pose ----
+// Lets you pick any other pose from a dropdown and pull ONLY its elbow and
+// wrist joints (bend/twist and wrist hinge/turn) onto the current pose —
+// legs, spine and shoulders are never touched. It works by briefly rendering
+// the source pose with no manual edits/overrides, reading the elbow and wrist
+// groups' resulting local rotations (so IK-driven poses copy correctly too),
+// then restoring the current pose and stamping those rotations in as manual
+// joint edits. Hand pins are only copied if "Copy hand pins" is ticked. Shoulders are only copied if "Match elbow position" is ticked. That makes it behave like any other editor drag: Cancel
+// reverts it, Apply keeps it, and ⬆ Save persists it.
+function populateCopyPoseSelect3D() {
+  const sel = document.getElementById('jeCopyPoseSelect');
+  if (!sel || typeof POSES3D === 'undefined') return;
+  const prev = sel.value;
+  sel.innerHTML = '';
+  const groups = {};
+  Object.keys(POSES3D).forEach(key => {
+    if (key === currentPose3D) return; // copying a pose onto itself is a no-op
+    const pose = POSES3D[key];
+    const sec = pose.section || 'Other';
+    if (!groups[sec]) {
+      groups[sec] = document.createElement('optgroup');
+      groups[sec].label = sec;
+      sel.appendChild(groups[sec]);
+    }
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = pose.label || key;
+    groups[sec].appendChild(opt);
+  });
+  if (prev && POSES3D[prev] && prev !== currentPose3D) sel.value = prev;
+}
+function readPoseElbowWristQuats3D(poseKey) {
+  // Render the source pose "clean" — no manual edits, no hand/wrist-facing or
+  // elbow overrides — read the joint rotations, then put everything back.
+  const savedPose = currentPose3D;
+  const savedManual = cloneManualJointEdits3D(manualJointEdits3D);
+  const savedOv = [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride];
+  const out = { left: {}, right: {} };
+  try {
+    manualJointEdits3D = {
+      left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+      right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+    };
+    handRotationOverride = { left: null, right: null };
+    wristRotationOverride = { left: null, right: null };
+    elbowBendOverride = { left: null, right: null };
+    elbowLiftOverride = { left: null, right: null };
+    applyPose3D(poseKey, { reframe: false });
+    ['left', 'right'].forEach(side => {
+      const sh = rig3D[side + 'Shoulder'], e = rig3D[side + 'Elbow'], w = rig3D[side + 'Wrist'];
+      out[side].shoulderQuat = sh ? sh.quaternion.clone() : null;
+      out[side].elbowQuat = e ? e.quaternion.clone() : null;
+      out[side].wristQuat = w ? w.quaternion.clone() : null;
+    });
+  } finally {
+    manualJointEdits3D = savedManual;
+    [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride] = savedOv;
+    applyPose3D(savedPose, { reframe: false });
+  }
+  return out;
+}
+function copyElbowWristFromPose3D() {
+  const sel = document.getElementById('jeCopyPoseSelect');
+  const sideSel = document.getElementById('jeCopySideSelect');
+  const btn = document.getElementById('jeCopyBtn');
+  if (!sel || !sel.value || !POSES3D[sel.value]) return;
+  const sides = (sideSel && sideSel.value === 'left') ? ['left']
+              : (sideSel && sideSel.value === 'right') ? ['right'] : ['left', 'right'];
+  const src = readPoseElbowWristQuats3D(sel.value);
+  const matchElbowPos = !!(document.getElementById('jeCopyShoulderChk') || {}).checked;
+  const copyPins = !!(document.getElementById('jeCopyPinsChk') || {}).checked;
+  // Pins: copy the source pose's hand target (mesh pin or named preset) for
+  // each chosen side. A pin is stored as box-relative fractions (or a preset
+  // name), not world coordinates, so it re-resolves against THIS pose's own
+  // mesh positions — the hand lands on the same spot of the body, at wherever
+  // that spot currently is. A pinned arm is solved by IK, so any manual
+  // shoulder/elbow/wrist rotation on that side is cleared and not copied
+  // (it would fight the IK result).
+  const pinned = { left: false, right: false };
+  if (copyPins) {
+    const cur = POSES3D[currentPose3D];
+    const ex = expandPose3D(POSES3D[sel.value]);
+    sides.forEach(side => {
+      const ht = side === 'left' ? ex.handTargetL : ex.handTargetR;
+      if (!ht) return; // source arm isn't pinned — leave this side's pin as is
+      if (!jointEditorPinCopySnapshot3D) {
+        const snap = { key: currentPose3D };
+        ['left', 'right'].forEach(sd => {
+          const t = cur[sd] && cur[sd].handTarget;
+          snap[sd] = t === undefined ? undefined : JSON.parse(JSON.stringify(t));
+        });
+        jointEditorPinCopySnapshot3D = snap;
+      }
+      cur[side] = cur[side] || {};
+      cur[side].handTarget = (typeof ht === 'string') ? ht : Object.assign({}, ht);
+      handRotationOverride[side] = null; wristRotationOverride[side] = null;
+      elbowBendOverride[side] = null; elbowLiftOverride[side] = null;
+      manualJointEdits3D[side].shoulderQuat = null;
+      manualJointEdits3D[side].elbowQuat = null;
+      manualJointEdits3D[side].wristQuat = null;
+      pinned[side] = true;
+      jointEditorPinDirty3D[side] = true;
+    });
+  }
+  sides.forEach(side => {
+    if (pinned[side]) return;
+    // Optional: also copy the shoulder's aim so the elbow lands in the same
+    // place as in the source pose (elbow position comes from the shoulder).
+    if (matchElbowPos && src[side].shoulderQuat) manualJointEdits3D[side].shoulderQuat = src[side].shoulderQuat;
+    if (src[side].elbowQuat) manualJointEdits3D[side].elbowQuat = src[side].elbowQuat;
+    if (src[side].wristQuat) manualJointEdits3D[side].wristQuat = src[side].wristQuat;
+  });
+  if (pinned.left || pinned.right) { refreshHandWristButtons(); applyPose3D(currentPose3D, { reframe: false }); }
+  reapplyManualJointEdits3D();
+  groundBody3D(false);
+  if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  if (btn) {
+    btn.textContent = '✓ Copied';
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+  }
+}
+
+// Front/Back/Left-side/Right-side snap the camera to a clean view of the
+// current silhouette; Free leaves the camera exactly where the person left
+// it (no repositioning at all) so orbiting freely is always available too.
+function setJointEditorCameraView3D(view) {
+  jointEditorCameraView3D = view;
+  if (view !== 'free' && bodyGroup3D && camera3D && controls3D) {
+    const box = new THREE.Box3().setFromObject(bodyGroup3D);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const dist = Math.max(size.x, size.y, size.z) * 1.6 + 60;
+    controls3D.target.copy(center);
+    if (view === 'front')          camera3D.position.set(center.x, center.y, center.z + dist);
+    else if (view === 'back')      camera3D.position.set(center.x, center.y, center.z - dist);
+    else if (view === 'side-left') camera3D.position.set(center.x - dist, center.y, center.z);
+    else if (view === 'side-right')camera3D.position.set(center.x + dist, center.y, center.z);
+    controls3D.update();
+  }
+  document.querySelectorAll('#jointEditorTopBar .je-cam-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+}
+
+// ---- Mirror: copies the selected joint's current position+rotation state
+// onto the opposite side, reflected across the body's own centerline. ----
+// Left/right arm groups are built as plain translated copies of each other
+// (see buildArmSide) with NO extra baseline rotation flipping their local
+// axes — the only per-side asymmetry is the small mirrored "Rotate Arms Out
+// 15°" base offset and sign conventions used elsewhere (sideSign, wristTurn
+// range) for AUTHORED pose angles. Because both sides share the same local
+// axis directions, a joint's raw local quaternion can be reflected with the
+// standard "mirror across the X axis" quaternion formula — negate the y and
+// z components, keep x and w — and it lands correctly on the other side,
+// including reproducing that mirrored 15° base offset automatically.
+function mirrorQuat3D(q) {
+  return new THREE.Quaternion(q.x, -q.y, -q.z, q.w);
+}
+function mirrorSelectedJoint3D() {
+  if (!selectedJoint3D) return;
+  const { side, jointType } = selectedJoint3D;
+  const other = side === 'left' ? 'right' : 'left';
+  if (jointType === 'elbow') {
+    // The elbow's position comes from the shoulder's aim; its own bend/twist
+    // comes from the elbow group's own rotation — mirror both so the
+    // opposite elbow ends up in the exact reflected position AND pose.
+    const shoulderGrp = rig3D[side + 'Shoulder'];
+    const elbowGrp = rig3D[side + 'Elbow'];
+    if (shoulderGrp) manualJointEdits3D[other].shoulderQuat = mirrorQuat3D(shoulderGrp.quaternion);
+    if (elbowGrp)    manualJointEdits3D[other].elbowQuat    = mirrorQuat3D(elbowGrp.quaternion);
+  } else {
+    // Same idea for the wrist: its position comes from the elbow's aim, its
+    // own hinge/turn comes from the wrist group's own rotation.
+    const elbowGrp = rig3D[side + 'Elbow'];
+    const wristGrp = rig3D[side + 'Wrist'];
+    if (elbowGrp) manualJointEdits3D[other].elbowQuat = mirrorQuat3D(elbowGrp.quaternion);
+    if (wristGrp) manualJointEdits3D[other].wristQuat = mirrorQuat3D(wristGrp.quaternion);
+  }
+  reapplyManualJointEdits3D();
+  groundBody3D(false);
+  if (selectedJoint3D && (selectedJoint3D.side === other)) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  const status = document.getElementById('jeMirrorStatus');
+  if (status) {
+    status.textContent = `Mirrored to ${other === 'left' ? 'Left' : 'Right'} ${jointType === 'elbow' ? 'Elbow' : 'Wrist'}`;
+    status.style.opacity = '1';
+    clearTimeout(mirrorSelectedJoint3D._t);
+    mirrorSelectedJoint3D._t = setTimeout(() => { status.style.opacity = '0'; }, 1600);
+  }
 }
 function setGizmoMode3D(mode) {
   gizmoMode3D = mode;
@@ -2676,4 +2959,118 @@ function updateJointPanelValues3D() {
   setVal('jeRotZ', euler.z * 180 / Math.PI);
   const title = document.getElementById('jeTitle');
   if (title) title.textContent = `${side === 'left' ? 'Left' : 'Right'} ${jointType === 'elbow' ? 'Elbow' : 'Wrist'}`;
+  updateJePinStatus3D();
+}
+
+// ============================================================================
+// 3D EDITOR — QUICK GITHUB SAVE/LOAD
+// ============================================================================
+// A one-tap save/load for the joint editor's own state. It lives inside the
+// SAME file as the pose edits (presets/pose-overrides.json) under one
+// reserved top-level key, "_jointEdits", so there's a single save blob and a
+// single auto-load on refresh. The pose-edit code above only touches real
+// pose keys and preserves every other key when it re-writes the file, so the
+// two never overwrite each other.
+const JOINT_EDITS_KEY = '_jointEdits';
+
+function collectJointEditsState3D() {
+  const r4 = (n) => Math.round(n * 10000) / 10000;
+  const q2a = (q) => q ? [r4(q.x), r4(q.y), r4(q.z), r4(q.w)] : null;
+  return {
+    pose: currentPose3D,
+    manualJointEdits: {
+      left:  { shoulderQuat: q2a(manualJointEdits3D.left.shoulderQuat),  elbowQuat: q2a(manualJointEdits3D.left.elbowQuat),  wristQuat: q2a(manualJointEdits3D.left.wristQuat) },
+      right: { shoulderQuat: q2a(manualJointEdits3D.right.shoulderQuat), elbowQuat: q2a(manualJointEdits3D.right.elbowQuat), wristQuat: q2a(manualJointEdits3D.right.wristQuat) },
+    },
+  };
+}
+function applyJointEditsState3D(jstate) {
+  if (!jstate) return;
+  const a2q = (a) => (Array.isArray(a) && a.length === 4) ? new THREE.Quaternion(a[0], a[1], a[2], a[3]) : null;
+  if (jstate.pose && typeof POSES3D !== 'undefined' && POSES3D[jstate.pose]) currentPose3D = jstate.pose;
+  const m = jstate.manualJointEdits || {};
+  ['left', 'right'].forEach(side => {
+    const src = m[side] || {};
+    manualJointEdits3D[side].shoulderQuat = a2q(src.shoulderQuat);
+    manualJointEdits3D[side].elbowQuat    = a2q(src.elbowQuat);
+    manualJointEdits3D[side].wristQuat    = a2q(src.wristQuat);
+  });
+  applyPose3D(currentPose3D, { reframe: true });
+}
+// Fetches pose-overrides.json (whole file). Returns { all, sha } — `all` is {}
+// and sha undefined when the file doesn't exist yet.
+async function fetchPoseOverridesFile(s) {
+  const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+  if (resp.status === 404) return { all: {}, sha: undefined };
+  if (!resp.ok) throw new Error(resp.statusText);
+  const j = await resp.json();
+  let all = {};
+  try { all = JSON.parse(ghB64ToUtf8(j.content)) || {}; } catch (e) { all = {}; }
+  return { all, sha: j.sha };
+}
+async function quickSaveJointsToGitHub3D() {
+  if (typeof ghGetSettings !== 'function') { alert("GitHub save isn't available on this page."); return; }
+  const s = ghGetSettings();
+  if (!s.token || !s.owner || !s.repo) { alert('Set your GitHub token, owner and repo in the GitHub Presets panel first.'); return; }
+  const btn = document.getElementById('jeQuickSaveBtn');
+  const setBtn = (txt, disabled) => { if (btn) { btn.textContent = txt; btn.disabled = !!disabled; } };
+  setBtn('Saving…', true);
+  try {
+    // Save any pins copied in this session first (serialized so the two
+    // writes to the same file never race), then the joint edits.
+    for (const sd of ['left', 'right']) {
+      if (jointEditorPinDirty3D[sd]) { clearTimeout(pinPushTimers3D[currentPose3D + '|' + sd]); delete pinPushTimers3D[currentPose3D + '|' + sd]; await flushPinSave3D(currentPose3D, sd); jointEditorPinDirty3D[sd] = false; }
+    }
+    await pinPushChain3D;
+    jointEditorPinCopySnapshot3D = null; // pins are saved now — Cancel shouldn't revert them
+    // Fetch fresh so pose edits saved elsewhere aren't clobbered.
+    const { all, sha } = await fetchPoseOverridesFile(s);
+    all[JOINT_EDITS_KEY] = collectJointEditsState3D();
+    const body = { message: 'Quick save 3D joint edits', content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
+    if (sha) body.sha = sha;
+    const putResp = await fetch(poseOverridesApiUrl(s), { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
+    if (!putResp.ok) { const errj = await putResp.json().catch(() => ({})); throw new Error(errj.message || putResp.statusText); }
+    setBtn('✓ Saved', false);
+    setTimeout(() => setBtn('⬆ Save', false), 1600);
+  } catch (err) {
+    alert('GitHub quick save failed: ' + err.message);
+    setBtn('⬆ Save', false);
+  }
+}
+async function quickLoadJointsFromGitHub3D() {
+  if (typeof ghGetSettings !== 'function') { alert("GitHub load isn't available on this page."); return; }
+  const s = ghGetSettings();
+  if (!s.token || !s.owner || !s.repo) { alert('Set your GitHub token, owner and repo in the GitHub Presets panel first.'); return; }
+  const btn = document.getElementById('jeQuickLoadBtn');
+  const setBtn = (txt, disabled) => { if (btn) { btn.textContent = txt; btn.disabled = !!disabled; } };
+  setBtn('Loading…', true);
+  try {
+    const { all } = await fetchPoseOverridesFile(s);
+    if (!all[JOINT_EDITS_KEY]) throw new Error('No saved joint edits found yet.');
+    applyJointEditsState3D(all[JOINT_EDITS_KEY]);
+    if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+    setBtn('✓ Loaded', false);
+    setTimeout(() => setBtn('⬇ Load', false), 1600);
+  } catch (err) {
+    alert('GitHub quick load failed: ' + err.message);
+    setBtn('⬇ Load', false);
+  }
+}
+// Auto-pulls the saved joint edits once, right after the 3D scene first
+// builds (called from switchBodyView the first time the 3D view opens), so a
+// refresh on any browser comes back with them applied. Quiet no-op if GitHub
+// isn't configured or nothing's been saved yet.
+let jointEditsAutoLoaded3D = false;
+async function autoLoadJointsFromGitHub3D() {
+  if (jointEditsAutoLoaded3D) return;
+  jointEditsAutoLoaded3D = true;
+  if (typeof ghGetSettings !== 'function') return;
+  const s = ghGetSettings();
+  if (!s.token || !s.owner || !s.repo) return;
+  try {
+    const { all } = await fetchPoseOverridesFile(s);
+    if (!all[JOINT_EDITS_KEY]) return;
+    applyJointEditsState3D(all[JOINT_EDITS_KEY]);
+    if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  } catch (e) { console.warn('Could not auto-load joint edits from GitHub:', e); }
 }
