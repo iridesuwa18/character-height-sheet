@@ -3153,8 +3153,16 @@ function mirrorSelectedJoint3D() {
     jointEditorPinDirty3D[other] = true;
     handRotationOverride[other] = null; wristRotationOverride[other] = null;
     elbowBendOverride[other] = null; elbowLiftOverride[other] = null;
+    // The opposite hand's IK is NOT an exact reflection of the source arm
+    // (it re-derives elbow swing and hand facing on its own), which is what
+    // made mirrored hands come out opposite/tilted. So after the pin is
+    // stored (kept for Save), stamp the exact reflection of the source arm
+    // on top — same as the unpinned path — so the two sides always match.
+    const wristGrpSrc = rig3D[side + 'Wrist'];
     const m = manualJointEdits3D[other];
-    m.shoulderQuat = null; m.elbowQuat = null; m.wristQuat = null;
+    m.shoulderQuat = shoulderGrp ? mirrorQuat3D(shoulderGrp.quaternion) : null;
+    m.elbowQuat    = elbowGrp    ? mirrorQuat3D(elbowGrp.quaternion)    : null;
+    m.wristQuat    = wristGrpSrc ? mirrorQuat3D(wristGrpSrc.quaternion) : null;
   } else {
     // Unpinned source: mirror the whole arm (shoulder + elbow aim, so the hand
     // lands in the reflected spot) and the hand: wrist Bend and Turn are
@@ -3172,7 +3180,10 @@ function mirrorSelectedJoint3D() {
     if (wr) {
       wristRotationOverride[other] = clampWristBend(wr.wrist);
       handRotationOverride[other] = clampTurnFree(wr.wristTurn); // same number = mirrored hand
-      manualJointEdits3D[other].wristQuat = null;
+      // Exact reflection of the source hand's actual rotation (not just its
+      // Bend/Turn numbers), so anything beyond those two numbers mirrors too.
+      const wristGrpSrc = rig3D[side + 'Wrist'];
+      manualJointEdits3D[other].wristQuat = wristGrpSrc ? mirrorQuat3D(wristGrpSrc.quaternion) : null;
     }
   }
   applyPose3D(currentPose3D, { reframe: false });
