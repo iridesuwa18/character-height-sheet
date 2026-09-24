@@ -904,25 +904,42 @@ async function pullPoseOverridesFromGitHub() {
 // Pushes one side's saved fields for one pose up to the GitHub file,
 // merging with whatever's already saved for other poses/sides (fetches the
 // current file first so this doesn't clobber edits saved from elsewhere).
-async function pushPoseOverrideToGitHub(poseKey, side, fields) {
+// GitHub's contents API can hand back a stale sha for a moment after a commit,
+// so a quick second write fails with "does not match <sha>". Every write goes
+// through this: fetch fresh (cache-busted), apply `mutate`, PUT, and on a sha
+// mismatch wait a beat and retry.
+async function githubUpdatePoseOverrides3D(message, mutate) {
   const s = ghGetSettings();
   if (!s.token || !s.owner || !s.repo) throw new Error('Fill in owner/repo/token in the GitHub Presets panel first.');
   const apiUrl = poseOverridesApiUrl(s);
-  let sha, all = {};
-  const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
-  if (getResp.ok) {
-    const j = await getResp.json();
-    sha = j.sha;
-    try { all = JSON.parse(ghB64ToUtf8(j.content)); } catch (e) { all = {}; }
+  let lastErr;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt) await new Promise(r => setTimeout(r, 500 * attempt));
+    let sha, all = {};
+    const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(s.branch)}&_=${Date.now()}`, { headers: ghHeaders(s.token), cache: 'no-store' });
+    if (getResp.ok) {
+      const j = await getResp.json();
+      sha = j.sha;
+      try { all = JSON.parse(ghB64ToUtf8(j.content)) || {}; } catch (e) { all = {}; }
+    }
+    mutate(all);
+    const body = { message, content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
+    if (sha) body.sha = sha;
+    const putResp = await fetch(apiUrl, { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
+    if (putResp.ok) return all;
+    const errj = await putResp.json().catch(() => ({}));
+    lastErr = new Error(errj.message || putResp.statusText);
+    if (!(putResp.status === 409 || putResp.status === 422 || /does not match|sha/i.test(lastErr.message))) throw lastErr;
   }
-  all[poseKey] = all[poseKey] || {};
-  all[poseKey][side] = Object.assign({}, all[poseKey][side], fields);
-  // null = remove that saved field (handTarget:null is a real saved "unpinned", keep it)
-  Object.keys(fields).forEach(k => { if (fields[k] === null && k !== 'handTarget') delete all[poseKey][side][k]; });
-  const body = { message: `Save pose edit: ${poseKey} (${side})`, content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
-  if (sha) body.sha = sha;
-  const putResp = await fetch(apiUrl, { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
-  if (!putResp.ok) { const errj = await putResp.json().catch(() => ({})); throw new Error(errj.message || putResp.statusText); }
+  throw lastErr;
+}
+async function pushPoseOverrideToGitHub(poseKey, side, fields) {
+  await githubUpdatePoseOverrides3D(`Save pose edit: ${poseKey} (${side})`, all => {
+    all[poseKey] = all[poseKey] || {};
+    all[poseKey][side] = Object.assign({}, all[poseKey][side], fields);
+    // null = remove that saved field (handTarget:null is a real saved "unpinned", keep it)
+    Object.keys(fields).forEach(k => { if (fields[k] === null && k !== 'handTarget') delete all[poseKey][side][k]; });
+  });
 }
 // Wipes the saved pose-edits file from the repo and reloads, so POSES3D
 // comes back purely from the hardcoded literal below with nothing re-applied
@@ -3046,39 +3063,72 @@ function setJointEditorCameraView3D(view) {
 function mirrorQuat3D(q) {
   return new THREE.Quaternion(q.x, -q.y, -q.z, q.w);
 }
+// Reflects a hand pin across the body's midline: same surface spot on the
+// opposite side (leg/foot boxes swap sides, x and the surface normal flip), plus
+// the stored offset / elbow direction / saved joint rotations of keep-position pins.
+function mirrorPinSpec3D(ht) {
+  if (!ht || typeof ht === 'string') return ht; // named presets are already side-aware
+  const c = JSON.parse(JSON.stringify(ht));
+  const swap = { leftLeg: 'rightLeg', rightLeg: 'leftLeg', leftFoot: 'rightFoot', rightFoot: 'leftFoot' };
+  if (swap[c.box]) c.box = swap[c.box];
+  const flipX = o => { if (o && typeof o.x === 'number') o.x = round2(-o.x); };
+  flipX(c);
+  if (typeof c.nx === 'number') c.nx = round2(-c.nx);
+  flipX(c.offset); flipX(c.pole); flipX(c.target);
+  if (c.joints) Object.keys(c.joints).forEach(k => {
+    const q = c.joints[k];
+    if (Array.isArray(q) && q.length === 4) c.joints[k] = [q[0], -q[1], -q[2], q[3]];
+  });
+  return c;
+}
 function mirrorSelectedJoint3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
   const other = side === 'left' ? 'right' : 'left';
-  if (jointType === 'elbow') {
-    // The elbow's position comes from the shoulder's aim; its own bend/twist
-    // comes from the elbow group's own rotation — mirror both so the
-    // opposite elbow ends up in the exact reflected position AND pose.
-    const shoulderGrp = rig3D[side + 'Shoulder'];
-    const elbowGrp = rig3D[side + 'Elbow'];
+  const pose = POSES3D[currentPose3D];
+  const ex = pose ? expandPose3D(pose) : null;
+  const srcPin = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
+  const sharedPin = !!(pose && pose.handTarget) && !(pose[side] && pose[side].handTarget) && !(pose[other] && pose[other].handTarget);
+  const shoulderGrp = rig3D[side + 'Shoulder'];
+  const elbowGrp = rig3D[side + 'Elbow'];
+  const wr = lastPoseResolved3D && lastPoseResolved3D[side];
+  if (srcPin && !sharedPin) {
+    // Pinned source: mirror the PIN, and let the opposite hand's IK solve the
+    // arm and hand facing from it (manual arm angles would fight the pin).
+    snapshotPinsForCancel3D();
+    pose[other] = pose[other] || {};
+    pose[other].handTarget = mirrorPinSpec3D(srcPin);
+    jointEditorPinDirty3D[other] = true;
+    handRotationOverride[other] = null; wristRotationOverride[other] = null;
+    elbowBendOverride[other] = null; elbowLiftOverride[other] = null;
+    const m = manualJointEdits3D[other];
+    m.shoulderQuat = null; m.elbowQuat = null; m.wristQuat = null;
+  } else {
+    // Unpinned source: mirror the whole arm (shoulder + elbow aim, so the hand
+    // lands in the reflected spot) and the hand: wrist Bend is copied and Turn
+    // negated (left is 0..180, right is 0..-180) as the dropdowns' own numbers.
+    // A pinned opposite hand would ignore all of that, so free it first (saved
+    // with ⬆ Save, undone by Cancel).
+    if (pose && pose[other] && pose[other].handTarget !== undefined) {
+      snapshotPinsForCancel3D();
+      delete pose[other].handTarget;
+      jointEditorPinDirty3D[other] = true;
+    }
     if (shoulderGrp) manualJointEdits3D[other].shoulderQuat = mirrorQuat3D(shoulderGrp.quaternion);
     if (elbowGrp)    manualJointEdits3D[other].elbowQuat    = mirrorQuat3D(elbowGrp.quaternion);
-  } else {
-    // Same idea for the wrist: its position comes from the elbow's aim, its
-    // own hinge/turn comes from the wrist group's own rotation.
-    const elbowGrp = rig3D[side + 'Elbow'];
-    const wristGrp = rig3D[side + 'Wrist'];
-    if (elbowGrp) manualJointEdits3D[other].elbowQuat = mirrorQuat3D(elbowGrp.quaternion);
-    const wr = lastPoseResolved3D && lastPoseResolved3D[side];
     if (wr) {
-      // Mirror the wrist as Bend/Turn numbers (same limits + per-pose save).
-      wristRotationOverride[other] = wr.wrist;
-      handRotationOverride[other] = -wr.wristTurn;
+      wristRotationOverride[other] = clampWristBend(wr.wrist);
+      handRotationOverride[other] = clampWristTurn(other, -wr.wristTurn).clamped;
       manualJointEdits3D[other].wristQuat = null;
-      applyPose3D(currentPose3D, { reframe: false });
-    } else if (wristGrp) manualJointEdits3D[other].wristQuat = mirrorQuat3D(wristGrp.quaternion);
+    }
   }
+  applyPose3D(currentPose3D, { reframe: false });
   reapplyManualJointEdits3D();
   groundBody3D(false);
   if (selectedJoint3D && (selectedJoint3D.side === other)) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
   const status = document.getElementById('jeMirrorStatus');
   if (status) {
-    status.textContent = `Mirrored to ${other === 'left' ? 'Left' : 'Right'} ${jointType === 'elbow' ? 'Elbow' : 'Wrist'}`;
+    status.textContent = `Mirrored ${srcPin && !sharedPin ? 'pin' : 'arm + hand'} to ${other === 'left' ? 'Left' : 'Right'}`;
     status.style.opacity = '1';
     clearTimeout(mirrorSelectedJoint3D._t);
     mirrorSelectedJoint3D._t = setTimeout(() => { status.style.opacity = '0'; }, 1600);
@@ -3462,7 +3512,7 @@ function applyJointEditsState3D(jstate, { keepPose = false } = {}) {
 // Fetches pose-overrides.json (whole file). Returns { all, sha } — `all` is {}
 // and sha undefined when the file doesn't exist yet.
 async function fetchPoseOverridesFile(s) {
-  const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+  const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}&_=${Date.now()}`, { headers: ghHeaders(s.token), cache: 'no-store' });
   if (resp.status === 404) return { all: {}, sha: undefined };
   if (!resp.ok) throw new Error(resp.statusText);
   const j = await resp.json();
@@ -3518,22 +3568,37 @@ async function quickSaveJointsToGitHub3D() {
   const setBtn = (txt, disabled) => { if (btn) { btn.textContent = txt; btn.disabled = !!disabled; } };
   setBtn('Saving…', true);
   try {
-    // Save any pins copied in this session first (serialized so the two
-    // writes to the same file never race), then the joint edits.
-    for (const sd of ['left', 'right']) {
-      if (jointEditorPinDirty3D[sd]) { clearTimeout(pinPushTimers3D[currentPose3D + '|' + sd]); delete pinPushTimers3D[currentPose3D + '|' + sd]; await flushPinSave3D(currentPose3D, sd); jointEditorPinDirty3D[sd] = false; }
-    }
+    // Let any pin save already in flight finish, then do EVERYTHING (pins,
+    // per-pose facing, joint edits) as ONE commit — several back-to-back
+    // commits to the same file is what used to trip GitHub's sha check.
     await pinPushChain3D;
-    for (const { side, fields } of bakeHandFacingIntoPose3D()) await pushPoseOverrideToGitHub(currentPose3D, side, fields);
+    const poseKey = currentPose3D, pose = POSES3D[poseKey];
+    const edits = [];
+    for (const sd of ['left', 'right']) {
+      if (jointEditorPinDirty3D[sd]) {
+        clearTimeout(pinPushTimers3D[poseKey + '|' + sd]); delete pinPushTimers3D[poseKey + '|' + sd];
+        const ht = pose && pose[sd] && pose[sd].handTarget;
+        edits.push({ side: sd, fields: { handTarget: ht === undefined ? null : ht } });
+      }
+    }
+    for (const e of bakeHandFacingIntoPose3D()) {
+      const ex = edits.find(x => x.side === e.side);
+      if (ex) Object.assign(ex.fields, e.fields); else edits.push(e);
+    }
+    const jointState = collectJointEditsState3D();
+    const run = () => githubUpdatePoseOverrides3D('Quick save 3D joint edits', all => {
+      edits.forEach(({ side, fields }) => {
+        all[poseKey] = all[poseKey] || {};
+        all[poseKey][side] = Object.assign({}, all[poseKey][side], fields);
+        Object.keys(fields).forEach(k => { if (fields[k] === null && k !== 'handTarget') delete all[poseKey][side][k]; });
+      });
+      all[JOINT_EDITS_KEY] = jointState;
+    });
+    pinPushChain3D = pinPushChain3D.then(run, run);
+    await pinPushChain3D;
+    for (const sd of ['left', 'right']) jointEditorPinDirty3D[sd] = false;
     jointEditorPinCopySnapshot3D = null; // pins are saved now — Cancel shouldn't revert them
-    // Fetch fresh so pose edits saved elsewhere aren't clobbered.
-    const { all, sha } = await fetchPoseOverridesFile(s);
-    all[JOINT_EDITS_KEY] = collectJointEditsState3D();
-    jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
-    const body = { message: 'Quick save 3D joint edits', content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
-    if (sha) body.sha = sha;
-    const putResp = await fetch(poseOverridesApiUrl(s), { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
-    if (!putResp.ok) { const errj = await putResp.json().catch(() => ({})); throw new Error(errj.message || putResp.statusText); }
+    jointEditsSaved3D = jointState; jointEditsInitialApplied3D = true;
     setBtn('✓ Saved', false);
     setTimeout(() => setBtn('⬆ Save', false), 1600);
   } catch (err) {
