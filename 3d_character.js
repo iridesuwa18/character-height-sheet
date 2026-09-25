@@ -1919,49 +1919,32 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
   }
   let sol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower, pole);
   if (!sol) return false;
-  // Soft-stretch: when the target is only modestly out of reach, let the
-  // forearm/hand visually extend a bit past its rest length to actually
-  // close the gap, instead of always freezing at maxReach. This matters for
-  // two reasons: (1) a mesh-pinned hand should keep tracking its anchor
-  // point as the pinned surface grows, not visibly lag behind it, and (2) a
-  // nearly-fully-extended two-bone arm has an ill-defined elbow-bend plane
-  // (the shoulder-target angle approaches 0), which is numerically unstable
-  // — tiny target differences can flip which way the elbow bends, which is
-  // why a slider round-trip back to the original value wasn't reliably
-  // snapping the hand back. Staying out of that near-maxReach zone whenever
-  // possible avoids that instability too. Capped as a % of the forearm's
-  // OWN rest length so the stretch stays subtle; overreach beyond the cap
-  // still falls back to the old "rotate the wrist to sell it" behavior via
-  // wristTurnBoost below.
+  // A "keep hand where it is" pin that still matches its captured joints
+  // (checked below) snaps straight to those saved quaternions and never
+  // uses this solve at all — so the reach/stretch computation is deferred
+  // until after that check, and only actually applied to the shoulder/elbow
+  // rotation and the forearm mesh on the path that's really driven by this
+  // solve. Applying a stretched mesh under joints snapped back to their
+  // original saved (unstretched) rotation was exactly the "flattened/
+  // stiffer" mismatch reported after the first version of this.
   const STRETCH_CAP_PCT = 0.18;
   const maxStretchCm = lens.lower * STRETCH_CAP_PCT;
   let stretchCm = 0;
   if (sol.overreachCm > 0.01) {
     stretchCm = Math.min(sol.overreachCm, maxStretchCm);
     // Re-solve with the stretched forearm length so the shoulder/elbow bend
-    // this frame is geometrically consistent with the longer reach, rather
-    // than reusing the rest-length solve and just stretching the mesh under it.
+    // is geometrically consistent with the longer reach, rather than reusing
+    // the rest-length solve and just stretching the mesh under it.
     const stretchedSol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower + stretchCm, pole);
     if (stretchedSol) sol = stretchedSol;
   }
-  const restLen = rig3D[side + 'LowerRestLen'];
-  if (restLen != null && stretchCm > 0) {
-    const newLen = restLen + stretchCm;
-    const mesh = rig3D[side + 'ForearmMesh'];
-    const wristGrp = rig3D[side + 'Wrist'];
-    if (mesh) { mesh.scale.y = newLen / restLen; mesh.position.y = -newLen / 2; }
-    if (wristGrp) wristGrp.position.y = -newLen;
-  }
-  shoulderGrp.rotation.x = sol.flexRad;
-  shoulderGrp.rotation.y = sol.rollRad;
-  shoulderGrp.rotation.z = sol.zRad;
-  elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
   const maxReach = (lens.upper + lens.lower) || 1;
   // sol.overreachCm here is whatever's LEFT after the stretch above (0 if
   // the stretch fully closed the gap), so the wrist-turn "sell it" boost
   // only kicks in for overreach beyond what soft-stretch already absorbed.
   const wristTurnBoost = Math.min(30, (sol.overreachCm / maxReach) * 90);
   let result = { wristTurnBoost };
+  let usedKeptQuat = false;
   if (resolved.offset && typeof targetSpec === 'object' && targetSpec.joints && targetSpec.target) {
     const t = targetSpec.target;
     const dist = Math.hypot(targetPoint.x - t.x, targetPoint.y - t.y, targetPoint.z - t.z);
@@ -1971,6 +1954,24 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
       elbowGrp.quaternion.set(J.e[0], J.e[1], J.e[2], J.e[3]);
       keptWristQuat3D[side] = new THREE.Quaternion(J.w[0], J.w[1], J.w[2], J.w[3]);
       result = { wristTurnBoost: 0 };
+      usedKeptQuat = true;
+    }
+  }
+  if (!usedKeptQuat) {
+    // Only this path's rotation actually matches (and needs) the stretched
+    // reach computed above — apply the solve and, if it stretched, the
+    // matching forearm mesh/wrist-pivot extension.
+    shoulderGrp.rotation.x = sol.flexRad;
+    shoulderGrp.rotation.y = sol.rollRad;
+    shoulderGrp.rotation.z = sol.zRad;
+    elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
+    const restLen = rig3D[side + 'LowerRestLen'];
+    if (restLen != null && stretchCm > 0) {
+      const newLen = restLen + stretchCm;
+      const mesh = rig3D[side + 'ForearmMesh'];
+      const wristGrp = rig3D[side + 'Wrist'];
+      if (mesh) { mesh.scale.y = newLen / restLen; mesh.position.y = -newLen / 2; }
+      if (wristGrp) wristGrp.position.y = -newLen;
     }
   }
   if (resolved.normal && !resolved.offset) { // a kept-position pin doesn't re-aim the hand at the surface
