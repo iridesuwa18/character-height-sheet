@@ -3145,6 +3145,31 @@ async function resetAllJointEdits3D() {
   }
 }
 
+// One-tap fix for "the arm/pose looks wrong no matter which pose I pick,
+// even ones with no hands pinned" — the symptom of a STUCK manual joint
+// override. manualJointEdits3D (shoulder/elbow/wrist rotation overrides) is
+// per-SIDE, not per-pose: reapplyManualJointEdits3D() stamps it on top of
+// whatever pose is active, unconditionally. If a bad override ever got
+// pushed to GitHub via "⬆ Save" (e.g. a frozen quaternion from an older
+// buggy Mirror), it auto-loads on every visit — including incognito, since
+// it's a fetch from your own repo, not local browser storage — and keeps
+// clobbering every pose you pick. `↺ Reset` above doesn't fix this: it
+// reloads the SAME saved file, corruption included. This clears both
+// sides' overrides AND immediately re-saves that cleared state, so the bad
+// data can't come back on the next load. It does not touch your pins.
+async function clearAllManualJointOverridesAndSave3D() {
+  if (!confirm('Clear ALL manual arm/wrist overrides on both sides (shoulder, elbow, wrist) and save that cleared state? This does not touch your pins.')) return;
+  manualJointEdits3D = {
+    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+  };
+  applyPose3D(currentPose3D, { reframe: false });
+  reapplyManualJointEdits3D();
+  groundBody3D(false);
+  if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  await quickSaveJointsToGitHub3D();
+}
+
 // ---- Copy Poses pop-up + "copied from" chip ----
 function openCopyPopup3D() {
   const popup = document.getElementById('jeCopyPopup');
