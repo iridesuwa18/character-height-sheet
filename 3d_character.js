@@ -795,7 +795,7 @@ function flushPinSave3D(poseKey, side) {
   const run = async () => {
     const pose = POSES3D[poseKey];
     const s = ghGetSettings();
-    if (!pose || !s.token || !s.owner || !s.repo) return; // not configured: session-only, same as other edits
+    if (!pose || !s.token || !s.owner || !s.repo) return; // no token entered yet: session-only, same as other edits
     const ht = pose[side] && pose[side].handTarget;
     try {
       await pushPoseOverrideToGitHub(poseKey, side, { handTarget: ht === undefined ? null : ht });
@@ -912,7 +912,12 @@ function applyPoseOverridesData3D(all) {
 async function pullPoseOverridesFromGitHub() {
   capturePoseLiteralPins3D();
   const s = ghGetSettings();
-  if (!s.token || !s.owner || !s.repo) return;
+  // Reading only needs owner+repo (public-repo GETs work without a token);
+  // token is only required to write. Requiring it here too is what made a
+  // browser with no saved GitHub settings at all (e.g. incognito) silently
+  // skip loading your saved edits and show the bare default pose instead —
+  // looking exactly like the edits had never been saved.
+  if (!s.owner || !s.repo) return;
   try {
     const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
     if (!resp.ok) return; // 404 = nothing saved yet; other errors fail quietly at load time
@@ -937,7 +942,7 @@ async function pullPoseOverridesFromGitHub() {
 // mismatch wait a beat and retry.
 async function githubUpdatePoseOverrides3D(message, mutate) {
   const s = ghGetSettings();
-  if (!s.token || !s.owner || !s.repo) throw new Error('Fill in owner/repo/token in the GitHub Presets panel first.');
+  if (!s.token || !s.owner || !s.repo) throw new Error('Set your GitHub token in the GitHub Presets panel first (needed to save).');
   const apiUrl = poseOverridesApiUrl(s);
   let lastErr;
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -973,7 +978,7 @@ async function pushPoseOverrideToGitHub(poseKey, side, fields) {
 // on top — the escape hatch if a saved edit needs undoing back to original.
 async function clearAllSavedPoseEdits() {
   const s = ghGetSettings();
-  if (!s.token || !s.owner || !s.repo) { alert('Fill in owner/repo/token in the GitHub Presets panel first.'); return; }
+  if (!s.token || !s.owner || !s.repo) { alert('Set your GitHub token in the GitHub Presets panel first (needed to clear saved edits).'); return; }
   if (!confirm('Delete the pose-edits file from GitHub (pose edits, hand pins AND saved 3D joint edits) and reload the page?')) return;
   try {
     const apiUrl = poseOverridesApiUrl(s);
@@ -3082,7 +3087,7 @@ async function resetAllJointEdits3D() {
   let all = null, source = 'saved file';
   try {
     const s = (typeof ghGetSettings === 'function') ? ghGetSettings() : null;
-    if (s && s.token && s.owner && s.repo) {
+    if (s && s.owner && s.repo) {
       all = (await fetchPoseOverridesFile(s)).all;
       poseOverridesCache3D = all;
     }
@@ -3862,8 +3867,12 @@ async function fetchPoseOverridesFile(s) {
 // Hand Facing / Wrist Facing dropdowns are saved PER POSE: on ⬆ Save the
 // current override for each side is written into that pose's own record as raw
 // wristTurn / wrist degrees (same fields the pose loader already re-applies),
-// then the live override is cleared. IK-pinned sides are skipped (they ignore
-// fixed angles). Returns [{side, fields}] to push.
+// then the live override is cleared. IK-pinned sides can't take raw
+// wristTurn/wrist numbers (the IK solve ignores them), so a Bend/Turn
+// override on a pinned side is baked onto the PIN itself as a faceLock
+// instead — same mechanism savePoseFromHandWristPanel()'s isIK branch and
+// mirrorPinSpec3D already use. Swing is never IK-driven, so it always saves
+// as a plain per-side field either way. Returns [{side, fields}] to push.
 function bakeHandFacingIntoPose3D() {
   const pose = POSES3D[currentPose3D];
   const out = [];
@@ -3871,10 +3880,22 @@ function bakeHandFacingIntoPose3D() {
   const lit = (poseLiteralFacing3D && poseLiteralFacing3D[currentPose3D]) || {};
   ['left', 'right'].forEach(side => {
     const r = lastPoseResolved3D && lastPoseResolved3D[side];
-    if (r && r.isIK) return;
+    pose[side] = pose[side] || {};
+    if (r && r.isIK) {
+      const fields = { wristSwing: round1(r.swing || 0) };
+      pose[side].wristSwing = fields.wristSwing;
+      if (ovSet(handRotationOverride[side]) || ovSet(wristRotationOverride[side])) {
+        pose[side].handTarget = Object.assign({}, pose[side].handTarget, {
+          faceLock: { turn: round1(r.wristTurn), hinge: round1(r.wrist) },
+        });
+        fields.handTarget = pose[side].handTarget;
+      }
+      handRotationOverride[side] = null; wristRotationOverride[side] = null; wristSwingOverride[side] = null;
+      out.push({ side, fields });
+      return;
+    }
     const hv = handRotationOverride[side], wv = wristRotationOverride[side];
     const fields = {};
-    pose[side] = pose[side] || {};
     if (hv === 'default') {
       // back to the built-in value: drop the saved fields, restore the literal ones
       ['wristTurn', 'handRotation', 'wristTurnEdit'].forEach(f => { delete pose[side][f]; fields[f] = null; if (lit[side] && lit[side][f] !== undefined) pose[side][f] = lit[side][f]; });
@@ -3902,7 +3923,7 @@ function bakeHandFacingIntoPose3D() {
 async function quickSaveJointsToGitHub3D() {
   if (typeof ghGetSettings !== 'function') { alert("GitHub save isn't available on this page."); return; }
   const s = ghGetSettings();
-  if (!s.token || !s.owner || !s.repo) { alert('Set your GitHub token, owner and repo in the GitHub Presets panel first.'); return; }
+  if (!s.token || !s.owner || !s.repo) { alert('Set your GitHub token in the GitHub Presets panel first (needed to save).'); return; }
   const btn = document.getElementById('jeQuickSaveBtn');
   const setBtn = (txt, disabled) => { if (btn) { btn.textContent = txt; btn.disabled = !!disabled; } };
   setBtn('Saving…', true);
@@ -3968,7 +3989,8 @@ async function quickSaveJointsToGitHub3D() {
 async function quickLoadJointsFromGitHub3D() {
   if (typeof ghGetSettings !== 'function') { alert("GitHub load isn't available on this page."); return; }
   const s = ghGetSettings();
-  if (!s.token || !s.owner || !s.repo) { alert('Set your GitHub token, owner and repo in the GitHub Presets panel first.'); return; }
+  // Only owner+repo are needed to read (see ghHeaders/pullPoseOverridesFromGitHub) — token is a write-only requirement.
+  if (!s.owner || !s.repo) { alert('Set your GitHub owner and repo in the GitHub Presets panel first.'); return; }
   const btn = document.getElementById('jeQuickLoadBtn');
   const setBtn = (txt, disabled) => { if (btn) { btn.textContent = txt; btn.disabled = !!disabled; } };
   setBtn('Loading…', true);
@@ -4008,7 +4030,8 @@ async function autoLoadJointsFromGitHub3D() {
   if (jointEditsSaved3D) { if (!jointEditsInitialApplied3D) applySavedJointEdits3D(); return; }
   if (jointEditsFetching3D || typeof ghGetSettings !== 'function') return;
   const s = ghGetSettings();
-  if (!s.token || !s.owner || !s.repo) return;
+  // Reading only needs owner+repo — see ghHeaders/pullPoseOverridesFromGitHub.
+  if (!s.owner || !s.repo) return;
   jointEditsFetching3D = true;
   try {
     const { all } = await fetchPoseOverridesFile(s);

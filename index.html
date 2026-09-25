@@ -1201,14 +1201,15 @@
 
   <div class="panel" style="width:100%;">
     <div class="panel-title">GitHub Presets</div>
+    <!-- Owner/Repo/Branch default to this project's own repo (see GH_DEFAULT_OWNER/REPO/BRANCH) and don't need to be shown — only a token is needed, to save. -->
+    <input type="hidden" id="ghBodyOwner"/>
+    <input type="hidden" id="ghBodyRepo"/>
+    <input type="hidden" id="ghBodyBranch"/>
     <div class="field-grid">
-      <div class="field"><label>Owner</label><input type="text" id="ghBodyOwner" placeholder="username" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
-      <div class="field"><label>Repo</label><input type="text" id="ghBodyRepo" placeholder="my-repo" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
-      <div class="field"><label>Branch</label><input type="text" id="ghBodyBranch" placeholder="main" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
-      <div class="field"><label>Token</label><input type="password" id="ghBodyToken" placeholder="ghp_…" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
+      <div class="field" style="grid-column:1/-1;"><label>Token</label><input type="password" id="ghBodyToken" placeholder="ghp_… (only needed to save)" onchange="ghSaveSettingsFromUI('ghBody')"/></div>
     </div>
     <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:8px 0 12px;line-height:1.5;">
-      Saved to this browser only. Presets sync to <b>presets/body/</b> in the repo above. Token needs "repo" (contents) access.
+      Loading presets works for anyone, no token needed. Enter a token here only if you want to save changes — it's saved to this browser only. Presets sync to <b>presets/body/</b>. Token needs "repo" (contents) access.
     </p>
     <div class="field-grid" style="margin-bottom:10px;">
       <div class="field" style="grid-column:1/-1;"><label>Preset Name</label><input type="text" id="ghBodyPresetName" placeholder="e.g. tall-male"/></div>
@@ -1855,24 +1856,17 @@
         <span class="cc-section-arrow">▼</span>
       </div>
       <div class="cc-section-body open">
-        <div class="ctrl-row cols-2" style="margin-bottom:8px;">
-          <div class="ctrl-group"><span class="ctrl-label">Owner</span>
-            <input type="text" id="ghFaceOwner" placeholder="username" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
-          </div>
-          <div class="ctrl-group"><span class="ctrl-label">Repo</span>
-            <input type="text" id="ghFaceRepo" placeholder="my-repo" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
-          </div>
-        </div>
-        <div class="ctrl-row cols-2" style="margin-bottom:8px;">
-          <div class="ctrl-group"><span class="ctrl-label">Branch</span>
-            <input type="text" id="ghFaceBranch" placeholder="main" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
-          </div>
+        <!-- Owner/Repo/Branch default to this project's own repo (see GH_DEFAULT_OWNER/REPO/BRANCH) and don't need to be shown — only a token is needed, to save. -->
+        <input type="hidden" id="ghFaceOwner"/>
+        <input type="hidden" id="ghFaceRepo"/>
+        <input type="hidden" id="ghFaceBranch"/>
+        <div class="ctrl-row cols-1" style="margin-bottom:8px;">
           <div class="ctrl-group"><span class="ctrl-label">Token</span>
-            <input type="password" id="ghFaceToken" placeholder="ghp_…" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
+            <input type="password" id="ghFaceToken" placeholder="ghp_… (only needed to save)" onchange="ghSaveSettingsFromUI('ghFace')" style="background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:12px;padding:8px 10px;width:100%;"/>
           </div>
         </div>
         <p style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:10px;line-height:1.5;">
-          Saved to this browser only. Presets sync to <b>presets/face/</b> in the repo above. Token needs "repo" (contents) access.
+          Loading presets works for anyone, no token needed. Enter a token here only if you want to save changes — it's saved to this browser only. Presets sync to <b>presets/face/</b>. Token needs "repo" (contents) access.
         </p>
         <div class="ctrl-row cols-1" style="margin-bottom:8px;">
           <div class="ctrl-group">
@@ -2200,12 +2194,19 @@ function applyBodyState(s) {
 // ═══════════════════════════════════════
 // GITHUB PRESET SYNC
 // ═══════════════════════════════════════
+// Reading (loading saved poses/pins/joint edits) works for anyone, with no
+// setup at all, against this project's own public repo — only WRITING
+// (Save) needs a token, entered explicitly in the GitHub Presets panel, so
+// a random visitor can load the latest poses but can't overwrite them.
+const GH_DEFAULT_OWNER = 'iridesuwa18';
+const GH_DEFAULT_REPO = 'character-height-sheet';
+const GH_DEFAULT_BRANCH = 'main';
 function ghGetSettings() {
   return {
     token: localStorage.getItem('ghToken')||'',
-    owner: localStorage.getItem('ghOwner')||'',
-    repo: localStorage.getItem('ghRepo')||'',
-    branch: localStorage.getItem('ghBranch')||'main',
+    owner: localStorage.getItem('ghOwner')||GH_DEFAULT_OWNER,
+    repo: localStorage.getItem('ghRepo')||GH_DEFAULT_REPO,
+    branch: localStorage.getItem('ghBranch')||GH_DEFAULT_BRANCH,
     bodyFolder: localStorage.getItem('ghBodyFolder')||'presets/body',
     faceFolder: localStorage.getItem('ghFaceFolder')||'presets/face',
   };
@@ -2229,7 +2230,13 @@ function ghSyncSettingsUI() {
   ['ghBodyBranch','ghFaceBranch'].forEach(id=>{const el=document.getElementById(id); if(el) el.value=s.branch;});
 }
 function ghHeaders(token) {
-  return { 'Authorization':`token ${token}`, 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' };
+  const h = { 'Accept':'application/vnd.github+json', 'Content-Type':'application/json' };
+  // No token = anonymous request. GitHub's contents API allows unauthenticated
+  // reads on public repos (lower rate limit, but no login needed), so leaving
+  // Authorization off entirely lets a browser with no saved GitHub settings
+  // still read a public repo's saved pose/joint edits — it just can't write.
+  if (token) h['Authorization'] = `token ${token}`;
+  return h;
 }
 function ghUtf8ToB64(str) { return btoa(unescape(encodeURIComponent(str))); }
 function ghB64ToUtf8(b64) { return decodeURIComponent(escape(atob((b64||'').replace(/\n/g,'')))); }
