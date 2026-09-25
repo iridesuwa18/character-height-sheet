@@ -148,37 +148,25 @@ const rad2deg = r => r * 180 / Math.PI;
 // re-apply it instead of snapping back to a T-pose.
 let currentPose3D = 'stand-relaxed';
 
-// Reference shoulder/waist length (cm) and height (cm) every fixed-angle
-// pose below was hand-tuned against. Fixed joint angles only put a hand in
-// the right real-world spot (on the hip bone, on the opposite arm...) AT
-// these exact proportions — widen the shoulders or waist and the same
-// angles drift the hand off the body's actual surface, since nothing about
-// a plain flex/abd/roll/elbow number knows where the mesh currently is.
-//
-// THE ONE RULE FOR EVERY POSE, EVERY SIDE — nothing pose-specific beyond this:
-//   - A side with a `handTarget` is PINNED. Its hand's default position is
-//     recorded as a fraction of a body mesh box (see MESH_PIN_ANCHORS_3D /
-//     HAND_TARGET_PRESETS_3D) at these exact baseline proportions, so at
-//     21.4/21.4/175 it renders exactly as originally authored. At any other
-//     size, applyArmIK/resolveHandTarget3D re-solve the shoulder+elbow via
-//     IK every rebuild to put the hand back on that same anchor — the hand
-//     itself only moves if the anchor's own mesh face moved (the surface
-//     it's pinned to grew/shrank) or the arm physically can't reach it
-//     (solveArmIK's reach clamp). Nothing else is allowed to touch a pinned
-//     side's shoulder/elbow/wrist — see reapplyManualJointEdits3D, which
-//     explicitly skips a pinned side for exactly this reason.
-//   - A side with NO `handTarget` is UNPINNED. It just uses its authored
-//     flex/abd/roll/elbow numbers as-is; the only thing that changes with
-//     shoulder/waist/height is where its shoulder pivot itself sits (it
-//     hangs off the actual shoulder/hip box position), which rigidly
-//     translates/shifts the whole arm with it. No compensation, no anchor —
-//     that's the intentional "basic shift" for a hand that isn't meant to
-//     be touching a surface in the first place.
-// Converting a pose from unpinned to pinned is authoring data only (add a
-// `handTarget`, ideally captured with the in-app "Pin Hand To" crosshair
-// tool at 21.4/21.4/175 so it's saved against the true baseline) — it never
-// requires touching this engine.
-const BASELINE_SHOULDER_LENGTH_CM = 21.4;
+// A pose's fixed joint angles (shoulder/elbow/wrist, no handTarget) only put
+// the hand in the right real-world spot at the ONE body size they were
+// authored/pinned against — widen the shoulders or waist and the same
+// angles drift the hand off (or into) the body's actual surface. There is
+// no baseline-rescale math for this: a hand that needs to stay anchored to
+// a specific spot regardless of body size gets a `handTarget` pin instead
+// (see MESH_PIN_ANCHORS_3D / resolveHandTarget3D below). A pin's x/y/z are
+// stored as ABSOLUTE cm offsets from that box's own origin, captured at the
+// moment it was pinned — NOT a fraction of the box's current size — so the
+// pinned point stays exactly where it was placed no matter how later
+// shoulder/waist/height edits resize the box underneath it; applyArmIK
+// re-solves the shoulder+elbow (never the target itself) to keep reaching
+// that fixed point every rebuild. The hand only ever moves off the pinned
+// spot as a last resort, when the arm physically can't reach it anymore
+// (see the overreach handling in solveArmIK) — at which point it comes up
+// short along the line to the target rather than snapping somewhere odd.
+// If a surface itself should carry the hand along as it grows (e.g. a palm
+// meant to ride outward with a widening hip), re-pin after the resize —
+// that's a deliberate re-aim, not automatic tracking.
 
 // Word-based presets for handRotation/wristRotation (see the comment block
 // above) — coarse degree values an author can reach for instead of tuning
@@ -579,9 +567,14 @@ function resolveMeshPinAtCrosshair3D() {
 
   return {
     box: anchorKey,
-    x: round2((local.x - box.xCm) / box.wCm),
-    y: round2((yLocal - box.bottomCm) / box.hCm),
-    z: round2((local.z - zOffset) / depthCm),
+    // Absolute cm offsets from the box's own origin (NOT a fraction of its
+    // current width/height/depth) — see boxTargetPoint3D. That's what makes
+    // a pin stay exactly where it was placed instead of drifting when the
+    // box it's on later gets wider/narrower/taller from a shoulder, waist,
+    // or height edit.
+    x: round2(local.x - box.xCm),
+    y: round2(yLocal - box.bottomCm),
+    z: round2(local.z - zOffset),
     normal,
   };
 }
@@ -1046,10 +1039,9 @@ async function savePoseFromHandWristPanel() {
       pose[side].wristSwing = round1(resolved.swing || 0);
       const fields = { wristSwing: pose[side].wristSwing };
       if (ovSet(handRotationOverride[side]) || ovSet(wristRotationOverride[side])) {
-        // Clone before writing — pose[side].handTarget is very often a
-        // SHARED preset object (e.g. PIN_HIP_SIDE.right, reused across many
-        // poses), so mutating it in place would silently corrupt every
-        // other pose pinned the same way.
+        // Clone before writing — a mirrored pin (see mirrorSelectedJoint3D)
+        // can leave two poses/sides pointing at the same handTarget object,
+        // so mutating it in place could silently corrupt the other one.
         pose[side].handTarget = Object.assign({}, pose[side].handTarget, {
           faceLock: { turn: round1(resolved.wristTurn), hinge: round1(resolved.wrist) },
         });
@@ -1110,52 +1102,37 @@ async function savePoseFromHandWristPanel() {
   }
 }
 
-// Hand pins converted from the old named presets (hip-side, chin-rest,
-// behind-back, head-side-salute). Each is a normal mesh pin — box-relative
-// x/y/z + surface normal + elbow pole angles — so it can be re-aimed and
-// saved like any pin. `fromPreset` just marks it as a converted value whose
-// stored normal is the old hand-facing direction (not a true surface face);
-// re-pinning with Aim & Pin replaces it with a real one.
-const PIN_HIP_SIDE = {
-  left:  { box:'waist', x:-0.5, y:0.72, z:-0.05, nx:-0.37, ny:-0.74, nz:-0.56, poleAngles:{ flex:40, abd:25, roll:-30 }, fromPreset:true },
-  right: { box:'waist', x:0.5, y:0.72, z:-0.05, nx:0.37, ny:-0.74, nz:-0.56, poleAngles:{ flex:40, abd:25, roll:-30 }, fromPreset:true },
-};
-const PIN_CHIN_REST = {
-  left:  { box:'head', x:0.04, y:-0.04, z:0.18, nx:0.0, ny:1.0, nz:0.0, poleAngles:{ flex:-40, abd:0, roll:-22 }, fromPreset:true },
-  right: { box:'head', x:0.04, y:-0.04, z:0.18, nx:0.0, ny:1.0, nz:0.0, poleAngles:{ flex:-40, abd:0, roll:-22 }, fromPreset:true },
-};
-const PIN_BEHIND_BACK = {
-  left:  { box:'waist', x:-0.1, y:0.42, z:-0.2, nx:0.0, ny:0.29, nz:-0.96, poleAngles:{ flex:55, abd:0, roll:0 }, fromPreset:true },
-  right: { box:'waist', x:-0.1, y:0.42, z:-0.2, nx:0.0, ny:0.29, nz:-0.96, poleAngles:{ flex:55, abd:0, roll:0 }, fromPreset:true },
-};
-const PIN_SALUTE = {
-  left:  { box:'head', x:-0.48, y:0.8, z:0.58, nx:-0.83, ny:0.45, nz:0.33, poleAngles:{ flex:-65, abd:55, roll:40 }, fromPreset:true },
-  right: { box:'head', x:0.48, y:0.8, z:0.58, nx:0.83, ny:0.45, nz:0.33, poleAngles:{ flex:-65, abd:55, roll:40 }, fromPreset:true },
-};
-
+// No baked-in hand-target presets anymore (hip-side, chin-rest, behind-back,
+// salute all used to live here as shared box-relative pin objects). Every
+// pose below starts with NO handTarget on either side — meaning it renders
+// from its plain fixed joint angles (shoulder/elbow/wrist) alone. Pin a hand
+// via the 3D editor's "Pin Hand" tool (Aim & Pin, or Keep Position) to make
+// that side IK-driven instead; see applyPose3D's leftIK/rightIK (`p.handTargetL
+// ? applyArmIK(...) : false`) for the one rule that decides FK vs IK — it's
+// purely "does this side have a saved pin right now", nothing else.
 const POSES3D = {
   // ── Standing ──────────────────────────────────────────────────────────
   'stand-relaxed':        { section:'Standing', label:'Relaxed' },
   'stand-arms-out':        { section:'Standing', label:'Arms Out (T-Pose)', shoulderAbd:85 },
-  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
   'stand-arms-overhead':   { section:'Standing', label:'Arms Overhead', shoulder:-175, elbow:-5 },
   'stand-arms-crossed':    { section:'Standing', label:'Arms Crossed', shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
-  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right} },
+  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-weight-shift':    { section:'Standing', label:'Weight on One Hip', spineSide:6, right:{hipAbd:9}, left:{hipAbd:2} },
   'stand-hip-pop':         { section:'Standing', label:'Hip Pop', spineSide:10, right:{hipAbd:15}, left:{hipAbd:-2} },
-  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, right:{handTarget:PIN_BEHIND_BACK.right}, left:{handTarget:PIN_BEHIND_BACK.left} },
-  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right} },
+  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90 },
+  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'stand-look-back':       { section:'Standing', label:'Looking Over Shoulder', spineTwist:35 },
   'stand-lean':            { section:'Standing', label:'Casual Lean', spineSide:-8, shoulder:-70, elbow:-105, shoulderAbd:8, wrist:-15, wristTurn:20 },
   'stand-point':           { section:'Standing', label:'Pointing Forward', right:{shoulder:-95, elbow:-10, wrist:5} },
-  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
+  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
   'stand-arms-open':       { section:'Standing', label:'Arms Wide Open', shoulder:20, shoulderAbd:60 },
   'stand-hands-head':      { section:'Standing', label:'Hands Behind Head', shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, handTarget:PIN_SALUTE.right} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -1188,12 +1165,12 @@ const POSES3D = {
   'sit-arms-crossed':   { section:'Sitting', label:'Arms Crossed', hip:-90, knee:90, ankle:-8, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'sit-hand-on-table':  { section:'Sitting', label:'One Arm Resting Forward', hip:-90, knee:90, ankle:-8, right:{shoulder:-80, elbow:-10, wrist:60}, left:{shoulder:5, elbow:-30, wrist:-15} },
   'sit-phone':          { section:'Sitting', label:'Looking at Phone', hip:-90, knee:90, ankle:-8, spineBend:12, shoulder:-70, elbow:-130, shoulderAbd:6, wrist:-70, wristTurn:-60 },
-  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
+  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
   'sit-legs-apart':     { section:'Sitting', label:'Legs Apart', hip:-90, knee:90, ankle:-8, hipAbd:16 },
   'sit-legs-side':      { section:'Sitting', label:'Legs Tucked to the Side', hip:-90, knee:90, ankle:-8, spineTwist:15, hipAbd:35 },
   'sit-stretch-up':     { section:'Sitting', label:'Stretching Arms Up', hip:-90, knee:90, ankle:-8, spineBend:-8, shoulder:-175, elbow:-5 },
   'sit-hands-head':     { section:'Sitting', label:'Hands Behind Head', hip:-90, knee:90, ankle:-8, shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
-  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right}, left:{shoulder:-10, wrist:-15} },
+  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65}, left:{shoulder:-10, wrist:-15} },
   'sit-look-back':      { section:'Sitting', label:'Looking Back', hip:-90, knee:90, ankle:-8, spineTwist:40 },
   'sit-slouch':         { section:'Sitting', label:'Slouching', spineBend:-20, hip:-80, knee:100, shoulder:5 },
   'sit-one-leg-out':    { section:'Sitting', label:'One Leg Extended', right:{hip:-60, knee:25, ankle:-40}, left:{hip:-90, knee:95} },
@@ -1212,7 +1189,7 @@ const POSES3D = {
   'perch-phone':        { section:'Sitting on Something', label:'Checking Phone', hip:-75, knee:70, ankle:-15, spineBend:10, shoulder:-65, elbow:-120, wrist:-70, wristTurn:-60 },
   'perch-legs-apart':   { section:'Sitting on Something', label:'Legs Apart', hip:-75, knee:70, ankle:-15, hipAbd:14 },
   'perch-look-side':    { section:'Sitting on Something', label:'Looking to the Side', hip:-75, knee:70, ankle:-15, spineTwist:30 },
-  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
+  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
   'perch-lean-elbows':  { section:'Sitting on Something', label:'Forward Lean, Elbows on Knees', hip:-75, knee:70, ankle:-15, spineBend:70, shoulder:-69, shoulderAbd:-13, elbow:-45, wrist:-20 },
   'perch-casual-side':  { section:'Sitting on Something', label:'Casual Side Sit', hip:-75, knee:70, ankle:-15, spineTwist:15, hipAbd:20 },
   'perch-back-support': { section:'Sitting on Something', label:'One Arm Back for Support', hip:-75, knee:70, ankle:-15, right:{shoulder:50, elbow:-10, wrist:60}, left:{shoulder:-60, elbow:-90, wrist:-15} },
@@ -1264,7 +1241,7 @@ const POSES3D = {
   'squat-knees-out-low':{ section:'Squatting', label:'Sitting on Heels, Knees Out', hip:-140, knee:170, ankle:-45, hipAbd:35 },
   'squat-look-up':      { section:'Squatting', label:'Squat, Looking Up', hip:-120, knee:140, ankle:-30, spineBend:-20 },
   'squat-lean-fwd':     { section:'Squatting', label:'Squat, Leaning Forward', hip:-125, knee:145, ankle:-35, spineBend:35, shoulder:35, elbow:-15, wrist:-15 },
-  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
   'squat-relaxed-wide': { section:'Squatting', label:'Relaxed Resting Squat', hip:-130, knee:150, ankle:-35, hipAbd:15, shoulder:-30, elbow:-70, wrist:-15 },
   'squat-shallow':      { section:'Squatting', label:'Shallow Squat', hip:-70, knee:80, ankle:-15 },
   'squat-pickup':       { section:'Squatting', label:'Picking Something Up', hip:-115, knee:135, ankle:-25, spineBend:15, shoulder:-100, elbow:-10, wrist:-30 },
@@ -1331,8 +1308,8 @@ const POSES3D = {
   'kick-up-prep':       { section:'Handstand & Inversions', label:'Kicking Up (Donkey Kick)', spineBend:85, shoulder:-90, elbow:-5, wrist:70, right:{hip:60, knee:20, ankle:20}, left:{hip:-95, knee:5, ankle:-60} },
 
   // ── Model Poses ──────────────────────────────────────────────────────
-  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right}, left:{hipAbd:-3} },
-  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right, hipAbd:16}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35}, left:{hipAbd:-3} },
+  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{hipAbd:16} },
   'model-over-shoulder':{ section:'Model Poses', label:'Look Over Shoulder', spineTwist:45, spineSide:8 },
   'model-walk':         { section:'Model Poses', label:'Runway Stride', spineTwist:10, right:{hip:-30, knee:15, ankle:-15, shoulder:20}, left:{hip:35, knee:10, ankle:15, shoulder:-25} },
   'model-power':        { section:'Model Poses', label:'Power Stance, Arms Crossed', spineSide:-5, hipAbd:16, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
@@ -1344,11 +1321,11 @@ const POSES3D = {
   'model-hand-face':    { section:'Model Poses', label:'Hand to Face', spineTwist:20, right:{shoulder:-60, shoulderAbd:22, elbow:-105, wrist:-35, wristTurn:-20} },
   'model-back-look':    { section:'Model Poses', label:'Back to Camera, Looking Back', spineTwist:70, right:{hipAbd:10} },
   'model-seated':       { section:'Model Poses', label:'Editorial Seated', spineTwist:20, hip:-90, knee:95, shoulder:-30, elbow:-80, wrist:-15, right:{hipAbd:22}, left:{hipAbd:-10} },
-  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
   'model-runway-swing': { section:'Model Poses', label:'Runway Walk, Arms Swinging', right:{hip:-35, knee:10, shoulder:35}, left:{hip:30, knee:10, shoulder:-30} },
   'model-jacket-over':  { section:'Model Poses', label:'Jacket Over Shoulder', spineTwist:-15, right:{shoulder:60, elbow:-20, wrist:-40}, left:{shoulder:-40, elbow:-110, shoulderAbd:10, wrist:-15} },
   'model-lean-wall':    { section:'Model Poses', label:'Crossed Legs, Leaning', spineSide:18, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, right:{hipAbd:14}, left:{hip:8, hipAbd:-10} },
-  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35 },
   'model-collarbone':   { section:'Model Poses', label:'Elegant Hand at Collarbone', spineTwist:12, right:{shoulder:90, shoulderAbd:90, elbow:-158, wrist:-30, wristTurn:-20} },
   'model-dynamic-jump': { section:'Model Poses', label:'Dynamic Editorial Jump', spineSide:10, hipAbd:20, knee:20, shoulder:-40, shoulderAbd:65 },
 };
@@ -1584,25 +1561,28 @@ function computeBodyDepth3D(b) {
 // IK-driven pose needs, so it always reflects the body size on screen.
 let ikContext3D = { headBox: null, neckBox: null, torsoBox: null, waistBox: null, legBoxes: { left: null, right: null }, footBoxes: { left: null, right: null }, waistTopY: 0, shoulders: {}, armLens: {}, handDepths: {}, spineDeg: { bend: 0, twist: 0, side: 0 } };
 
-// Shared helper: a point on/near the front face of a body box (head, torso,
-// waist/hip...), given as fractions of that box's own width/height/depth —
-// xFrac/yFrac measured from the box's own bottom-left-ish origin the same
-// way the box's own geometry is (0.5 = the box's horizontal or vertical
-// center), zFrac as a fraction of the box's own computed depth, where ±0.5
-// is exactly the box's own front/back surface (the box spans z ∈
-// [-depth/2, +depth/2], so anything past ±0.5 is already floating outside
-// it — there's rarely a reason to go further than ~0.55-0.6). Returned in
-// the spine's local frame (waistTopY subtracted out), same frame the
-// shoulders/IK solve already use. Since every input is a fraction of the
-// box's OWN current size, the resulting point automatically tracks that box
-// at any body size — no baseline/rescale math needed.
-function boxTargetPoint3D(box, xFrac, yFrac, zFrac) {
+// Shared helper: a point on/near a body box (head, torso, waist/hip...),
+// given as ABSOLUTE CM OFFSETS from that box's own origin — xCm/yCm measured
+// from the box's own bottom-left-ish origin the same way the box's own
+// geometry is (so xCm:0 is the box's horizontal center, yCm:0 is its
+// bottom), zCm as a raw cm offset along the box's own computed depth axis
+// (z ∈ [-depth/2, +depth/2] is the box's own front/back surface — there's
+// rarely a reason to go further than a cm or so past that). Returned in the
+// spine's local frame (waistTopY subtracted out), same frame the
+// shoulders/IK solve already use.
+// Deliberately NOT a fraction of the box's current size: a pin captured
+// here stays at the exact physical spot it was placed at even if the box
+// later resizes (shoulder/waist width, height...) — the arm's shoulder/
+// elbow re-solve around it instead (see applyArmIK). A pin that SHOULD
+// ride outward with a growing surface (e.g. a hand meant to track a
+// widening hip) needs to be re-pinned after the resize; that's a deliberate
+// re-aim rather than automatic tracking.
+function boxTargetPoint3D(box, xCm, yCm, zCm) {
   if (!box) return null;
-  const depthCm = computeBodyDepth3D(box).depthCm;
   return {
-    x: box.xCm + xFrac * box.wCm,
-    y: (box.bottomCm + yFrac * box.hCm) - ikContext3D.waistTopY,
-    z: zFrac * depthCm,
+    x: box.xCm + xCm,
+    y: (box.bottomCm + yCm) - ikContext3D.waistTopY,
+    z: zCm,
   };
 }
 
@@ -1646,24 +1626,23 @@ const HAND_TARGET_PRESETS_3D = {
 };
 
 // ---- Generic mesh-face pinning ---------------------------------------------
-// The named presets above are hand-tuned one-off spots. This is the general
-// case: pin a hand to ANY of the body's rest-position boxes (not just head/
-// torso/waist), at any point on that box's face, given as fractions of that
-// box's OWN current width/height/depth — exactly like boxTargetPoint3D's
-// xFrac/yFrac/zFrac (0.5/0.5 = box center, ±0.5 on x or z = a side/front/
-// back face, y:0/1 = the bottom/top face). Because the fractions are read
-// fresh off that box's current size every rebuild, the pin automatically
-// tracks the mesh through any resize with no extra math.
+// Pin a hand to ANY of the body's rest-position boxes (head/torso/waist/
+// legs/feet), at any point on that box's face, given as ABSOLUTE CM OFFSETS
+// from that box's own origin — exactly like boxTargetPoint3D's xCm/yCm/zCm
+// (0/halfHeight = box center, ±halfDepth on z = the box's own front/back
+// face, y:0/hCm = the bottom/top face). Captured once at pin time and then
+// left alone — a pin does NOT track the box through a later resize; the arm
+// re-solves around the fixed point instead (see the comment above
+// boxTargetPoint3D for why).
 // Deliberately limited to boxes that sit at a fixed rest position relative
 // to their own parent (pelvis or spine) — head, neck, torso, waist/hip, and
 // the legs/feet. Arms and hands are themselves posed (rotated by whatever
 // pose is active), so their CURRENT world position isn't recoverable from
-// the flat 2D box alone; pinning a hand to another hand/arm still goes
-// through a hand-tuned preset like 'opposite-shoulder' above.
+// the flat 2D box alone — a hand can't be pinned to another hand/arm.
 // `pelvisAnchored: true` marks a box that hangs off the pelvis (bodyGroup3D)
 // rather than the spine pivot — its raw point needs the same
-// pelvisPointToSpineLocal3D correction 'hip-side' above uses, or a spine
-// bend/twist will pull the pin off the mesh it's supposed to sit on.
+// pelvisPointToSpineLocal3D correction below, or a spine bend/twist will
+// pull the pin off the mesh it's supposed to sit on.
 const MESH_PIN_ANCHORS_3D = {
   head:       { get: geom => geom.headBox,        pelvisAnchored: false },
   neck:       { get: geom => geom.neckBox,        pelvisAnchored: false },
@@ -1676,13 +1655,16 @@ const MESH_PIN_ANCHORS_3D = {
 };
 
 // Resolves a pose's `handTarget` field to a concrete spine-local point,
-// whichever form it's given in: a named string preset (existing behavior,
-// HAND_TARGET_PRESETS_3D above) or a generic mesh-pin descriptor object
-// `{ box: 'waist'|'torso'|'head'|'neck'|'leftLeg'|'rightLeg'|'leftFoot'|
-// 'rightFoot', x, y, z, poleAngles? }` (x/y/z default to 0/0.5/0.5, the
-// box's front-center, if omitted). Returns null if the target can't be
-// resolved (mesh not built this side, e.g. a missing leg), same as a
-// preset returning null — applyArmIK already treats that as "skip IK".
+// whichever form it's given in: a named string preset (legacy — see
+// HAND_TARGET_PRESETS_3D above, intentionally empty now) or a generic
+// mesh-pin descriptor object `{ box: 'waist'|'torso'|'head'|'neck'|
+// 'leftLeg'|'rightLeg'|'leftFoot'|'rightFoot', x, y, z, poleAngles? }`
+// (x/y/z are absolute cm offsets from that box's own origin — see
+// boxTargetPoint3D; omitted ones default to the box's own center: x:0,
+// y:half the box's height, z:half its depth, i.e. its front-center).
+// Returns null if the target can't be resolved (mesh not built this side,
+// e.g. a missing leg), same as a preset returning null — applyArmIK
+// already treats that as "skip IK".
 function resolveHandTarget3D(side, targetSpec, geom) {
   if (!targetSpec) return null;
   if (typeof targetSpec === 'string') {
@@ -1699,7 +1681,10 @@ function resolveHandTarget3D(side, targetSpec, geom) {
   }
   const anchor = MESH_PIN_ANCHORS_3D[targetSpec.box];
   const box = anchor ? anchor.get(geom) : null;
-  let point = boxTargetPoint3D(box, targetSpec.x ?? 0, targetSpec.y ?? 0.5, targetSpec.z ?? 0.5);
+  if (!box) return null;
+  const defaultYCm = box.hCm / 2;
+  const defaultZCm = computeBodyDepth3D(box).depthCm / 2;
+  let point = boxTargetPoint3D(box, targetSpec.x ?? 0, targetSpec.y ?? defaultYCm, targetSpec.z ?? defaultZCm);
   const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
   if (point && anchor.pelvisAnchored) {
     point = pelvisPointToSpineLocal3D(point, sd.bend, sd.twist, sd.side);
@@ -3663,23 +3648,10 @@ function onJointGizmoChange3D() {
 // Re-stamps every active manual override — called at the end of every
 // applyPose3D() (see the hook there) so a drag isn't silently undone the
 // next time a pose/slider/hand-facing change runs applyPose3D again.
-//
-// EXCEPT for a side that's currently mesh-pinned (handTarget/IK): a manual
-// edit is a raw LOCAL rotation snapshot taken at whatever shoulder/waist/
-// height happened to be active when it was dragged. It never adapts to a
-// later size change, so blindly re-stamping it over a freshly IK-solved
-// shoulder/elbow is exactly what was driving pinned hands into the body —
-// the IK solve above already put the hand back on the anchor for the
-// CURRENT proportions, and re-stamping a stale edit on top would silently
-// undo that. A pinned side's joints are correctly re-solved every rebuild
-// by definition, so manual edits on that side are simply skipped (not
-// deleted — if the hand is later un-pinned, the old edit is still there).
 function reapplyManualJointEdits3D() {
   const je = jointEditsForPose3D(currentPose3D, false);
   ['left', 'right'].forEach(side => {
     const m = je[side];
-    const pinned = !!(lastPoseResolved3D && lastPoseResolved3D[side] && lastPoseResolved3D[side].isIK);
-    if (pinned) return; // IK owns this side's shoulder/elbow/wrist this rebuild — don't fight it
     if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
     if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
     if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
