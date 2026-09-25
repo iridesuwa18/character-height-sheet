@@ -3240,38 +3240,29 @@ function mirrorSelectedJoint3D() {
     // arm and hand facing from it (manual arm angles would fight the pin).
     snapshotPinsForCancel3D();
     pose[other] = pose[other] || {};
-    // Capture the source arm's CURRENT elbow-bend plane as a `pole` hint
-    // (shoulder->elbow direction, spine-local, unit vector) and carry it
-    // onto the mirrored pin. This is the same field applyArmIK/solveArmIK
-    // already read (see resolveHandTarget3D's `pole` passthrough and
-    // computeKeepPositionExtras3D, which computes it the same way for
-    // "keep position" pins) and mirrorPinSpec3D already knows how to flip
-    // (flipX(c.pole)). Storing it as a direction — not a frozen rotation —
-    // means it re-aims correctly at whatever the CURRENT shoulder/elbow
-    // positions are on every solve, so the two arms keep bending into the
-    // same mirrored plane through any later resize instead of one arm
-    // freezing in place.
-    let poleSrc = null;
-    if (shoulderGrp && elbowGrp && rig3D.spine) {
-      rig3D.spine.updateMatrixWorld(true);
-      const ikS = ikContext3D.shoulders && ikContext3D.shoulders[side];
-      let shoulderVec;
-      if (ikS) {
-        shoulderVec = new THREE.Vector3(ikS.x, ikS.y, ikS.z);
-      } else {
-        const w = new THREE.Vector3(); shoulderGrp.getWorldPosition(w);
-        shoulderVec = rig3D.spine.worldToLocal(w);
-      }
-      const ew = new THREE.Vector3(); elbowGrp.getWorldPosition(ew);
-      const elbowVec = rig3D.spine.worldToLocal(ew);
-      const poleVec = elbowVec.clone().sub(shoulderVec);
-      if (poleVec.length() > 1e-6) {
-        poleVec.normalize();
-        poleSrc = { x: round2(poleVec.x), y: round2(poleVec.y), z: round2(poleVec.z) };
-      }
-    }
-    const srcPinForMirror = (poleSrc && typeof srcPin === 'object') ? Object.assign({}, srcPin, { pole: poleSrc }) : srcPin;
-    pose[other].handTarget = mirrorPinSpec3D(srcPinForMirror, wr);
+    // Mirror the pin as-is. If the source pin already carries its own
+    // `pole` (a "keep position" pin sets one — see computeKeepPositionExtras3D),
+    // mirrorPinSpec3D already flips it correctly (flipX(c.pole)) and that's
+    // fine to keep, since it was captured relative to that pin's own offset,
+    // not baked from a one-off arm snapshot.
+    //
+    // Deliberately NOT injecting a fresh `pole` captured from the source
+    // arm's current shoulder->elbow direction here (an earlier version of
+    // this fix did). That direction is only valid for the CURRENT shoulder
+    // width: as shoulder width changes, the shoulder pivot moves while a
+    // waist/hip target doesn't, so the correct elbow-swing plane genuinely
+    // rotates with it. A pole frozen from one width can end up nearly
+    // parallel to the shoulder->target line at another width, which drives
+    // solveArmIK's pole-projection into its degenerate-pole fallback (an
+    // arbitrary elbow direction) and throws the hand wildly off target
+    // (e.g. into the leg) — and it stays wrong until Mirror is run again.
+    //
+    // Leaving `pole` unset instead falls through to applyArmIK's own
+    // default, `{ x: sideSign * 0.5, y: -0.3, z: 0.8 }` — sideSign is ±1 by
+    // side, so it's already an exact left/right mirror of itself, and it's
+    // recomputed fresh on every solve, so it stays correct at any shoulder
+    // width with nothing to go stale.
+    pose[other].handTarget = mirrorPinSpec3D(srcPin, wr);
     jointEditorPinDirty3D[other] = true;
     handRotationOverride[other] = null; wristRotationOverride[other] = null; wristSwingOverride[other] = null;
     elbowBendOverride[other] = null; elbowLiftOverride[other] = null;
