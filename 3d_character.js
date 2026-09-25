@@ -997,9 +997,16 @@ async function clearAllSavedPoseEdits() {
 // shoulderAbd, so any handTarget (mesh pin) already on the pose is left
 // exactly as authored — this is the "/pin" part of the panel state:
 // nothing here overwrites it, it just isn't clobbered by the save either.
-// An IK-driven side (has a handTarget) is skipped entirely: its hand
-// position comes from solving against that target every rebuild, so baking
-// in raw angle numbers here would leave dead fields the IK path ignores.
+// An IK-driven (pinned) side skips elbow/shoulderAbd entirely — those are
+// pure IK output every rebuild, so baking in raw numbers would just leave
+// dead fields the IK path ignores. wristSwing is different: it's never
+// touched by the IK solve (see applyPose3D), so it always saves normally,
+// pinned or not. wristTurn/wrist (Bend/Turn) are normally IK-derived too,
+// but if the user has manually dragged them off the auto-solved facing
+// (see the ovSet checks in applyPose3D's IK branch), that adjustment is
+// baked into the PIN itself as a faceLock — the same mechanism
+// mirrorPinSpec3D already uses for "exact hand facing" — since a raw
+// wristTurn/wrist number on a pinned side is still IK-ignored otherwise.
 // Also pushes the same fields to a JSON file in your GitHub repo (see
 // above) so the edit survives a page reload, not just the rest of this
 // session — needs owner/repo/token filled in on the GitHub Presets panel.
@@ -1009,8 +1016,24 @@ async function savePoseFromHandWristPanel() {
   const toPush = [];
   ['left', 'right'].forEach(side => {
     const resolved = lastPoseResolved3D[side];
-    if (!resolved || resolved.isIK) return;
+    if (!resolved) return;
     pose[side] = pose[side] || {};
+    if (resolved.isIK) {
+      pose[side].wristSwing = round1(resolved.swing || 0);
+      const fields = { wristSwing: pose[side].wristSwing };
+      if (ovSet(handRotationOverride[side]) || ovSet(wristRotationOverride[side])) {
+        // Clone before writing — pose[side].handTarget is very often a
+        // SHARED preset object (e.g. PIN_HIP_SIDE.right, reused across many
+        // poses), so mutating it in place would silently corrupt every
+        // other pose pinned the same way.
+        pose[side].handTarget = Object.assign({}, pose[side].handTarget, {
+          faceLock: { turn: round1(resolved.wristTurn), hinge: round1(resolved.wrist) },
+        });
+        fields.handTarget = pose[side].handTarget;
+      }
+      toPush.push({ side, fields });
+      return;
+    }
     pose[side].wristTurn = round1(resolved.wristTurn);
     pose[side].wrist = round1(resolved.wrist);
     pose[side].wristSwing = round1(resolved.swing || 0);
