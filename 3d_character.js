@@ -2891,12 +2891,13 @@ function closeJointEditorModeUI3D() {
   deselectJoint3D();
   setTimeout(resizeBody3D, 0);
 }
-// Keeps whatever edits were made — the manual overrides already persist in
-// manualJointEdits3D exactly like they do outside the editor, so Apply just
-// closes the fullscreen UI back down to the normal view.
-function applyJointEditorMode3D() {
-  // Apply keeps everything in this session only. Pins changed by Copy/Pin Mode
-  // stay flagged (jointEditorPinDirty3D) until ⬆ Save pushes them to GitHub.
+// "Close" — just leaves the fullscreen editor UI and goes back to the main
+// page. Purely visual: it doesn't apply, save, or undo anything. Whatever's
+// currently in manualJointEdits3D (edited-but-unsaved or already-saved,
+// doesn't matter) stays exactly as it is. Pins changed by Copy/Pin Mode stay
+// flagged (jointEditorPinDirty3D) until ⬆ Save actually pushes them to GitHub
+// — closing the editor doesn't save them and doesn't discard them either.
+function closeJointEditorMode3D() {
   closeJointEditorModeUI3D();
 }
 // Reverts every joint back to the snapshot taken when the editor opened,
@@ -3905,25 +3906,39 @@ async function quickSaveJointsToGitHub3D() {
   const btn = document.getElementById('jeQuickSaveBtn');
   const setBtn = (txt, disabled) => { if (btn) { btn.textContent = txt; btn.disabled = !!disabled; } };
   setBtn('Saving…', true);
+  // Capture everything we're about to save SYNCHRONOUSLY, right now, before
+  // any `await` runs. If we read this stuff after an await instead, a Cancel
+  // click that lands in the gap reverts manualJointEdits3D/pose/facing first,
+  // and we'd end up saving the reverted (pre-edit) state to GitHub — which is
+  // exactly the bug where Save+Cancel silently saved the original pose.
+  const poseKey = currentPose3D, pose = POSES3D[poseKey];
+  const edits = [];
+  for (const sd of ['left', 'right']) {
+    if (jointEditorPinDirty3D[sd]) {
+      clearTimeout(pinPushTimers3D[poseKey + '|' + sd]); delete pinPushTimers3D[poseKey + '|' + sd];
+      const ht = pose && pose[sd] && pose[sd].handTarget;
+      edits.push({ side: sd, fields: { handTarget: ht === undefined ? null : ht } });
+    }
+  }
+  for (const e of bakeHandFacingIntoPose3D()) {
+    const ex = edits.find(x => x.side === e.side);
+    if (ex) Object.assign(ex.fields, e.fields); else edits.push(e);
+  }
+  const jointState = collectJointEditsState3D();
+  // Re-baseline the editor's "revert to this" snapshots to what we're about
+  // to save, right now while it's still fresh. This is what makes Cancel
+  // safe to hit after a Save: from this point on, Cancel only undoes edits
+  // made SINCE this save, not the whole editor session. Keep the old ones
+  // around in case the save fails and we need to put them back.
+  const preSaveModeSnapshot3D = jointEditorModeSnapshot3D;
+  const preSaveFacingSnapshot3D = jointEditorFacingSnapshot3D;
+  jointEditorModeSnapshot3D = cloneManualJointEdits3D(manualJointEdits3D);
+  jointEditorFacingSnapshot3D = { hand: Object.assign({}, handRotationOverride), wrist: Object.assign({}, wristRotationOverride), swing: Object.assign({}, wristSwingOverride) };
   try {
     // Let any pin save already in flight finish, then do EVERYTHING (pins,
     // per-pose facing, joint edits) as ONE commit — several back-to-back
     // commits to the same file is what used to trip GitHub's sha check.
     await pinPushChain3D;
-    const poseKey = currentPose3D, pose = POSES3D[poseKey];
-    const edits = [];
-    for (const sd of ['left', 'right']) {
-      if (jointEditorPinDirty3D[sd]) {
-        clearTimeout(pinPushTimers3D[poseKey + '|' + sd]); delete pinPushTimers3D[poseKey + '|' + sd];
-        const ht = pose && pose[sd] && pose[sd].handTarget;
-        edits.push({ side: sd, fields: { handTarget: ht === undefined ? null : ht } });
-      }
-    }
-    for (const e of bakeHandFacingIntoPose3D()) {
-      const ex = edits.find(x => x.side === e.side);
-      if (ex) Object.assign(ex.fields, e.fields); else edits.push(e);
-    }
-    const jointState = collectJointEditsState3D();
     const run = () => githubUpdatePoseOverrides3D('Quick save 3D joint edits', all => {
       edits.forEach(({ side, fields }) => {
         all[poseKey] = all[poseKey] || {};
@@ -3940,6 +3955,12 @@ async function quickSaveJointsToGitHub3D() {
     setBtn('✓ Saved', false);
     setTimeout(() => setBtn('⬆ Save', false), 1600);
   } catch (err) {
+    // Save failed — the snapshots were re-baselined optimistically above, but
+    // nothing actually reached GitHub, so put them back to how they were
+    // before this attempt, otherwise Cancel would treat the failed edit as
+    // already-saved and stop offering to undo it.
+    jointEditorModeSnapshot3D = preSaveModeSnapshot3D;
+    jointEditorFacingSnapshot3D = preSaveFacingSnapshot3D;
     alert('GitHub quick save failed: ' + err.message);
     setBtn('⬆ Save', false);
   }
