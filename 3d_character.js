@@ -2375,21 +2375,32 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     // elbow numbers. Named presets with no normal (stomach, collarbone,
     // face-cheek...) leave these fields untouched, same as before.
     if (leftIK.orientedWristTurnDeg !== undefined) {
-      p.wristTurnL = leftIK.orientedWristTurnDeg;
-      p.wristL = leftIK.orientedWristHingeDeg;
+      // A manual Bend/Turn slider tweak (Hand/Wrist Facing panel) is a more
+      // explicit signal than the surface-normal solve, so it wins here the
+      // same way it already wins over a pose's own authored angles above —
+      // otherwise a pinned hand could never be fine-tuned off the flush
+      // surface facing (e.g. angling the fingers slightly while still
+      // resting on the hip).
+      if (!ovSet(handRotationOverride.left))  p.wristTurnL = leftIK.orientedWristTurnDeg;
+      if (!ovSet(wristRotationOverride.left)) p.wristL = leftIK.orientedWristHingeDeg;
     }
-    if (leftIK.wristTurnBoost) {
+    if (leftIK.wristTurnBoost && !ovSet(handRotationOverride.left)) {
       // Target was farther than the arm can reach — rotate the wrist a bit
       // further outward on top of whatever's set above, instead of letting
       // the hand quietly stop short of the mesh it's locked onto. IK
       // already fixed the shoulder/elbow to reach the target, so an
       // overshoot here just clamps (no elbow-lift compensation — lifting
       // the elbow now would pull the hand off the target it's locked onto).
+      // Skipped once the user has manually dialed in a turn — the boost
+      // would otherwise silently fight their chosen value.
       p.wristTurnL = clampWristTurn('left', (p.wristTurnL || 0) + leftIK.wristTurnBoost).clamped;
     }
     // A mirrored pin carries the exact hand facing to use (see mirrorPinSpec3D).
     const flL = p.handTargetL && p.handTargetL.faceLock;
-    if (flL) { p.wristTurnL = clampTurnFree(flL.turn); p.wristL = clampWristBend(flL.hinge); }
+    if (flL) {
+      if (!ovSet(handRotationOverride.left))  p.wristTurnL = clampTurnFree(flL.turn);
+      if (!ovSet(wristRotationOverride.left)) p.wristL = clampWristBend(flL.hinge);
+    }
   }
   const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
   let rightElbowBend = p.elbowR, rightElbowLift = 0;
@@ -2406,14 +2417,17 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     setHinge(rig3D.rightElbow, rightElbowBend);
   } else {
     if (rightIK.orientedWristTurnDeg !== undefined) {
-      p.wristTurnR = rightIK.orientedWristTurnDeg;
-      p.wristR = rightIK.orientedWristHingeDeg;
+      if (!ovSet(handRotationOverride.right))  p.wristTurnR = rightIK.orientedWristTurnDeg;
+      if (!ovSet(wristRotationOverride.right)) p.wristR = rightIK.orientedWristHingeDeg;
     }
-    if (rightIK.wristTurnBoost) {
+    if (rightIK.wristTurnBoost && !ovSet(handRotationOverride.right)) {
       p.wristTurnR = clampWristTurn('right', (p.wristTurnR || 0) + rightIK.wristTurnBoost).clamped;
     }
     const flR = p.handTargetR && p.handTargetR.faceLock;
-    if (flR) { p.wristTurnR = clampTurnFree(flR.turn); p.wristR = clampWristBend(flR.hinge); }
+    if (flR) {
+      if (!ovSet(handRotationOverride.right))  p.wristTurnR = clampTurnFree(flR.turn);
+      if (!ovSet(wristRotationOverride.right)) p.wristR = clampWristBend(flR.hinge);
+    }
   }
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
@@ -3310,9 +3324,17 @@ function syncWristSliders3D() {
   el.querySelector('#wsSwingVal3D').textContent = Math.round(parseFloat(swing.value));
   el.querySelector('#wsBendVal3D').textContent = Math.round(parseFloat(bend.value));
   el.querySelector('#wsTurnVal3D').textContent = Math.round(parseFloat(turn.value));
-  const locked = !!res.isIK;
-  bend.disabled = locked; turn.disabled = locked; swing.disabled = locked;
-  el.querySelector('#wsNote3D').style.display = locked ? 'block' : 'none';
+  // Swing was never actually overwritten by IK (it's applied unconditionally
+  // in applyPose3D), and Bend/Turn now win over the surface-locked facing
+  // once the user drags them (see the ovSet checks in the IK branch of
+  // applyPose3D) — so none of the three sliders need to be disabled while
+  // pinned any more. The note instead just explains what dragging does on a
+  // pinned hand, since it's adjusting away from the auto-solved facing
+  // rather than from the pose's own authored angle.
+  const pinned = !!res.isIK;
+  bend.disabled = false; turn.disabled = false; swing.disabled = false;
+  el.querySelector('#wsNote3D').textContent = 'Hand is pinned — dragging adjusts off the auto-solved facing.';
+  el.querySelector('#wsNote3D').style.display = pinned ? 'block' : 'none';
 }
 function onWristSlider3D(axis, n) {
   if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist' || isNaN(n)) return;
@@ -3723,7 +3745,12 @@ function updateJointPanelValues3D() {
   const syncSel = (sel, deg, table) => {
     if (!sel) return;
     const old = sel.querySelector('option[data-custom]'); if (old) old.remove();
-    if (deg === undefined || deg === null || (res && res.isIK)) { sel.value = ''; return; }
+    // Used to always blank out here for a pinned hand, since the surface
+    // pin fully overwrote the angle anyway (no preset could ever match).
+    // Now that a manual override can win over the pin (see applyPose3D),
+    // `deg` is the actual resolved angle either way — so just match it
+    // against the preset table like the unpinned case, pinned or not.
+    if (deg === undefined || deg === null) { sel.value = ''; return; }
     const hit = Object.keys(table).find(k => Math.abs(table[k] - deg) < 0.5);
     if (hit) { sel.value = hit; return; }
     const o = document.createElement('option');
