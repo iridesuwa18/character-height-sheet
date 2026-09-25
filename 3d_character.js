@@ -3598,6 +3598,18 @@ function setWristNumbers3D(side, axis, n) {
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
 }
+// The number inputs above (Position/Rotation X/Y/Z, including the wrist's
+// Bend/Turn/Swing) are all `type=number`, whose mobile numeric keypad often
+// has no minus-sign key — there'd be no way to type a negative value at
+// all on a touchscreen otherwise. This flips the field's current sign and
+// fires a real 'input' event so it goes through the exact same handler
+// (onJointPosInput/onJointRotInput) a keyboard edit would.
+function flipJointNumSign3D(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = round1(-(parseFloat(el.value) || 0));
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
 function onJointRotInput(axis, rawVal) {
   if (!selectedJoint3D) return;
   const n = parseFloat(rawVal);

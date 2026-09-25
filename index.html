@@ -315,11 +315,16 @@
     font-size: 10px; font-weight: 700; text-transform: uppercase; cursor: pointer; min-height: 36px;
   }
   .je-mode-btn.active { background: rgba(240,192,64,0.15); border-color: var(--accent-gold); color: var(--accent-gold); }
-  .je-xyz-row { display: grid; grid-template-columns: 16px 1fr; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .je-xyz-row { display: grid; grid-template-columns: 16px 1fr 24px; gap: 6px; align-items: center; margin-bottom: 5px; }
   .je-xyz-row span { font-size: 10px; color: var(--muted); }
   .je-xyz-row input[type=number] {
     width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
     color: var(--text); font-family: 'Space Mono', monospace; font-size: 11px; padding: 7px 6px; min-height: 32px;
+  }
+  .je-sign-btn {
+    width: 24px; min-height: 32px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--muted); font-family: 'Space Mono', monospace; font-size: 12px;
+    font-weight: 700; cursor: pointer; padding: 0; line-height: 1;
   }
   .je-select {
     width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
@@ -347,8 +352,9 @@
     .je-note { display: none; }
     /* X / Y / Z side by side instead of three stacked rows */
     .je-xyz-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-    .je-xyz-group .je-xyz-row { grid-template-columns: 10px 1fr; gap: 3px; margin-bottom: 0; }
+    .je-xyz-group .je-xyz-row { grid-template-columns: 10px 1fr 20px; gap: 3px; margin-bottom: 0; }
     .je-xyz-row input[type=number] { min-height: 34px; font-size: 12px; padding: 5px 4px; }
+    .je-sign-btn { min-height: 34px; font-size: 11px; }
   }
   .depth-row {
     display: grid; grid-template-columns: 70px 1fr 34px; align-items: center;
@@ -1084,16 +1090,16 @@
 
       <div class="je-section-label">Position (cm from pelvis)</div>
       <div class="je-xyz-group">
-      <div class="je-xyz-row"><span>X</span><input type="number" id="jePosX" step="0.5" oninput="onJointPosInput('x', this.value)"></div>
-      <div class="je-xyz-row"><span>Y</span><input type="number" id="jePosY" step="0.5" oninput="onJointPosInput('y', this.value)"></div>
-      <div class="je-xyz-row"><span>Z</span><input type="number" id="jePosZ" step="0.5" oninput="onJointPosInput('z', this.value)"></div>
+      <div class="je-xyz-row"><span>X</span><input type="number" id="jePosX" step="0.5" oninput="onJointPosInput('x', this.value)"><button type="button" class="je-sign-btn" onclick="flipJointNumSign3D('jePosX')" aria-label="Toggle sign">±</button></div>
+      <div class="je-xyz-row"><span>Y</span><input type="number" id="jePosY" step="0.5" oninput="onJointPosInput('y', this.value)"><button type="button" class="je-sign-btn" onclick="flipJointNumSign3D('jePosY')" aria-label="Toggle sign">±</button></div>
+      <div class="je-xyz-row"><span>Z</span><input type="number" id="jePosZ" step="0.5" oninput="onJointPosInput('z', this.value)"><button type="button" class="je-sign-btn" onclick="flipJointNumSign3D('jePosZ')" aria-label="Toggle sign">±</button></div>
       </div>
 
       <div class="je-section-label">Rotation (degrees)</div>
       <div class="je-xyz-group">
-      <div class="je-xyz-row"><span>X</span><input type="number" id="jeRotX" step="1" oninput="onJointRotInput('x', this.value)"></div>
-      <div class="je-xyz-row"><span>Y</span><input type="number" id="jeRotY" step="1" oninput="onJointRotInput('y', this.value)"></div>
-      <div class="je-xyz-row"><span>Z</span><input type="number" id="jeRotZ" step="1" oninput="onJointRotInput('z', this.value)"></div>
+      <div class="je-xyz-row"><span>X</span><input type="number" id="jeRotX" step="1" oninput="onJointRotInput('x', this.value)"><button type="button" class="je-sign-btn" onclick="flipJointNumSign3D('jeRotX')" aria-label="Toggle sign">±</button></div>
+      <div class="je-xyz-row"><span>Y</span><input type="number" id="jeRotY" step="1" oninput="onJointRotInput('y', this.value)"><button type="button" class="je-sign-btn" onclick="flipJointNumSign3D('jeRotY')" aria-label="Toggle sign">±</button></div>
+      <div class="je-xyz-row"><span>Z</span><input type="number" id="jeRotZ" step="1" oninput="onJointRotInput('z', this.value)"><button type="button" class="je-sign-btn" onclick="flipJointNumSign3D('jeRotZ')" aria-label="Toggle sign">±</button></div>
       </div>
 
       <div id="jeWristOnlyRow">
