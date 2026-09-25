@@ -148,17 +148,36 @@ const rad2deg = r => r * 180 / Math.PI;
 // re-apply it instead of snapping back to a T-pose.
 let currentPose3D = 'stand-relaxed';
 
-// Reference shoulder length (cm) the fixed-angle "hands on hips" / "arms
-// crossed" / etc. poses below were originally hand-tuned against. Fixed
-// joint angles only put the hand in the right real-world spot (on the hip
-// bone, on the opposite arm...) AT that one shoulder width — widen the
-// shoulders and the same angles drift the hand off the body's actual
-// surface. Rather than rescaling angles by this baseline, poses whose hand
-// needs to stay ON a body surface are auto-converted (see
-// HAND_LOCK_SIGNATURES below) to `handTarget`-driven IK instead, which
-// re-solves against a mesh position every rebuild and is therefore correct
-// at ANY shoulder length automatically — this constant is kept only as a
-// documented reference point / for any future baseline-relative tuning.
+// Reference shoulder/waist length (cm) and height (cm) every fixed-angle
+// pose below was hand-tuned against. Fixed joint angles only put a hand in
+// the right real-world spot (on the hip bone, on the opposite arm...) AT
+// these exact proportions — widen the shoulders or waist and the same
+// angles drift the hand off the body's actual surface, since nothing about
+// a plain flex/abd/roll/elbow number knows where the mesh currently is.
+//
+// THE ONE RULE FOR EVERY POSE, EVERY SIDE — nothing pose-specific beyond this:
+//   - A side with a `handTarget` is PINNED. Its hand's default position is
+//     recorded as a fraction of a body mesh box (see MESH_PIN_ANCHORS_3D /
+//     HAND_TARGET_PRESETS_3D) at these exact baseline proportions, so at
+//     21.4/21.4/175 it renders exactly as originally authored. At any other
+//     size, applyArmIK/resolveHandTarget3D re-solve the shoulder+elbow via
+//     IK every rebuild to put the hand back on that same anchor — the hand
+//     itself only moves if the anchor's own mesh face moved (the surface
+//     it's pinned to grew/shrank) or the arm physically can't reach it
+//     (solveArmIK's reach clamp). Nothing else is allowed to touch a pinned
+//     side's shoulder/elbow/wrist — see reapplyManualJointEdits3D, which
+//     explicitly skips a pinned side for exactly this reason.
+//   - A side with NO `handTarget` is UNPINNED. It just uses its authored
+//     flex/abd/roll/elbow numbers as-is; the only thing that changes with
+//     shoulder/waist/height is where its shoulder pivot itself sits (it
+//     hangs off the actual shoulder/hip box position), which rigidly
+//     translates/shifts the whole arm with it. No compensation, no anchor —
+//     that's the intentional "basic shift" for a hand that isn't meant to
+//     be touching a surface in the first place.
+// Converting a pose from unpinned to pinned is authoring data only (add a
+// `handTarget`, ideally captured with the in-app "Pin Hand To" crosshair
+// tool at 21.4/21.4/175 so it's saved against the true baseline) — it never
+// requires touching this engine.
 const BASELINE_SHOULDER_LENGTH_CM = 21.4;
 
 // Word-based presets for handRotation/wristRotation (see the comment block
@@ -3644,10 +3663,23 @@ function onJointGizmoChange3D() {
 // Re-stamps every active manual override — called at the end of every
 // applyPose3D() (see the hook there) so a drag isn't silently undone the
 // next time a pose/slider/hand-facing change runs applyPose3D again.
+//
+// EXCEPT for a side that's currently mesh-pinned (handTarget/IK): a manual
+// edit is a raw LOCAL rotation snapshot taken at whatever shoulder/waist/
+// height happened to be active when it was dragged. It never adapts to a
+// later size change, so blindly re-stamping it over a freshly IK-solved
+// shoulder/elbow is exactly what was driving pinned hands into the body —
+// the IK solve above already put the hand back on the anchor for the
+// CURRENT proportions, and re-stamping a stale edit on top would silently
+// undo that. A pinned side's joints are correctly re-solved every rebuild
+// by definition, so manual edits on that side are simply skipped (not
+// deleted — if the hand is later un-pinned, the old edit is still there).
 function reapplyManualJointEdits3D() {
   const je = jointEditsForPose3D(currentPose3D, false);
   ['left', 'right'].forEach(side => {
     const m = je[side];
+    const pinned = !!(lastPoseResolved3D && lastPoseResolved3D[side] && lastPoseResolved3D[side].isIK);
+    if (pinned) return; // IK owns this side's shoulder/elbow/wrist this rebuild — don't fight it
     if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
     if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
     if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
