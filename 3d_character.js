@@ -1954,10 +1954,7 @@ function buildBody3D() {
   // any manual joint edits made against them first, or the gizmo/quaternion
   // math below would be operating on stale, disposed objects.
   if (jointEditorInited3D) deselectJoint3D();
-  manualJointEdits3D = {
-    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-  };
+  manualJointEdits3D = {};
   while (bodyGroup3D.children.length) {
     disposeObject3D(bodyGroup3D.children.pop());
   }
@@ -2571,15 +2568,13 @@ function setPose3D(poseName) {
   handRotationOverride = { left: null, right: null };
   wristRotationOverride = { left: null, right: null };
   wristSwingOverride = { left: null, right: null };
-  // Also clear elbow bend/lift overrides and any manual joint-editor drags
-  // (shoulder/elbow/wrist) — otherwise leftover nudges from the previous
-  // pose silently ride along, and Mirror copies them onto the other arm.
+  // Also clear elbow bend/lift overrides — transient preview nudges that
+  // were never meant to persist onto a different pose. Manual joint-editor
+  // drags (shoulder/elbow/wrist) don't need clearing any more: they're keyed
+  // by pose (see manualJointEdits3D/jointEditsForPose3D above), so the new
+  // pose automatically gets its own bucket instead of inheriting this one's.
   elbowBendOverride = { left: null, right: null };
   elbowLiftOverride = { left: null, right: null };
-  manualJointEdits3D = {
-    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-  };
   applyPose3D(poseName, { reframe: true });
   document.querySelectorAll('.pose-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.pose === currentPose3D);
@@ -2720,14 +2715,31 @@ let jointEditorPinCopySnapshot3D = null; // pre-copy handTargets of the current 
 let jointSettingsPopupOpen3D = false;  // whether the ⚙ settings popup is currently shown
 let jointEditorCopyLog3D = [];         // what "Copy poses" has pulled onto the current pose this editor session (drives the status chip)
 let jointEditorCameraView3D = 'free';  // 'front' | 'back' | 'side-left' | 'side-right' | 'free'
-// Per-side manual overrides. null = "use whatever the pose/IK just computed";
-// otherwise a THREE.Quaternion snapshot of that group's LOCAL rotation,
-// re-stamped after every applyPose3D() call (see the hook at its end) so a
-// drag survives pose switches, sliders, and Generate until Reset is tapped.
-let manualJointEdits3D = {
-  left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-  right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-};
+// Per-side manual overrides, KEYED BY POSE NAME:
+// manualJointEdits3D[poseName] = { left: {...}, right: {...} }. null = "use
+// whatever the pose/IK just computed"; otherwise a THREE.Quaternion snapshot
+// of that group's LOCAL rotation, re-stamped after every applyPose3D() call
+// (see the hook at its end) so a drag survives sliders and Generate until
+// Reset is tapped. Keying by pose is what stops an edit made (and saved) on
+// ONE pose — e.g. a mirrored wrist — from silently getting stamped onto
+// EVERY other pose too: reapplyManualJointEdits3D() below only ever reads
+// the bucket for whichever pose is currently active, never any other pose's.
+let manualJointEdits3D = {};
+const BLANK_JOINT_EDITS_3D = Object.freeze({ shoulderQuat: null, elbowQuat: null, wristQuat: null });
+// Looks up the edit bucket for one pose. create=true (the default) lazily
+// makes one if it doesn't exist yet — use for anything that's about to WRITE
+// into it. Pass create=false for read-only lookups (e.g. reapply) so merely
+// looking at a pose doesn't leave a permanent blank entry behind for it.
+function jointEditsForPose3D(poseName, create = true) {
+  if (!manualJointEdits3D[poseName]) {
+    if (!create) return { left: BLANK_JOINT_EDITS_3D, right: BLANK_JOINT_EDITS_3D };
+    manualJointEdits3D[poseName] = {
+      left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+      right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
+    };
+  }
+  return manualJointEdits3D[poseName];
+}
 
 function isTouchLikely3D() {
   return !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
@@ -2857,10 +2869,15 @@ function closeJointSettingsPopup3D() {
 // edits would otherwise mutate.
 function cloneManualJointEdits3D(src) {
   const c = (q) => q ? q.clone() : null;
-  return {
-    left:  { shoulderQuat: c(src.left.shoulderQuat),  elbowQuat: c(src.left.elbowQuat),  wristQuat: c(src.left.wristQuat) },
-    right: { shoulderQuat: c(src.right.shoulderQuat), elbowQuat: c(src.right.elbowQuat), wristQuat: c(src.right.wristQuat) },
-  };
+  const out = {};
+  Object.keys(src || {}).forEach(poseName => {
+    const s = src[poseName];
+    out[poseName] = {
+      left:  { shoulderQuat: c(s.left.shoulderQuat),  elbowQuat: c(s.left.elbowQuat),  wristQuat: c(s.left.wristQuat) },
+      right: { shoulderQuat: c(s.right.shoulderQuat), elbowQuat: c(s.right.elbowQuat), wristQuat: c(s.right.wristQuat) },
+    };
+  });
+  return out;
 }
 function openJointEditorMode3D() {
   if (!sceneInited3D) return;
@@ -2983,10 +3000,7 @@ function readPoseElbowWristQuats3D(poseKey) {
   const savedOv = [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride, wristSwingOverride];
   const out = { left: {}, right: {} };
   try {
-    manualJointEdits3D = {
-      left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-      right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-    };
+    manualJointEdits3D = {};
     handRotationOverride = { left: null, right: null };
     wristRotationOverride = { left: null, right: null };
     wristSwingOverride = { left: null, right: null };
@@ -3045,9 +3059,10 @@ function copyElbowWristFromPose3D() {
       cur[side].handTarget = (typeof ht === 'string') ? ht : Object.assign({}, ht);
       handRotationOverride[side] = null; wristRotationOverride[side] = null; wristSwingOverride[side] = null;
       elbowBendOverride[side] = null; elbowLiftOverride[side] = null;
-      manualJointEdits3D[side].shoulderQuat = null;
-      manualJointEdits3D[side].elbowQuat = null;
-      manualJointEdits3D[side].wristQuat = null;
+      const je = jointEditsForPose3D(currentPose3D);
+      je[side].shoulderQuat = null;
+      je[side].elbowQuat = null;
+      je[side].wristQuat = null;
       pinned[side] = true;
       jointEditorPinDirty3D[side] = true;
     });
@@ -3056,9 +3071,10 @@ function copyElbowWristFromPose3D() {
     if (pinned[side]) return;
     // Optional: also copy the shoulder's aim so the elbow lands in the same
     // place as in the source pose (elbow position comes from the shoulder).
-    if (matchElbowPos && src[side].shoulderQuat) manualJointEdits3D[side].shoulderQuat = src[side].shoulderQuat;
-    if (src[side].elbowQuat) manualJointEdits3D[side].elbowQuat = src[side].elbowQuat;
-    if (src[side].wristQuat) manualJointEdits3D[side].wristQuat = src[side].wristQuat;
+    const je = jointEditsForPose3D(currentPose3D);
+    if (matchElbowPos && src[side].shoulderQuat) je[side].shoulderQuat = src[side].shoulderQuat;
+    if (src[side].elbowQuat) je[side].elbowQuat = src[side].elbowQuat;
+    if (src[side].wristQuat) je[side].wristQuat = src[side].wristQuat;
   });
   if (pinned.left || pinned.right) { refreshHandWristButtons(); applyPose3D(currentPose3D, { reframe: false }); }
   reapplyManualJointEdits3D();
@@ -3122,10 +3138,7 @@ async function resetAllJointEdits3D() {
   wristSwingOverride = { left: null, right: null };
   elbowBendOverride = { left: null, right: null };
   elbowLiftOverride = { left: null, right: null };
-  manualJointEdits3D = {
-    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
-  };
+  manualJointEdits3D = {};
   jointEditsSaved3D = all._jointEdits || null;
   jointEditsInitialApplied3D = true;
   if (jointEditsSaved3D) applyJointEditsState3D(jointEditsSaved3D, { keepPose: true });
@@ -3145,21 +3158,16 @@ async function resetAllJointEdits3D() {
   }
 }
 
-// One-tap fix for "the arm/pose looks wrong no matter which pose I pick,
-// even ones with no hands pinned" — the symptom of a STUCK manual joint
-// override. manualJointEdits3D (shoulder/elbow/wrist rotation overrides) is
-// per-SIDE, not per-pose: reapplyManualJointEdits3D() stamps it on top of
-// whatever pose is active, unconditionally. If a bad override ever got
-// pushed to GitHub via "⬆ Save" (e.g. a frozen quaternion from an older
-// buggy Mirror), it auto-loads on every visit — including incognito, since
-// it's a fetch from your own repo, not local browser storage — and keeps
-// clobbering every pose you pick. `↺ Reset` above doesn't fix this: it
-// reloads the SAME saved file, corruption included. This clears both
-// sides' overrides AND immediately re-saves that cleared state, so the bad
-// data can't come back on the next load. It does not touch your pins.
+// Undo button for manual arm/wrist overrides: clears both sides' shoulder/
+// elbow/wrist quaternions for the CURRENT pose only and re-saves that
+// cleared state. manualJointEdits3D is keyed by pose (see
+// jointEditsForPose3D above), so this can no longer affect any other pose —
+// it used to have to be a global "clear everything" hammer back when a bad
+// override could bleed onto every pose at once; that bleed is fixed now, so
+// this is just a normal per-pose undo. It does not touch your pins.
 async function clearAllManualJointOverridesAndSave3D() {
-  if (!confirm('Clear ALL manual arm/wrist overrides on both sides (shoulder, elbow, wrist) and save that cleared state? This does not touch your pins.')) return;
-  manualJointEdits3D = {
+  if (!confirm('Clear manual arm/wrist overrides (shoulder, elbow, wrist) on both sides for the CURRENT pose and save that cleared state? This does not touch your pins or other poses.')) return;
+  manualJointEdits3D[currentPose3D] = {
     left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null },
     right: { shoulderQuat: null, elbowQuat: null, wristQuat: null },
   };
@@ -3339,9 +3347,10 @@ function mirrorSelectedJoint3D() {
     // stops tracking its pin even though pose[other].handTarget still reports
     // "pinned" correctly. Clear any earlier stamp so the mirrored side goes
     // back to a live IK solve, same as any other pinned hand.
-    manualJointEdits3D[other].shoulderQuat = null;
-    manualJointEdits3D[other].elbowQuat    = null;
-    manualJointEdits3D[other].wristQuat    = null;
+    const jePinned = jointEditsForPose3D(currentPose3D);
+    jePinned[other].shoulderQuat = null;
+    jePinned[other].elbowQuat    = null;
+    jePinned[other].wristQuat    = null;
   } else {
     // Unpinned source: mirror the whole arm (shoulder + elbow aim, so the hand
     // lands in the reflected spot) and the hand: wrist Bend and Turn are
@@ -3354,8 +3363,9 @@ function mirrorSelectedJoint3D() {
       delete pose[other].handTarget;
       jointEditorPinDirty3D[other] = true;
     }
-    if (shoulderGrp) manualJointEdits3D[other].shoulderQuat = mirrorQuat3D(shoulderGrp.quaternion);
-    if (elbowGrp)    manualJointEdits3D[other].elbowQuat    = mirrorQuat3D(elbowGrp.quaternion);
+    const jeUnpinned = jointEditsForPose3D(currentPose3D);
+    if (shoulderGrp) jeUnpinned[other].shoulderQuat = mirrorQuat3D(shoulderGrp.quaternion);
+    if (elbowGrp)    jeUnpinned[other].elbowQuat    = mirrorQuat3D(elbowGrp.quaternion);
     if (wr) {
       wristRotationOverride[other] = clampWristBend(wr.wrist);
       wristSwingOverride[other] = clampWristSwing(wr.swing || 0); // same number = mirrored hand
@@ -3363,7 +3373,7 @@ function mirrorSelectedJoint3D() {
       // Exact reflection of the source hand's actual rotation (not just its
       // Bend/Turn numbers), so anything beyond those two numbers mirrors too.
       const wristGrpSrc = rig3D[side + 'Wrist'];
-      manualJointEdits3D[other].wristQuat = wristGrpSrc ? mirrorQuat3D(wristGrpSrc.quaternion) : null;
+      jeUnpinned[other].wristQuat = wristGrpSrc ? mirrorQuat3D(wristGrpSrc.quaternion) : null;
     }
   }
   applyPose3D(currentPose3D, { reframe: false });
@@ -3459,7 +3469,7 @@ function onWristSlider3D(axis, n) {
   if (axis === 'x') wristRotationOverride[side] = clampWristBend(n);
   else if (axis === 'z') wristSwingOverride[side] = clampWristSwing(n);
   else handRotationOverride[side] = clampTurnFree(n);
-  manualJointEdits3D[side].wristQuat = null;
+  jointEditsForPose3D(currentPose3D)[side].wristQuat = null;
   applyPose3D(currentPose3D, { reframe: false });
   updateJointPanelValues3D();
   syncWristSliders3D();
@@ -3609,7 +3619,7 @@ function onJointGizmoChange3D() {
       const pick = dist(a) <= dist(b) ? a : b;
       wristRotationOverride[side] = clampWristBend(pick[0]);
       handRotationOverride[side] = clampTurnFree(pick[1] * sgn);
-      manualJointEdits3D[side].wristQuat = null;
+      jointEditsForPose3D(currentPose3D)[side].wristQuat = null;
       const turn = handRotationOverride[side];
       grp.rotation.set(deg2rad(wristRotationOverride[side]), deg2rad(turn * sgn), 0);
       if (r) { r.wrist = wristRotationOverride[side]; r.wristTurn = turn; }
@@ -3618,13 +3628,13 @@ function onJointGizmoChange3D() {
       updateJointPanelValues3D();
       return;
     }
-    manualJointEdits3D[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = grp.quaternion.clone();
+    jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = grp.quaternion.clone();
   } else {
     const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
     const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
     if (!boneGroup || !childGroup) return;
     const q = aimBoneToWorldPoint3D(boneGroup, childGroup.position, gizmoProxy3D.position);
-    manualJointEdits3D[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
+    jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   }
   reapplyManualJointEdits3D();
   groundBody3D(false); // cheap re-ground during the drag; full reframe happens on release
@@ -3635,8 +3645,9 @@ function onJointGizmoChange3D() {
 // applyPose3D() (see the hook there) so a drag isn't silently undone the
 // next time a pose/slider/hand-facing change runs applyPose3D again.
 function reapplyManualJointEdits3D() {
+  const je = jointEditsForPose3D(currentPose3D, false);
   ['left', 'right'].forEach(side => {
-    const m = manualJointEdits3D[side];
+    const m = je[side];
     if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
     if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
     if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
@@ -3646,8 +3657,9 @@ function reapplyManualJointEdits3D() {
 function resetSelectedJoint3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
-  if (jointType === 'elbow') { manualJointEdits3D[side].shoulderQuat = null; manualJointEdits3D[side].elbowQuat = null; }
-  else { manualJointEdits3D[side].wristQuat = null; }
+  const je = jointEditsForPose3D(currentPose3D);
+  if (jointType === 'elbow') { je[side].shoulderQuat = null; je[side].elbowQuat = null; }
+  else { je[side].wristQuat = null; }
   applyPose3D(currentPose3D, { reframe: false });
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
@@ -3669,7 +3681,7 @@ function onJointPosInput(axis, rawVal) {
   const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
   if (!boneGroup || !childGroup) return;
   const q = aimBoneToWorldPoint3D(boneGroup, childGroup.position, targetWorld);
-  manualJointEdits3D[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
+  jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   reapplyManualJointEdits3D();
   groundBody3D(false);
   attachGizmoToSelection3D();
@@ -3682,7 +3694,7 @@ function setWristNumbers3D(side, axis, n) {
   if (axis === 'x') wristRotationOverride[side] = clampWristBend(n);
   else if (axis === 'z') wristSwingOverride[side] = clampWristSwing(n);
   else handRotationOverride[side] = clampTurnFree(n);
-  manualJointEdits3D[side].wristQuat = null;
+  jointEditsForPose3D(currentPose3D)[side].wristQuat = null;
   applyPose3D(currentPose3D, { reframe: false });
   // Always re-attach (even in rotate mode): the rotate gizmo sits on a
   // proxy snapshotted to the elbow's orientation (see
@@ -3714,7 +3726,7 @@ function onJointRotInput(axis, rawVal) {
   if (!grp) return;
   const euler = new THREE.Euler().setFromQuaternion(grp.quaternion, 'XYZ');
   euler[axis] = deg2rad(n);
-  manualJointEdits3D[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = new THREE.Quaternion().setFromEuler(euler);
+  jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = new THREE.Quaternion().setFromEuler(euler);
   reapplyManualJointEdits3D();
   groundBody3D(false);
   attachGizmoToSelection3D();
@@ -3772,10 +3784,11 @@ function exitEditorPinMode3D(apply) {
     if (!confirmMeshPinAtCrosshair3D()) return; // nothing under the crosshair — stay in Pin Mode
     // A pinned arm is solved by IK; leftover manual shoulder/elbow/wrist
     // edits on that side would be stamped on top and pull the hand off the pin.
-    if (side && manualJointEdits3D[side]) {
-      manualJointEdits3D[side].shoulderQuat = null;
-      manualJointEdits3D[side].elbowQuat = null;
-      manualJointEdits3D[side].wristQuat = null;
+    if (side) {
+      const je = jointEditsForPose3D(currentPose3D);
+      je[side].shoulderQuat = null;
+      je[side].elbowQuat = null;
+      je[side].wristQuat = null;
       applyPose3D(currentPose3D, { reframe: false });
     }
   }
@@ -3919,26 +3932,50 @@ const JOINT_EDITS_KEY = '_jointEdits';
 function collectJointEditsState3D() {
   const r4 = (n) => Math.round(n * 10000) / 10000;
   const q2a = (q) => q ? [r4(q.x), r4(q.y), r4(q.z), r4(q.w)] : null;
+  const byPose = {};
+  Object.keys(manualJointEdits3D).forEach(poseName => {
+    const m = manualJointEdits3D[poseName];
+    byPose[poseName] = {
+      left:  { shoulderQuat: q2a(m.left.shoulderQuat),  elbowQuat: q2a(m.left.elbowQuat),  wristQuat: q2a(m.left.wristQuat) },
+      right: { shoulderQuat: q2a(m.right.shoulderQuat), elbowQuat: q2a(m.right.elbowQuat), wristQuat: q2a(m.right.wristQuat) },
+    };
+  });
   return {
-    pose: currentPose3D,
-    manualJointEdits: {
-      left:  { shoulderQuat: q2a(manualJointEdits3D.left.shoulderQuat),  elbowQuat: q2a(manualJointEdits3D.left.elbowQuat),  wristQuat: q2a(manualJointEdits3D.left.wristQuat) },
-      right: { shoulderQuat: q2a(manualJointEdits3D.right.shoulderQuat), elbowQuat: q2a(manualJointEdits3D.right.elbowQuat), wristQuat: q2a(manualJointEdits3D.right.wristQuat) },
-    },
+    pose: currentPose3D, // last-active pose — informational only, no longer used to force a pose switch on load
+    manualJointEdits: byPose, // keyed by pose name: { [poseName]: { left: {...}, right: {...} } }
     // Hand Facing / Wrist dropdowns are saved per pose (see bakeHandFacingIntoPose3D), not here.
   };
 }
 function applyJointEditsState3D(jstate, { keepPose = false } = {}) {
   if (!jstate) return;
   const a2q = (a) => (Array.isArray(a) && a.length === 4) ? new THREE.Quaternion(a[0], a[1], a[2], a[3]) : null;
-  if (!keepPose && jstate.pose && typeof POSES3D !== 'undefined' && POSES3D[jstate.pose]) currentPose3D = jstate.pose;
-  const m = jstate.manualJointEdits || {};
-  ['left', 'right'].forEach(side => {
-    const src = m[side] || {};
-    manualJointEdits3D[side].shoulderQuat = a2q(src.shoulderQuat);
-    manualJointEdits3D[side].elbowQuat    = a2q(src.elbowQuat);
-    manualJointEdits3D[side].wristQuat    = a2q(src.wristQuat);
-  });
+  const raw = jstate.manualJointEdits || {};
+  // Backward-compat: older saves stored a single flat {left,right} object
+  // (the very bug this per-pose keying fixes — it applied to every pose at
+  // once) instead of {[poseName]: {left,right}}. Detect that old shape and
+  // migrate it onto whichever pose it was captured for, instead of letting
+  // it stick around under the wrong key forever.
+  if (raw.left || raw.right) {
+    const poseKey = (jstate.pose && typeof POSES3D !== 'undefined' && POSES3D[jstate.pose]) ? jstate.pose : currentPose3D;
+    const je = jointEditsForPose3D(poseKey);
+    ['left', 'right'].forEach(side => {
+      const src = raw[side] || {};
+      je[side].shoulderQuat = a2q(src.shoulderQuat);
+      je[side].elbowQuat    = a2q(src.elbowQuat);
+      je[side].wristQuat    = a2q(src.wristQuat);
+    });
+  } else {
+    Object.keys(raw).forEach(poseName => {
+      const src = raw[poseName] || {};
+      const je = jointEditsForPose3D(poseName);
+      ['left', 'right'].forEach(side => {
+        const s = src[side] || {};
+        je[side].shoulderQuat = a2q(s.shoulderQuat);
+        je[side].elbowQuat    = a2q(s.elbowQuat);
+        je[side].wristQuat    = a2q(s.wristQuat);
+      });
+    });
+  }
   applyPose3D(currentPose3D, { reframe: !keepPose });
 }
 // Fetches pose-overrides.json (whole file). Returns { all, sha } — `all` is {}
