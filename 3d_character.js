@@ -3240,20 +3240,54 @@ function mirrorSelectedJoint3D() {
     // arm and hand facing from it (manual arm angles would fight the pin).
     snapshotPinsForCancel3D();
     pose[other] = pose[other] || {};
-    pose[other].handTarget = mirrorPinSpec3D(srcPin, wr);
+    // Capture the source arm's CURRENT elbow-bend plane as a `pole` hint
+    // (shoulder->elbow direction, spine-local, unit vector) and carry it
+    // onto the mirrored pin. This is the same field applyArmIK/solveArmIK
+    // already read (see resolveHandTarget3D's `pole` passthrough and
+    // computeKeepPositionExtras3D, which computes it the same way for
+    // "keep position" pins) and mirrorPinSpec3D already knows how to flip
+    // (flipX(c.pole)). Storing it as a direction — not a frozen rotation —
+    // means it re-aims correctly at whatever the CURRENT shoulder/elbow
+    // positions are on every solve, so the two arms keep bending into the
+    // same mirrored plane through any later resize instead of one arm
+    // freezing in place.
+    let poleSrc = null;
+    if (shoulderGrp && elbowGrp && rig3D.spine) {
+      rig3D.spine.updateMatrixWorld(true);
+      const ikS = ikContext3D.shoulders && ikContext3D.shoulders[side];
+      let shoulderVec;
+      if (ikS) {
+        shoulderVec = new THREE.Vector3(ikS.x, ikS.y, ikS.z);
+      } else {
+        const w = new THREE.Vector3(); shoulderGrp.getWorldPosition(w);
+        shoulderVec = rig3D.spine.worldToLocal(w);
+      }
+      const ew = new THREE.Vector3(); elbowGrp.getWorldPosition(ew);
+      const elbowVec = rig3D.spine.worldToLocal(ew);
+      const poleVec = elbowVec.clone().sub(shoulderVec);
+      if (poleVec.length() > 1e-6) {
+        poleVec.normalize();
+        poleSrc = { x: round2(poleVec.x), y: round2(poleVec.y), z: round2(poleVec.z) };
+      }
+    }
+    const srcPinForMirror = (poleSrc && typeof srcPin === 'object') ? Object.assign({}, srcPin, { pole: poleSrc }) : srcPin;
+    pose[other].handTarget = mirrorPinSpec3D(srcPinForMirror, wr);
     jointEditorPinDirty3D[other] = true;
     handRotationOverride[other] = null; wristRotationOverride[other] = null; wristSwingOverride[other] = null;
     elbowBendOverride[other] = null; elbowLiftOverride[other] = null;
-    // The opposite hand's IK is NOT an exact reflection of the source arm
-    // (it re-derives elbow swing and hand facing on its own), which is what
-    // made mirrored hands come out opposite/tilted. So after the pin is
-    // stored (kept for Save), stamp the exact reflection of the source arm
-    // on top — same as the unpinned path — so the two sides always match.
-    const wristGrpSrc = rig3D[side + 'Wrist'];
-    const m = manualJointEdits3D[other];
-    m.shoulderQuat = shoulderGrp ? mirrorQuat3D(shoulderGrp.quaternion) : null;
-    m.elbowQuat    = elbowGrp    ? mirrorQuat3D(elbowGrp.quaternion)    : null;
-    m.wristQuat    = wristGrpSrc ? mirrorQuat3D(wristGrpSrc.quaternion) : null;
+    // IMPORTANT: do NOT stamp shoulderQuat/elbowQuat/wristQuat here. A pin's
+    // whole point is that it re-solves IK fresh off the CURRENT body geometry
+    // (see resolveHandTarget3D / applyArmIK) so it keeps tracking the mesh
+    // through any later resize (shoulder width, waist width, height, etc).
+    // A frozen quaternion snapshot does the opposite: reapplyManualJointEdits3D
+    // re-stamps it after every rebuild regardless of geometry, so the instant
+    // shoulder width (or anything else) changes, the mirrored arm silently
+    // stops tracking its pin even though pose[other].handTarget still reports
+    // "pinned" correctly. Clear any earlier stamp so the mirrored side goes
+    // back to a live IK solve, same as any other pinned hand.
+    manualJointEdits3D[other].shoulderQuat = null;
+    manualJointEdits3D[other].elbowQuat    = null;
+    manualJointEdits3D[other].wristQuat    = null;
   } else {
     // Unpinned source: mirror the whole arm (shoulder + elbow aim, so the hand
     // lands in the reflected spot) and the hand: wrist Bend and Turn are
