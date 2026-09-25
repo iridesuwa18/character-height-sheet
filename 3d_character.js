@@ -1917,34 +1917,15 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
       resolved.point.z + resolved.normal.z * halfThick
     );
   }
-  let sol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower, pole);
+  const sol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower, pole);
   if (!sol) return false;
-  // A "keep hand where it is" pin that still matches its captured joints
-  // (checked below) snaps straight to those saved quaternions and never
-  // uses this solve at all — so the reach/stretch computation is deferred
-  // until after that check, and only actually applied to the shoulder/elbow
-  // rotation and the forearm mesh on the path that's really driven by this
-  // solve. Applying a stretched mesh under joints snapped back to their
-  // original saved (unstretched) rotation was exactly the "flattened/
-  // stiffer" mismatch reported after the first version of this.
-  const STRETCH_CAP_PCT = 0.18;
-  const maxStretchCm = lens.lower * STRETCH_CAP_PCT;
-  let stretchCm = 0;
-  if (sol.overreachCm > 0.01) {
-    stretchCm = Math.min(sol.overreachCm, maxStretchCm);
-    // Re-solve with the stretched forearm length so the shoulder/elbow bend
-    // is geometrically consistent with the longer reach, rather than reusing
-    // the rest-length solve and just stretching the mesh under it.
-    const stretchedSol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower + stretchCm, pole);
-    if (stretchedSol) sol = stretchedSol;
-  }
+  shoulderGrp.rotation.x = sol.flexRad;
+  shoulderGrp.rotation.y = sol.rollRad;
+  shoulderGrp.rotation.z = sol.zRad;
+  elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
   const maxReach = (lens.upper + lens.lower) || 1;
-  // sol.overreachCm here is whatever's LEFT after the stretch above (0 if
-  // the stretch fully closed the gap), so the wrist-turn "sell it" boost
-  // only kicks in for overreach beyond what soft-stretch already absorbed.
   const wristTurnBoost = Math.min(30, (sol.overreachCm / maxReach) * 90);
   let result = { wristTurnBoost };
-  let usedKeptQuat = false;
   if (resolved.offset && typeof targetSpec === 'object' && targetSpec.joints && targetSpec.target) {
     const t = targetSpec.target;
     const dist = Math.hypot(targetPoint.x - t.x, targetPoint.y - t.y, targetPoint.z - t.z);
@@ -1954,24 +1935,6 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
       elbowGrp.quaternion.set(J.e[0], J.e[1], J.e[2], J.e[3]);
       keptWristQuat3D[side] = new THREE.Quaternion(J.w[0], J.w[1], J.w[2], J.w[3]);
       result = { wristTurnBoost: 0 };
-      usedKeptQuat = true;
-    }
-  }
-  if (!usedKeptQuat) {
-    // Only this path's rotation actually matches (and needs) the stretched
-    // reach computed above — apply the solve and, if it stretched, the
-    // matching forearm mesh/wrist-pivot extension.
-    shoulderGrp.rotation.x = sol.flexRad;
-    shoulderGrp.rotation.y = sol.rollRad;
-    shoulderGrp.rotation.z = sol.zRad;
-    elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
-    const restLen = rig3D[side + 'LowerRestLen'];
-    if (restLen != null && stretchCm > 0) {
-      const newLen = restLen + stretchCm;
-      const mesh = rig3D[side + 'ForearmMesh'];
-      const wristGrp = rig3D[side + 'Wrist'];
-      if (mesh) { mesh.scale.y = newLen / restLen; mesh.position.y = -newLen / 2; }
-      if (wristGrp) wristGrp.position.y = -newLen;
     }
   }
   if (resolved.normal && !resolved.offset) { // a kept-position pin doesn't re-aim the hand at the surface
@@ -2188,12 +2151,6 @@ function buildBody3D() {
     // Kept so applyPose3D can recolor it red/blue for flipped/unflipped
     // (palm/dorsum) every time the pose or a hand/wrist override changes.
     rig3D[side + 'ForearmMesh'] = lower;
-    // Rest (unstretched) forearm length — applyArmIK's soft-stretch reads
-    // this to know how far past rest the forearm/wrist should visually
-    // extend for an overreaching mesh pin, and resetForearmStretch3D uses
-    // it to snap back to rest on every render before deciding whether any
-    // stretch is needed this frame.
-    rig3D[side + 'LowerRestLen'] = lowerH;
 
     const elbowJoint = makeJointSphere(armDepthCm);
     elbowJoint.position.set(0, 0, 0);
@@ -2367,22 +2324,6 @@ function buildBody3D() {
 // { reframe:true } to also re-fit the camera to the new silhouette, which
 // setPose3D() does for an explicit pose pick; buildBody3D()'s automatic
 // re-apply after a rebuild does not, so it doesn't disturb the camera.
-// Snaps one side's forearm mesh + wrist pivot back to rest length. Called
-// unconditionally for both sides at the top of every applyPose3D, BEFORE
-// the IK/non-IK branch runs — so a side that was stretched by a previous
-// overreaching mesh pin doesn't stay visually stretched once the pose
-// changes to something non-IK, or once an IK pin comes back within reach
-// (e.g. widen-then-return-to-original no longer leaves a stale stretch
-// behind). applyArmIK re-stretches on top of this, this frame, if needed.
-function resetForearmStretch3D(side) {
-  const restLen = rig3D[side + 'LowerRestLen'];
-  if (restLen == null) return;
-  const mesh = rig3D[side + 'ForearmMesh'];
-  const wristGrp = rig3D[side + 'Wrist'];
-  if (mesh) { mesh.scale.y = 1; mesh.position.y = -restLen / 2; }
-  if (wristGrp) wristGrp.position.y = -restLen;
-}
-
 function applyPose3D(poseName, { reframe = false } = {}) {
   const pose = POSES3D[poseName] || POSES3D['stand-relaxed'];
   currentPose3D = POSES3D[poseName] ? poseName : 'stand-relaxed';
@@ -2439,8 +2380,6 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   // pelvisPointToSpineLocal3D — so stamp that onto ikContext3D right before
   // solving, using this pose's own spine numbers.
   ikContext3D.spineDeg = { bend: p.spineBend || 0, twist: p.spineTwist || 0, side: p.spineSide || 0 };
-  resetForearmStretch3D('left');
-  resetForearmStretch3D('right');
   const leftIK = p.handTargetL ? applyArmIK('left', rig3D.leftShoulder, rig3D.leftElbow, p.handTargetL) : false;
   // Actually-applied elbow bend/lift for this render — defaults to the
   // pose's own numbers (untouched) for an IK-driven side, and gets replaced
