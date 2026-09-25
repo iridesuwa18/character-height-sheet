@@ -4,9 +4,24 @@
     "manualJointEdits": {
       "stand-relaxed": {
         "left": {
-          "shoulderQuat": null,
-          "elbowQuat": null,
-          "wristQuat": null
+          "shoulderQuat": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "elbowQuat": [
+            -0.0074,
+            0.0637,
+            -0.1159,
+            0.9912
+          ],
+          "wristQuat": [
+            -0.0699,
+            -0.7391,
+            -0.0777,
+            0.6655
+          ]
         },
         "right": {
           "shoulderQuat": null,
@@ -71,7 +86,8 @@
     "left": {
       "wristTurn": 99,
       "wrist": -12,
-      "wristTurnEdit": 96
+      "wristTurnEdit": 96,
+      "wristSwing": 0
     },
     "right": {
       "wristTurnEdit": 96,
