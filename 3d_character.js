@@ -1705,7 +1705,15 @@ function resolveHandTarget3D(side, targetSpec, geom) {
     offset = { x: targetSpec.offset.x || 0, y: targetSpec.offset.y || 0, z: targetSpec.offset.z || 0 };
     if (anchor.pelvisAnchored) offset = pelvisPointToSpineLocal3D(offset, sd.bend, sd.twist, sd.side);
   }
-  return { point, poleAngles: targetSpec.poleAngles, normal, offset, pole: targetSpec.pole || null };
+  // A `pole` on a pin is only ever legitimate as part of a "keep position"
+  // pin's bundle (offset + joints + target — see computeKeepPositionExtras3D),
+  // meaning it's already scoped to that exact captured wrist offset. A `pole`
+  // with no `offset` alongside it isn't something any current pin-creation
+  // path produces — it can only be leftover data from an older/buggy save
+  // (e.g. a stale mirror). Ignore it so old saved poses self-heal instead of
+  // permanently locking one arm's elbow to a now-mismatched direction.
+  const pole = (targetSpec.pole && targetSpec.offset) ? targetSpec.pole : null;
+  return { point, poleAngles: targetSpec.poleAngles, normal, offset, pole };
 }
 
 const v3 = (x, y, z) => ({ x, y, z });
