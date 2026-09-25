@@ -3224,6 +3224,36 @@ function mirrorPinSpec3D(ht, wr) {
   });
   return c;
 }
+// Mobile-friendly debug readout (no devtools needed): shows the raw stored
+// handTarget for both wrists plus what it currently RESOLVES to (the actual
+// spine-local point/normal/offset applyArmIK will aim at, given the CURRENT
+// body geometry) — via resolveHandTarget3D, the same function applyArmIK
+// itself calls. If the two `resolved` points aren't an exact mirror
+// (same y/z, opposite x) at the current geometry, the bug is in the
+// resolve/geometry path; if they ARE a mirror but the rendered hands still
+// look wrong, the bug is downstream in the IK solve itself.
+function debugShowPins3D() {
+  const pose = POSES3D[currentPose3D];
+  const ex = pose ? expandPose3D(pose) : null;
+  const lines = [];
+  ['left', 'right'].forEach(side => {
+    const raw = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
+    lines.push(`${side.toUpperCase()} raw: ${raw ? JSON.stringify(raw) : '(none)'}`);
+    if (raw) {
+      const resolved = resolveHandTarget3D(side, raw, ikContext3D);
+      lines.push(`${side.toUpperCase()} resolved: ${resolved ? JSON.stringify({
+        point: resolved.point,
+        normal: resolved.normal,
+        offset: resolved.offset,
+        pole: resolved.pole,
+      }) : '(could not resolve — box/mesh missing this side)'}`);
+    }
+    const shoulder = ikContext3D.shoulders && ikContext3D.shoulders[side];
+    const lens = ikContext3D.armLens && ikContext3D.armLens[side];
+    lines.push(`${side.toUpperCase()} shoulder/lens: ${JSON.stringify({ shoulder, lens })}`);
+  });
+  alert(lines.join('\n\n'));
+}
 function mirrorSelectedJoint3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
