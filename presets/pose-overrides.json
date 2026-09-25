@@ -1,35 +1,35 @@
 {
   "_jointEdits": {
-    "pose": "stand-relaxed",
+    "pose": "stand-hands-hips",
     "manualJointEdits": {
       "left": {
         "shoulderQuat": null,
         "elbowQuat": [
+          -0.4697,
           0,
-          0,
-          -0.0725,
-          0.9974
+          -0.1149,
+          0.8753
         ],
         "wristQuat": null
       },
       "right": {
         "shoulderQuat": [
-          0,
-          0,
-          0,
-          1
+          0.2293,
+          -0.3763,
+          0.0707,
+          0.8949
         ],
         "elbowQuat": [
+          -0.4697,
           0,
-          0,
-          0.0725,
-          0.9974
+          0.1149,
+          0.8753
         ],
         "wristQuat": [
-          -0.3185,
-          0.6706,
-          -0.1546,
-          0.6519
+          0.2431,
+          -0.587,
+          -0.0007,
+          0.7723
         ]
       }
     }
@@ -37,13 +37,23 @@
   "stand-hands-hips": {
     "right": {
       "handTarget": {
-        "box": "rightLeg",
+        "box": "waist",
         "x": 0.5,
-        "y": 0.83,
-        "z": 0.07,
-        "nx": 1,
-        "ny": 0,
-        "nz": 0
+        "y": 0.72,
+        "z": -0.05,
+        "nx": 0.37,
+        "ny": -0.74,
+        "nz": -0.56,
+        "poleAngles": {
+          "flex": 40,
+          "abd": 25,
+          "roll": -30
+        },
+        "fromPreset": true,
+        "faceLock": {
+          "turn": -78,
+          "hinge": 22
+        }
       }
     }
   },
