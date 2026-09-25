@@ -3997,6 +3997,18 @@ function bakeHandFacingIntoPose3D() {
       fields.wrist = round1(clampWristBend(wristOvDeg(wv)));
       pose[side].wrist = fields.wrist; delete pose[side].wristRotation; fields.wristRotation = null;
     }
+    // Swing was being silently discarded here: wristSwingOverride[side] gets
+    // nulled out a few lines below on every save, but until now nothing ever
+    // wrote its value into the saved pose first — so a mirrored/edited wrist's
+    // swing looked right in-session but reverted to the pose's default swing
+    // on the next reload. Bake it the same way Bend/Turn are baked above.
+    const sv = wristSwingOverride[side];
+    if (sv === 'default') {
+      delete pose[side].wristSwing; fields.wristSwing = null;
+    } else if (ovSet(sv)) {
+      fields.wristSwing = round1(clampWristSwing(sv));
+      pose[side].wristSwing = fields.wristSwing;
+    }
     if (!Object.keys(fields).length) return;
     handRotationOverride[side] = null; wristRotationOverride[side] = null; wristSwingOverride[side] = null;
     out.push({ side, fields });
