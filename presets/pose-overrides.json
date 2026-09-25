@@ -5,10 +5,10 @@
       "left": {
         "shoulderQuat": null,
         "elbowQuat": [
-          -0.4697,
+          -0.4359,
           0,
-          -0.1149,
-          0.8753
+          -0.0976,
+          0.8947
         ],
         "wristQuat": null
       },
@@ -20,10 +20,10 @@
           0.8949
         ],
         "elbowQuat": [
-          -0.4697,
+          -0.4359,
           0,
-          0.1149,
-          0.8753
+          0.0976,
+          0.8947
         ],
         "wristQuat": [
           0.2431,
@@ -42,6 +42,29 @@
         "y": 0.72,
         "z": -0.05,
         "nx": 0.37,
+        "ny": -0.74,
+        "nz": -0.56,
+        "poleAngles": {
+          "flex": 40,
+          "abd": 25,
+          "roll": -30
+        },
+        "fromPreset": true,
+        "faceLock": {
+          "turn": -78,
+          "hinge": 22
+        }
+      },
+      "wristSwing": 0
+    },
+    "left": {
+      "wristSwing": -18,
+      "handTarget": {
+        "box": "waist",
+        "x": -0.5,
+        "y": 0.72,
+        "z": -0.05,
+        "nx": -0.37,
         "ny": -0.74,
         "nz": -0.56,
         "poleAngles": {
