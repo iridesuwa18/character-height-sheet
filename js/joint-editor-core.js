@@ -240,6 +240,8 @@ function closeJointEditorModeUI3D() {
   const bottomBar = document.getElementById('jointEditorBottomBar'); if (bottomBar) bottomBar.style.display = 'none';
   const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = 'none';
   closeCopyPopup3D();
+  if (typeof closeFacesPopup3D === 'function') closeFacesPopup3D();
+  if (typeof resetFacesSelection3D === 'function') resetFacesSelection3D();
   jointEditorCopyLog3D = [];
   updateCopyBadge3D();
   deselectJoint3D();

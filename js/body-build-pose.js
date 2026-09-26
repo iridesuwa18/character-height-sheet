@@ -11,6 +11,7 @@ function buildBody3D() {
   // math below would be operating on stale, disposed objects.
   if (jointEditorInited3D) deselectJoint3D();
   manualJointEdits3D = {};
+  if (typeof resetFacesSelection3D === 'function') resetFacesSelection3D(); // overlays are parented on meshes about to be disposed below
   while (bodyGroup3D.children.length) {
     disposeObject3D(bodyGroup3D.children.pop());
   }
@@ -572,10 +573,19 @@ function updateHeadDepth(value) {
     if (rec.group !== 'head') return;
     rec.mesh.geometry.dispose();
     rec.mesh.geometry = new THREE.BoxGeometry(rec.wCm, rec.hCm, headDepthMult * rec.wCm);
+    // Only the head box's own black outline should be rebuilt here — matching
+    // on "any child with a .geometry" would also catch the Faces panel's
+    // yellow/pink highlight overlays (see joint-faces-panel.js) and wreck
+    // them by handing them this edges-outline geometry instead of their own.
     rec.mesh.children.forEach(c => {
-      if (c.geometry) { c.geometry.dispose(); c.geometry = new THREE.EdgesGeometry(rec.mesh.geometry); }
+      if (c instanceof THREE.LineSegments) { c.geometry.dispose(); c.geometry = new THREE.EdgesGeometry(rec.mesh.geometry); }
     });
   });
+  // The head box just changed shape — refresh the highlight (which is sized
+  // off the old bounding box) if it's currently showing on the head.
+  if (typeof facesSelectedMeshGroup3D !== 'undefined' && facesSelectedMeshGroup3D === 'head' && typeof applyFacesHighlight3D === 'function') {
+    applyFacesHighlight3D();
+  }
 }
 
 // Body depth affects torso/waist/legs/feet (and, via the hourglass
