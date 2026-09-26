@@ -86,6 +86,16 @@ function commitHandPin3D(side, meshKey, faceKey) {
     offset: { x: round2(wristPos.x - facePoint.x), y: round2(wristPos.y - facePoint.y), z: round2(wristPos.z - facePoint.z) },
   };
   jointEditorPinDirty3D[side] = true;
+  // The moment this side becomes pinned, applyArmPosition3D's IK solve owns
+  // its shoulder/elbow every render from here on (see reapplyManualJointEdits3D's
+  // isPositioned guard) — any manual shoulder/elbow drag from before the pin
+  // is now permanently inert. Clear it here rather than leaving it sitting
+  // underneath the guard: without this, the Joint Editor panel/gizmo could
+  // still show a stale manual rotation for a joint the pin has already taken
+  // over, which is confusing even though it no longer renders.
+  const jePin = jointEditsForPose3D(currentPose3D);
+  jePin[side].shoulderQuat = null;
+  jePin[side].elbowQuat = null;
   // Stage this hand's current position+rotation as its new Default Setter
   // data for this session (see captureHandDefaultFromCurrent3D) — nothing
   // is saved to GitHub here; ⬆ Save is what confirms it.

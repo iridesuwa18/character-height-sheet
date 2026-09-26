@@ -110,15 +110,26 @@ function mirrorArmToOtherSide3D(side) {
     // (or the pose's own default) instead of copying the source hand's
     // actual rotation. Mirror it explicitly here, the same way the unpinned
     // branch below does.
+    // Bend/Turn/Swing together are the wrist's full 3-DOF rotation (its
+    // Euler x/y/z, one-for-one — see applyPose3D) and copying the SAME raw
+    // number to both sides already mirrors it exactly, because Turn/Swing's
+    // own sign flips per side (see the *-1/*1 in applyPose3D) while Bend
+    // doesn't. Also stamping a separately-computed mirrored quaternion (the
+    // old wristGrpSrc.quaternion negate-y/z copy) on top made this a second,
+    // redundant writer for the exact same rotation: lastPoseResolved3D
+    // (what the panel/Save read) reflects the Bend/Turn/Swing numbers set
+    // just above, while the quaternion — applied afterward by
+    // reapplyManualJointEdits3D — is what's actually rendered. Any drift
+    // between the two (float rounding, or the Euler decomposition's two
+    // equivalent solutions) meant the saved numbers and the on-screen
+    // rotation could disagree. Clearing wristQuat here makes the overrides
+    // the ONLY source of truth for a mirrored wrist's rotation.
     if (wr) {
       wristRotationOverride[other] = clampWristBend(wr.wrist);
       wristSwingOverride[other] = clampWristSwing(wr.swing || 0);
       handRotationOverride[other] = clampTurnFree(wr.wristTurn);
-      const wristGrpSrc = rig3D[side + 'Wrist'];
-      jePinned[other].wristQuat = wristGrpSrc ? mirrorQuat3D(wristGrpSrc.quaternion) : null;
-    } else {
-      jePinned[other].wristQuat = null;
     }
+    jePinned[other].wristQuat = null;
   } else {
     // Unpinned source: mirror the whole arm (shoulder + elbow aim, so the hand
     // lands in the reflected spot) and the hand: wrist Bend and Turn are
@@ -134,15 +145,15 @@ function mirrorArmToOtherSide3D(side) {
     const jeUnpinned = jointEditsForPose3D(currentPose3D);
     if (shoulderGrp) jeUnpinned[other].shoulderQuat = mirrorQuat3D(shoulderGrp.quaternion);
     if (elbowGrp)    jeUnpinned[other].elbowQuat    = mirrorQuat3D(elbowGrp.quaternion);
+    // Bend/Turn/Swing are the wrist's whole rotation (see the block comment
+    // in the pinned branch above for why the redundant quaternion mirror is
+    // gone) — same number = mirrored hand, nothing else needed.
     if (wr) {
       wristRotationOverride[other] = clampWristBend(wr.wrist);
-      wristSwingOverride[other] = clampWristSwing(wr.swing || 0); // same number = mirrored hand
-      handRotationOverride[other] = clampTurnFree(wr.wristTurn); // same number = mirrored hand
-      // Exact reflection of the source hand's actual rotation (not just its
-      // Bend/Turn numbers), so anything beyond those two numbers mirrors too.
-      const wristGrpSrc = rig3D[side + 'Wrist'];
-      jeUnpinned[other].wristQuat = wristGrpSrc ? mirrorQuat3D(wristGrpSrc.quaternion) : null;
+      wristSwingOverride[other] = clampWristSwing(wr.swing || 0);
+      handRotationOverride[other] = clampTurnFree(wr.wristTurn);
     }
+    jeUnpinned[other].wristQuat = null;
   }
   applyPose3D(currentPose3D, { reframe: false });
   reapplyManualJointEdits3D();

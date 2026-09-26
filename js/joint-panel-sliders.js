@@ -254,12 +254,29 @@ function onJointGizmoChange3D() {
 // Re-stamps every active manual override — called at the end of every
 // applyPose3D() (see the hook there) so a drag isn't silently undone the
 // next time a pose/slider/hand-facing change runs applyPose3D again.
+//
+// Shoulder/elbow are skipped on a side that's currently POSITION-driven
+// (a pin, or a Default Setter position with nothing pinned — see
+// lastPoseResolved3D[side].isPositioned, stamped by applyPose3D right
+// before this runs). On that kind of side, applyArmPosition3D's IK solve
+// already owns the shoulder/elbow every render; re-stamping a leftover
+// manual quaternion on top of it would silently fight the solve (the IK
+// computes the correct aim, then this immediately overwrites it), and
+// that corrupted result is exactly what the Default Setter's "Update"
+// button then captures as the new default — which is why it never
+// settled. The wrist is unaffected by this guard: hand facing is always
+// independent of hand position in this system, so a manual wrist
+// rotation still needs to re-apply regardless of which side is pinned.
 function reapplyManualJointEdits3D() {
   const je = jointEditsForPose3D(currentPose3D, false);
   ['left', 'right'].forEach(side => {
     const m = je[side];
-    if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
-    if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
+    const res = lastPoseResolved3D && lastPoseResolved3D[side];
+    const isPositioned = !!(res && res.isPositioned);
+    if (!isPositioned) {
+      if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
+      if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
+    }
     if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
   });
 }
@@ -282,11 +299,20 @@ function onJointPosInput(axis, rawVal) {
   if (isNaN(n)) return;
   const { side, jointType } = selectedJoint3D;
   const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
-  if (!grp || !bodyGroup3D) return;
+  // Same frame as the Default Setter (jointWorldPosSpineLocal3D /
+  // captureHandDefaultFromCurrent3D) and the IK solve itself
+  // (ikContext3D.shoulders is spine-local, see buildBody3D) — NOT
+  // bodyGroup3D/pelvis. The two frames only coincide when the spine has
+  // zero bend/twist/lean; any spine rotation rotates+offsets one relative
+  // to the other, so typing/reading a pelvis-relative number here never
+  // matched what got captured as the default. See updateJointPanelValues3D
+  // for the matching read side of this.
+  if (!grp || !rig3D.spine) return;
+  rig3D.spine.updateMatrixWorld(true);
   const world = new THREE.Vector3(); grp.getWorldPosition(world);
-  const local = bodyGroup3D.worldToLocal(world.clone());
+  const local = rig3D.spine.worldToLocal(world.clone());
   local[axis] = n;
-  const targetWorld = bodyGroup3D.localToWorld(local.clone());
+  const targetWorld = rig3D.spine.localToWorld(local.clone());
   const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
   const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
   if (!boneGroup || !childGroup) return;
@@ -387,9 +413,13 @@ function updateJointPanelValues3D() {
   syncWristSliders3D();
   const { side, jointType } = selectedJoint3D;
   const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
-  if (!grp || !bodyGroup3D) return;
+  // Spine-local, matching onJointPosInput and the Default Setter's own
+  // frame (see the comment there) — the panel's numbers now always agree
+  // with whatever "Update Wrist" captures, whatever the spine is doing.
+  if (!grp || !rig3D.spine) return;
+  rig3D.spine.updateMatrixWorld(true);
   const world = new THREE.Vector3(); grp.getWorldPosition(world);
-  const local = bodyGroup3D.worldToLocal(world.clone());
+  const local = rig3D.spine.worldToLocal(world.clone());
   const euler = new THREE.Euler().setFromQuaternion(grp.quaternion, 'XYZ');
   const setVal = (id, v) => {
     const el = document.getElementById(id);
