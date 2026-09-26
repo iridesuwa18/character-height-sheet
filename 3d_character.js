@@ -366,6 +366,20 @@ let poseLiteralPins3D = null;
 let poseOverridesCache3D = null;
 // Exact wrist rotation restored by a kept-position pin for this render (see applyArmIK).
 let keptWristQuat3D = { left: null, right: null };
+
+// Hysteresis for solveHandOrientationForNormal's two-candidate face pick
+// (see below) — remembers which of the hand's two flat faces ('a' = dA,
+// or its opposite) each side last settled on, so a practically-zero
+// geometry nudge (a 0.1cm shoulder/waist/height slider change, or even
+// sub-pixel getBoundingClientRect rounding on an otherwise-identical
+// rebuild) can't flip the hand's rendered facing by ~180° just because
+// the two candidates' overshoot happened to swap order by a fraction of
+// a degree. null = no prior pick yet for this side (first solve, or the
+// pose changed — see the reset in setPose3D).
+let lastHandFaceIsA3D = { left: null, right: null };
+// Only abandon the previously-used face for the other one if the other
+// is better by at least this much — not just technically lower.
+const FACE_HYSTERESIS_MARGIN_DEG = 12;
 // Snapshot of the last applyPose3D() call's fully-resolved per-side values
 // (post-override, post-clamp) — see where it's written at the end of
 // applyPose3D for exactly what it holds. null until the first pose is
@@ -1857,14 +1871,28 @@ function solveHandOrientationForNormal(side, sol, normalLocal) {
   const a = candidate(dA);
   const b = candidate(dA.clone().negate());
   let best = a.overshoot <= b.overshoot ? a : b;
+  let bestIsA = best === a;
   // Tie-break (within a few degrees of overshoot, so it's not a hard cutoff)
   // toward whichever candidate reads as dorsum — matches the "dorsum facing
   // down by default" preference when either face works about as well.
   if (Math.abs(a.overshoot - b.overshoot) < 5) {
     const aFlipped = isHandFlipped(side, a.turnDeg), bFlipped = isHandFlipped(side, b.turnDeg);
-    if (aFlipped && !bFlipped) best = b;
-    else if (!aFlipped && bFlipped) best = a;
+    if (aFlipped && !bFlipped) { best = b; bestIsA = false; }
+    else if (!aFlipped && bFlipped) { best = a; bestIsA = true; }
   }
+  // Hysteresis: don't let a negligible geometry change flip which face gets
+  // used (see lastHandFaceIsA3D above). Only let the pick move away from
+  // whichever face this side is already showing if the other one is
+  // clearly better by a real margin.
+  const prevIsA = lastHandFaceIsA3D[side];
+  if (prevIsA !== null && prevIsA !== bestIsA) {
+    const staying = prevIsA ? a : b;
+    const switching = prevIsA ? b : a;
+    if (!(switching.overshoot + FACE_HYSTERESIS_MARGIN_DEG < staying.overshoot)) {
+      best = staying; bestIsA = prevIsA;
+    }
+  }
+  lastHandFaceIsA3D[side] = bestIsA;
   return { wristTurnDeg: best.turnDeg, wristHingeDeg: best.hingeDeg };
 }
 
@@ -2575,6 +2603,10 @@ function setPose3D(poseName) {
   // pose automatically gets its own bucket instead of inheriting this one's.
   elbowBendOverride = { left: null, right: null };
   elbowLiftOverride = { left: null, right: null };
+  // A new pose's IK targets are a different reach entirely — don't let the
+  // last pose's face pick (see lastHandFaceIsA3D/solveHandOrientationForNormal)
+  // bias this one.
+  lastHandFaceIsA3D = { left: null, right: null };
   applyPose3D(poseName, { reframe: true });
   document.querySelectorAll('.pose-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.pose === currentPose3D);
