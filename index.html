@@ -116,17 +116,6 @@
     font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted);
     text-transform: uppercase; letter-spacing: 0.06em; pointer-events: none;
   }
-  #pinReticle {
-    position: absolute; top: 50%; left: 50%; width: 28px; height: 28px;
-    transform: translate(-50%, -50%); pointer-events: none; z-index: 50;
-  }
-  #pinReticle::before, #pinReticle::after {
-    content: ''; position: absolute; background: var(--accent-gold);
-    box-shadow: 0 0 3px rgba(0,0,0,0.8);
-  }
-  #pinReticle::before { top: 50%; left: 0; right: 0; height: 2px; transform: translateY(-50%); }
-  #pinReticle::after { left: 50%; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); }
-
   /* ── Joint Editor (tap a wrist/elbow in the 3D view) ── */
   /* ── Joint Editor (pick a wrist/elbow, then drag or type) ── */
   .jp-btn {
@@ -260,38 +249,6 @@
   }
   .jec-actions #jeCopyBtn { border-color: var(--accent-gold); background: rgba(240,192,64,0.18); color: var(--accent-gold); }
 
-  /* Pin Mode: everything but the camera row and the pin bar goes away. */
-  #preview3D.je-pin-mode #jointToggleBar,
-  #preview3D.je-pin-mode #jeCopyBar,
-  #preview3D.je-pin-mode #jointEditorBottomBar,
-  #preview3D.je-pin-mode #jeMirrorStatus,
-  #preview3D.je-pin-mode #jointEditorPanel { display: none !important; }
-  #jePinModeBar {
-    display: none; position: absolute; top: calc(40px + env(safe-area-inset-top, 0px)); left: 6px; right: 6px;
-    z-index: 9012; flex-direction: column; gap: 4px;
-  }
-  #preview3D.je-pin-mode #jePinModeBar { display: flex; }
-  .jpm-actions { display: flex; gap: 4px; }
-  .jpm-actions button {
-    flex: 1; height: 34px; border-radius: 7px; cursor: pointer; font-family: 'Space Mono', monospace;
-    font-size: 10px; font-weight: 700; text-transform: uppercase;
-    background: rgba(22,22,24,0.92); border: 1px solid var(--accent-red); color: var(--accent-red);
-  }
-  .jpm-actions .jpm-apply { border-color: var(--accent-gold); background: rgba(240,192,64,0.22); color: var(--accent-gold); }
-  .jpm-keep {
-    display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer;
-    background: rgba(20,20,24,0.9); border: 1px solid var(--border); border-radius: 8px;
-    font-family: 'Space Mono', monospace; font-size: 10px; color: var(--text);
-  }
-  .jpm-keep input { flex: 0 0 auto; width: 16px; height: 16px; margin: 0; accent-color: var(--accent-gold); }
-  .jpm-info {
-    padding: 6px 8px; background: rgba(20,20,24,0.9); border: 1px solid var(--accent-gold); border-radius: 8px;
-    font-family: 'Space Mono', monospace; font-size: 10px; line-height: 1.5; color: var(--text);
-  }
-  .jpm-info > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #jpmWorking { color: var(--accent-gold); font-weight: 700; }
-  #jpmCurrent { color: var(--muted); }
-  #pinReticle { z-index: 9005; }
   #jointEditorBottomBar {
     position: absolute; left: 6px; right: 6px; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 9010;
     display: flex; gap: 4px;
@@ -706,13 +663,6 @@
     max-height: none; padding: 12px 16px 16px; gap: 10px;
     box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
   }
-  #pinAimBar { display: none; flex-direction: column; gap: 10px; }
-  #pinAimHint {
-    font-size: 10px; color: var(--muted); font-family: 'Space Mono', monospace;
-    text-align: center; line-height: 1.5;
-  }
-  .pin-aim-row { display: flex; gap: 8px; }
-
   body {
     font-family: 'Space Mono', monospace; background: var(--bg); color: var(--text);
     min-height: 100vh; padding: 24px 16px 80px;
@@ -985,7 +935,6 @@
   </div>
   <div id="preview3D" style="display:none;">
     <canvas id="body3DCanvas"></canvas>
-    <div id="pinReticle" style="display:none;"></div>
     <div id="body3DHint">Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan</div>
 
     <!-- Entry point for the fullscreen 3D Editor. Replaces the old always-on
@@ -1054,21 +1003,6 @@
       </div>
     </div>
 
-    <!-- Pin Mode bar (Aim & Pin): shown instead of the other bars. -->
-    <div id="jePinModeBar">
-      <div class="jpm-actions">
-        <button type="button" class="jpm-cancel" onclick="exitEditorPinMode3D(false)">✕ Cancel</button>
-        <button type="button" class="jpm-apply" onclick="exitEditorPinMode3D(true)">✓ Apply pin</button>
-      </div>
-      <label class="jpm-keep"><input type="checkbox" id="jpmKeepChk" checked>
-        <span>Keep hand where it is (save offset from face)</span></label>
-      <div class="jpm-info">
-        <div id="jpmWorking"></div>
-        <div id="jpmDetecting"></div>
-        <div id="jpmCurrent"></div>
-      </div>
-    </div>
-
     <div id="jointEditorBottomBar" style="display:none;">
       <button type="button" class="je-bottom-btn je-cancel" onclick="cancelJointEditorMode3D()">✕ Cancel</button>
       <button type="button" class="je-bottom-btn" id="jeQuickSaveBtn" onclick="quickSaveJointsToGitHub3D()">⬆ Save</button>
@@ -1119,19 +1053,33 @@
           <option value="down">Fingers Down</option>
         </select>
 
-        <div class="je-section-label">Pin Hand To</div>
-        <select class="je-select" id="jePinTarget" onchange="setPinFilterGroup3D(this.value)">
-          <option value="">Nearest surface (any)</option>
+        <div class="je-section-label">Pinned Mesh</div>
+        <select class="je-select" id="jePinnedMesh" onchange="setPinnedMesh3D(selectedJoint3D.side, this.value)">
+          <option value="">Not pinned (Default Setter position)</option>
           <option value="head">Head</option>
           <option value="neck">Neck</option>
           <option value="torso">Torso</option>
-          <option value="waistbox">Waist / Hip</option>
-          <option value="legs">Legs</option>
-          <option value="feet">Feet</option>
+          <option value="waist">Waist / Hip</option>
+          <option value="leftLeg">Left Leg</option>
+          <option value="rightLeg">Right Leg</option>
+          <option value="leftFoot">Left Foot</option>
+          <option value="rightFoot">Right Foot</option>
         </select>
-        <button type="button" class="je-btn" onclick="jointPanelAimAndPin3D()">🎯 Aim &amp; Pin</button>
+        <div class="je-section-label">Pinned Face Part</div>
+        <select class="je-select" id="jePinnedFace" disabled onchange="setPinnedFace3D(selectedJoint3D.side, this.value)">
+          <option value="front">Front</option>
+          <option value="back">Back</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+        </select>
         <button type="button" class="je-btn" onclick="jointPanelUnpin3D()">✕ Unpin</button>
         <div id="jePinStatus" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:-2px 0 8px;"></div>
+        <div class="je-section-label">Default Setter</div>
+        <p class="je-note" style="margin:0 0 6px;">Dial Height/Gender to 175cm / Male, hold a neutral pose, then capture — every pin and elbow is calculated relative to whatever's captured here.</p>
+        <button type="button" class="je-btn" onclick="captureDefaultSetter3D(selectedJoint3D && selectedJoint3D.side)">📍 Set as Default (this hand)</button>
+        <button type="button" class="je-btn" onclick="captureDefaultSetter3D()">📍 Set as Default (both hands)</button>
       </div>
 
       <button type="button" class="je-btn je-reset" onclick="resetSelectedJoint3D()">↺ Reset Joint</button>

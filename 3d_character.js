@@ -340,31 +340,28 @@ let wristSwingOverride = { left: null, right: null };     // degrees (number) | 
 // already contributes (see clampWristTurn), so a person can lift the elbow
 // further without having to fight an out-of-range wristTurn to do it. Both
 // null = no override (pose default). Only meaningful on the fixed-angle
-// path — an IK-driven arm (handTarget set) already fully determines its own
-// elbow to keep the hand locked onto its target, so overriding the elbow
-// there would just pull the hand off the mesh it's pinned to; applyPose3D
-// skips both overrides whenever that side is IK-driven.
+// path — a side driven by the new position-based pin/default system (see
+// "New position-based hand pin + elbow system" below) already fully
+// determines its own elbow from the wrist position, so overriding the
+// elbow there would just fight that; applyPose3D skips both overrides
+// whenever that side is position-driven.
 let elbowBendOverride = { left: null, right: null };
 let elbowLiftOverride = { left: null, right: null };
 let handWristTargetSide = 'right';
-// Click-to-pin state: which side (if any) is currently "armed" so the next
-// click on the 3D canvas locks that hand to whatever mesh spot gets
-// clicked. Only one side at a time — see armMeshPin.
-let pinArmedSide = null;
 // Saved 3D-editor joint edits (from presets/pose-overrides.json), cached so they
 // can be re-applied automatically — on page load and after every model rebuild.
 let jointEditsSaved3D = null;
 let jointEditsInitialApplied3D = false;
 let jointEditsFetching3D = false;
-// Editor "Pin Mode" (Aim & Pin from the wrist settings): menus closed, crosshair
-// in the center, Apply/Cancel bar on top.
-let jePinModeActive3D = false;
 // Deep copy of the hard-coded pins taken before any saved file is applied, and
 // the last saved file we saw — Reset uses these to get back to the saved state.
 let poseLiteralFacing3D = null; // built-in wristTurn/wrist/handRotation/wristRotation per pose+side, before any saved edits
 let poseLiteralPins3D = null;
 let poseOverridesCache3D = null;
-// Exact wrist rotation restored by a kept-position pin for this render (see applyArmIK).
+// Legacy "kept-position pin" wrist-rotation restore hook — always null now
+// (nothing in the new position-based pin system sets it; hand facing is
+// fully decoupled from position, see applyArmPosition3D), kept as inert
+// dead state rather than touching the read site below.
 let keptWristQuat3D = { left: null, right: null };
 // Snapshot of the last applyPose3D() call's fully-resolved per-side values
 // (post-override, post-clamp) — see where it's written at the end of
@@ -374,8 +371,6 @@ let lastPoseResolved3D = null;
 
 function setHandWristTargetSide(side) {
   handWristTargetSide = side;
-  pinArmedSide = null; // arming is per-side; switching sides cancels it
-  updatePinModeUI();
   refreshHandWristButtons();
 }
 function setHandRotationInput(value) {
@@ -466,109 +461,186 @@ function refreshHandWristButtons() {
   updateJePinStatus3D();
 }
 
-// ── Click-to-pin ─────────────────────────────────────────────────────────
-// Lets a person aim the 3D view (orbit/pinch/pan, same gestures as always)
-// so the spot they want lines up with a crosshair fixed at the center of
-// the viewport, then tap one button to pin the currently-armed hand to
-// whatever's under it — converting that into the exact same box-fraction
-// format resolveHandTarget3D already reads (MESH_PIN_ANCHORS_3D), so a
-// picked pin behaves identically to a hand-authored one and keeps tracking
-// that mesh through resizes. Arms and hands are excluded (see
-// MESH_PIN_ANCHORS_3D note: their posed position isn't recoverable from the
-// flat 2D box) — the crosshair simply won't find a pinnable hit on them.
-//
-// Aim-then-confirm rather than tap-the-exact-spot on purpose: a raw
-// tap/click has to be told apart from the start of an orbit-drag, which
-// needs a movement-distance threshold — reliable enough with a mouse, but
-// touch naturally drifts more than that even on a stationary tap (plus
-// two-finger pinch-zoom involves a second touch mid-gesture), so it
-// mis-fired on mobile. Reading a fixed screen-center point instead removes
-// the ambiguity entirely: orbiting never gets misread as a pin, on any
-// input device, and pinch-zoom lets you line the crosshair up precisely
-// even on a small screen.
-//
-// Two coordinate frames matter here, matching the ones resolveHandTarget3D
-// itself uses: torso/head/neck hang directly off the SPINE pivot with no
-// joint of their own, so converting the hit into spineGroup's local space
-// (spineGroup.worldToLocal) lands EXACTLY back on the box's own rest
-// coordinates, however much the spine is currently bent/twisted. Waist/legs/
-// feet hang off the PELVIS (bodyGroup3D) instead — waist has no joint of
-// its own either, so bodyGroup3D.worldToLocal is equally exact for it. Legs
-// and feet DO have their own hip/knee/ankle pivot in between, which is
-// baked into that same conversion — so a pin picked while the leg is bent
-// reads slightly off the straight-leg rest frame the box format assumes.
-// Accurate when picked on a roughly straight leg (e.g. a standing pose),
-// approximate otherwise. This is the same simplification
-// resolveHandTarget3D's own leg/foot targets already make (they don't
-// track hip/knee bend either), not a new one introduced here.
-let raycaster3D = null;
-const PIN_GROUP_ANCHOR_3D = { head: 'head', neck: 'neck', torso: 'torso', waistbox: 'waist' };
-const round2 = n => Math.round(n * 100) / 100;
-// When set (by the Joint Editor's "pin to a specific mesh" dropdown), the
-// crosshair pin below only hit-tests THAT mesh group instead of every
-// pinnable mesh — a "smart" targeted pin instead of whatever's nearest.
-// Null = old behavior (nearest pinnable mesh under the crosshair, any group).
-let pinFilterGroup3D = null;
-let pinFilterUserSet3D = false; // true once the person picks something in "Pin Hand To"
+// ═══════════════════════════════════════════════════════════════════════
+// New position-based hand pin + elbow system (replaces the old mesh-face
+// click-to-pin / surface-normal / arm-IK system entirely — see the block
+// comment above resolveHandAbsolutePos3D / applyArmPosition3D further down
+// for the full design). Summary:
+//   - Every side has a captured DEFAULT wrist/elbow/shoulder position (see
+//     "Default Setter" below), taken from the rig while the body is built
+//     at the reference measurements this project's poses were hand-tuned
+//     against (BASELINE_SHOULDER_LENGTH_CM = 21.4cm shoulder length, same
+//     for waist length, 175cm height, male).
+//   - A hand can be pinned to a FACE of any of the fixed body meshes (head,
+//     neck, torso, waist/hip, legs, feet) via two dropdowns: Pinned Mesh +
+//     Pinned Face Part. Picking them does NOT move the hand — it just
+//     records how far the hand currently is from that face (an xyz
+//     offset). From then on the hand tracks that face 1:1 as the body
+//     resizes: if the face moves 3cm, the hand moves the same 3cm.
+//   - The elbow is never solved by IK anymore. It has its own default
+//     position and always sits at "its default + however far the hand has
+//     moved from ITS default" — then both segments (shoulder→elbow,
+//     elbow→wrist) are re-aimed (never re-LENGTHed) to stay physically
+//     rigid, which is the only thing that can gently move the hand off an
+//     unreachable target ("to a minimum," never further than needed).
+// ═══════════════════════════════════════════════════════════════════════
 
-function initMeshPinRaycaster3D() {
-  if (!raycaster3D) raycaster3D = new THREE.Raycaster();
-}
+// ---- Pinned Mesh / Pinned Face Part dropdowns ----
+// Reuses the same fixed-mesh anchors the old system indexed by name (head,
+// neck, torso, waist, legs, feet) — see MESH_PIN_ANCHORS_3D further down.
+// FACE_FRACS_3D turns a face name into the box-fraction coordinates
+// boxTargetPoint3D already understands (0/1 on y = bottom/top, ±0.5 on x/z
+// = the side/front/back surfaces, 0 = center on any axis).
+const FACE_FRACS_3D = {
+  front:  { x: 0,    y: 0.5, z: 0.5  },
+  back:   { x: 0,    y: 0.5, z: -0.5 },
+  left:   { x: -0.5, y: 0.5, z: 0    },
+  right:  { x: 0.5,  y: 0.5, z: 0    },
+  top:    { x: 0,    y: 1,   z: 0    },
+  bottom: { x: 0,    y: 0,   z: 0    },
+};
+const PIN_MESH_LABELS_3D = { head: 'Head', neck: 'Neck', torso: 'Torso', waist: 'Waist/Hip', leftLeg: 'Left Leg', rightLeg: 'Right Leg', leftFoot: 'Left Foot', rightFoot: 'Right Foot' };
+const PIN_FACE_LABELS_3D = { front: 'Front', back: 'Back', left: 'Left', right: 'Right', top: 'Top', bottom: 'Bottom' };
 
-// Resolves whatever's currently under the screen-center crosshair to a
-// {box, x, y, z, normal} mesh-pin descriptor, or null if nothing pinnable
-// is there. `normal` is the surface's outward direction at the hit point,
-// expressed in the SAME local frame as x/y/z (spine-local, or pelvis-local
-// pre-spine-rotation for a pelvis-anchored box) — computed by transforming
-// two points (the hit point and a point nudged along the world-space face
-// normal) through that frame's own worldToLocal and taking the direction
-// between them, rather than juggling quaternions directly. That keeps it
-// correct through however many rotated parents (spine bend/twist, pelvis)
-// sit between the mesh and that frame, the same way the point itself
-// already gets un-rotated by worldToLocal above.
-function resolveMeshPinAtCrosshair3D() {
-  if (!raycaster3D || !camera3D || !bodyGroup3D || !rig3D.spine) return null;
-  raycaster3D.setFromCamera(new THREE.Vector2(0, 0), camera3D); // dead center of the viewport
-  const pinnable = meshRecords3D.filter(r =>
-    (PIN_GROUP_ANCHOR_3D[r.group] || r.group === 'legs' || r.group === 'feet')
-    && (!pinFilterGroup3D || r.group === pinFilterGroup3D)
-  );
-  const hits = raycaster3D.intersectObjects(pinnable.map(r => r.mesh), false);
-  if (!hits.length) return null;
-  const hit = hits[0];
-  const rec = pinnable.find(r => r.mesh === hit.object);
-  if (!rec) return null;
-
-  const bodyLocal = bodyGroup3D.worldToLocal(hit.point.clone());
-  let anchorKey = PIN_GROUP_ANCHOR_3D[rec.group];
-  if (rec.group === 'legs') anchorKey = bodyLocal.x < 0 ? 'leftLeg' : 'rightLeg';
-  if (rec.group === 'feet') anchorKey = bodyLocal.x < 0 ? 'leftFoot' : 'rightFoot';
-  if (!anchorKey) return null;
-
-  const anchor = MESH_PIN_ANCHORS_3D[anchorKey];
-  const box = anchor.get(ikContext3D);
+// Resolves a mesh+face pin descriptor to a concrete spine-local point on
+// that face, given the CURRENT body geometry — used both to establish the
+// offset the moment a pin is picked, and every render afterward to see how
+// far that face has moved since. Returns null if the mesh isn't built this
+// side (e.g. a missing leg).
+function resolvePinFacePoint3D(meshKey, faceKey, geom) {
+  const anchor = MESH_PIN_ANCHORS_3D[meshKey];
+  if (!anchor) return null;
+  const box = anchor.get(geom);
   if (!box) return null;
-  const { depthCm, zOffset } = computeBodyDepth3D(box);
-  const local = anchor.pelvisAnchored ? bodyLocal : rig3D.spine.worldToLocal(hit.point.clone());
-  const yLocal = anchor.pelvisAnchored ? local.y : local.y + ikContext3D.waistTopY;
-
-  const frameObj = anchor.pelvisAnchored ? bodyGroup3D : rig3D.spine;
-  const worldNormal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-  const p1local = frameObj.worldToLocal(hit.point.clone());
-  const p2local = frameObj.worldToLocal(hit.point.clone().addScaledVector(worldNormal, 1));
-  const normal = v3norm(v3sub(p2local, p1local));
-
-  return {
-    box: anchorKey,
-    x: round2((local.x - box.xCm) / box.wCm),
-    y: round2((yLocal - box.bottomCm) / box.hCm),
-    z: round2((local.z - zOffset) / depthCm),
-    normal,
-  };
+  const frac = FACE_FRACS_3D[faceKey] || FACE_FRACS_3D.front;
+  let point = boxTargetPoint3D(box, frac.x, frac.y, frac.z);
+  if (point && anchor.pelvisAnchored) {
+    const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
+    point = pelvisPointToSpineLocal3D(point, sd.bend, sd.twist, sd.side);
+  }
+  return point;
 }
+// Current absolute (spine-local) wrist position for a side, reading
+// whatever's actually being rendered right now (works whether that side is
+// currently pinned, at its default, or still on the legacy fixed-angle
+// path) — used the instant a mesh/face dropdown changes, so "how far is the
+// hand from that face" is measured from wherever the hand visually is.
+function currentWristSpineLocalPos3D(side) {
+  const grp = rig3D[side + 'Wrist'];
+  if (!grp || !rig3D.spine) return null;
+  rig3D.spine.updateMatrixWorld(true);
+  const w = new THREE.Vector3();
+  grp.getWorldPosition(w);
+  return rig3D.spine.worldToLocal(w);
+}
+// "Pinned Mesh" dropdown — picks which fixed body mesh this hand tracks.
+// Clearing it (empty value) unpins the hand back to its Default Setter
+// position. Changing the mesh with no face chosen yet defaults to 'front'.
+function setPinnedMesh3D(side, meshKey) {
+  const pose = POSES3D[currentPose3D];
+  if (!pose) return;
+  if (!meshKey) { unpinHandWrist3D(side); return; }
+  const existing = pose[side] && pose[side].handTarget;
+  const face = (existing && existing.face) || 'front';
+  commitHandPin3D(side, meshKey, face);
+}
+// "Pinned Face Part" dropdown — picks which face of the already-chosen mesh
+// this hand tracks. No-op if no mesh is chosen yet.
+function setPinnedFace3D(side, faceKey) {
+  const pose = POSES3D[currentPose3D];
+  const existing = pose && pose[side] && pose[side].handTarget;
+  if (!existing || !existing.mesh) return;
+  commitHandPin3D(side, existing.mesh, faceKey);
+}
+// Shared by both dropdowns: measures the hand's CURRENT position, computes
+// its offset from the chosen face at the CURRENT body size, and saves that
+// as the pin — the hand does not move when this runs (see the block
+// comment above FACE_FRACS_3D).
+function commitHandPin3D(side, meshKey, faceKey) {
+  const pose = POSES3D[currentPose3D];
+  if (!pose) return;
+  const facePoint = resolvePinFacePoint3D(meshKey, faceKey, ikContext3D);
+  const wristPos = currentWristSpineLocalPos3D(side);
+  if (!facePoint || !wristPos) { alert("Can't pin — that mesh isn't built on this side/body."); return; }
+  pose[side] = pose[side] || {};
+  pose[side].handTarget = {
+    mesh: meshKey, face: faceKey,
+    offset: { x: round2(wristPos.x - facePoint.x), y: round2(wristPos.y - facePoint.y), z: round2(wristPos.z - facePoint.z) },
+  };
+  jointEditorPinDirty3D[side] = true;
+  setPinSaveStatus3D(`Pinned ${side} hand to ${describePin3D(pose[side].handTarget)}`);
+  schedulePinSave3D(currentPose3D, side);
+  updateJePinStatus3D();
+  applyPose3D(currentPose3D, { reframe: false });
+}
+// Clears a hand's pin — it goes back to tracking the Default Setter's saved
+// wrist position (or the legacy fixed-angle path if no default is captured
+// yet). Renamed from the old unpinHandWrist (kept as a thin alias below for
+// anything still calling the old name/signature).
+function unpinHandWrist3D(side) {
+  const pose = POSES3D[currentPose3D];
+  if (!pose || !pose[side] || pose[side].handTarget === undefined) return;
+  delete pose[side].handTarget;
+  jointEditorPinDirty3D[side] = true;
+  schedulePinSave3D(currentPose3D, side);
+  updateJePinStatus3D();
+  applyPose3D(currentPose3D, { reframe: false });
+}
+
+// ---- Default Setter ----
+// Reference body this project's poses/pins are captured against: 175cm
+// height, male, BASELINE_SHOULDER_LENGTH_CM (21.4cm) shoulder length — the
+// same baseline already documented above for the fixed-angle poses. Dial
+// the Height/Gender inputs to this (shoulder/waist length follow from the
+// 2D layout automatically) and tap "Set as Default" once; from then on
+// every side's pin/elbow math is relative to whatever got captured here.
+const PIN_DEFAULT_REF_3D = { heightCm: 175, gender: 'male', shoulderLengthCm: BASELINE_SHOULDER_LENGTH_CM, waistLengthCm: BASELINE_SHOULDER_LENGTH_CM };
+// { left: {shoulder:{x,y,z}, elbow:{x,y,z}, wrist:{x,y,z}}, right: {...} } —
+// captured once by captureDefaultSetter3D(), persisted alongside the other
+// 3D-editor state (see PIN_DEFAULTS_KEY / quickSaveJointsToGitHub3D).
+let pinDefaults3D = { left: null, right: null };
+function jointWorldPosSpineLocal3D(side, jointName) {
+  const grp = rig3D[side + jointName];
+  if (!grp || !rig3D.spine) return null;
+  rig3D.spine.updateMatrixWorld(true);
+  const w = new THREE.Vector3();
+  grp.getWorldPosition(w);
+  const p = rig3D.spine.worldToLocal(w);
+  return { x: round2(p.x), y: round2(p.y), z: round2(p.z) };
+}
+// Captures the CURRENT rig's wrist/elbow/shoulder positions as the default
+// for one side (or both). Meant to be run once the Height/Gender inputs
+// match PIN_DEFAULT_REF_3D and the pose is a neutral/relaxed one — but
+// nothing stops it being re-run at any time if a different baseline is
+// wanted; whatever's captured here simply becomes every future render's
+// "default" reference for that side.
+function captureDefaultSetter3D(side) {
+  const sides = (side === 'left' || side === 'right') ? [side] : ['left', 'right'];
+  const h = parseFloat(document.getElementById('heightInput') && document.getElementById('heightInput').value);
+  const g = document.getElementById('genderSelect') && document.getElementById('genderSelect').value;
+  if (Math.abs((h || 0) - PIN_DEFAULT_REF_3D.heightCm) > 0.5 || g !== PIN_DEFAULT_REF_3D.gender) {
+    if (!confirm(`Default Setter is meant to be captured at ${PIN_DEFAULT_REF_3D.heightCm}cm / ${PIN_DEFAULT_REF_3D.gender} (currently ${h || '?'}cm / ${g || '?'}). Capture anyway?`)) return;
+  }
+  sides.forEach(sd => {
+    const shoulder = jointWorldPosSpineLocal3D(sd, 'Shoulder');
+    const elbow = jointWorldPosSpineLocal3D(sd, 'Elbow');
+    const wrist = jointWorldPosSpineLocal3D(sd, 'Wrist');
+    if (shoulder && elbow && wrist) pinDefaults3D[sd] = { shoulder, elbow, wrist };
+  });
+  schedulePinSave3D(currentPose3D, 'left'); // piggybacks the existing GitHub push chain (see PIN_DEFAULTS_KEY below)
+  setPinSaveStatus3D('Default Setter captured — pins and elbows now relative to this.');
+  applyPose3D(currentPose3D, { reframe: false });
+}
+
+// ── (legacy click-to-pin section removed — superseded by the Pinned Mesh /
+// Pinned Face Part dropdowns above) ─────────────────────────────────────
+// round2: rounds to 2 decimal places (cm-precision offsets/positions).
+const round2 = n => Math.round(n * 100) / 100;
 
 // Lazily records the current pose's pins the first time the editor changes
-// them this session, so Cancel can put them back.
+// them this session, so Cancel can put them back. Shape-agnostic — clones
+// whatever `handTarget` currently holds (the new {mesh,face,offset} pin
+// format), so it doesn't need to know the pin's internal fields.
 function snapshotPinsForCancel3D() {
   if (jointEditorPinCopySnapshot3D) return;
   const cur = POSES3D[currentPose3D];
@@ -579,209 +651,43 @@ function snapshotPinsForCancel3D() {
   });
   jointEditorPinCopySnapshot3D = snap;
 }
-// "Keep hand where it is": instead of snapping the wrist onto the surface, bind
-// the pin to the picked surface point but remember where the wrist currently
-// is as an offset from it (plus which way the elbow currently points, so the
-// arm doesn't flip when the IK re-solves). Both are measured in the IK's own
-// spine-local frame, so they follow the mesh through pose changes.
-function computeKeepPositionExtras3D(side, resolved) {
-  const wristGrp = rig3D[side + 'Wrist'], elbowGrp = rig3D[side + 'Elbow'], shGrp = rig3D[side + 'Shoulder'];
-  if (!wristGrp || !elbowGrp || !shGrp || !rig3D.spine) return null;
-  rig3D.spine.updateMatrixWorld(true);
-  const toSpine = g => { const w = new THREE.Vector3(); g.getWorldPosition(w); return rig3D.spine.worldToLocal(w); };
-  const W = toSpine(wristGrp), E = toSpine(elbowGrp);
-  const ikS = ikContext3D.shoulders && ikContext3D.shoulders[side];
-  const shoulder = ikS ? new THREE.Vector3(ikS.x, ikS.y, ikS.z) : toSpine(shGrp);
-  const spec = { box: resolved.box, x: resolved.x, y: resolved.y, z: resolved.z,
-                 nx: resolved.normal.x, ny: resolved.normal.y, nz: resolved.normal.z };
-  const r = resolveHandTarget3D(side, spec, ikContext3D);
-  if (!r) return null;
-  let off = new THREE.Vector3(W.x - r.point.x, W.y - r.point.y, W.z - r.point.z);
-  const anchor = MESH_PIN_ANCHORS_3D[resolved.box];
-  if (anchor && anchor.pelvisAnchored) {
-    // Store in the pelvis frame (resolveHandTarget3D re-applies the spine correction).
-    const sd = ikContext3D.spineDeg || { bend: 0, twist: 0, side: 0 };
-    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(deg2rad(sd.bend || 0), deg2rad(sd.twist || 0), deg2rad(sd.side || 0), 'XYZ'));
-    off.applyQuaternion(q);
-  }
-  const pole = E.clone().sub(shoulder);
-  if (pole.length() < 1e-6) return null;
-  pole.normalize();
-  const q4 = q => [Math.round(q.x * 10000) / 10000, Math.round(q.y * 10000) / 10000, Math.round(q.z * 10000) / 10000, Math.round(q.w * 10000) / 10000];
-  return {
-    offset: { x: round2(off.x), y: round2(off.y), z: round2(off.z) },
-    pole: { x: round2(pole.x), y: round2(pole.y), z: round2(pole.z) },
-    // The arm's exact current joint rotations + where the wrist was. While the
-    // body is unchanged (target still matches), these are restored verbatim so
-    // the arm looks identical; once the body moves, IK takes over.
-    target: { x: round2(W.x), y: round2(W.y), z: round2(W.z) },
-    joints: { s: q4(shGrp.quaternion), e: q4(elbowGrp.quaternion), w: q4(wristGrp.quaternion) },
-  };
-}
 
-// "📍 Pin Here" button — confirms whatever's currently under the crosshair
-// for the armed side. Left armed afterward on purpose (unlike the old
-// tap-to-pin, which disarmed itself) so re-aiming and pinning the OTHER
-// hand right after is just: switch side above, re-aim, tap again. Returns
-// true/false so "✓ Done" (finishMeshPin) knows whether the pin actually
-// landed before it closes the aim bar.
-function confirmMeshPinAtCrosshair3D() {
-  if (!pinArmedSide) return false;
-  const resolved = resolveMeshPinAtCrosshair3D();
-  if (!resolved) { alert('Nothing pinnable under the crosshair — orbit/zoom so it lines up with the body first.'); return false; }
-  if (jePinModeActive3D) {
-    // Editor Pin Mode: nothing is auto-saved. Remember the pre-pin pins so
-    // the editor's Cancel can undo it, and flag the side so ⬆ Save pushes it.
-    snapshotPinsForCancel3D();
-    const keepChk = document.getElementById('jpmKeepChk');
-    let extras = null;
-    if (keepChk && keepChk.checked) {
-      extras = computeKeepPositionExtras3D(pinArmedSide, resolved);
-      if (!extras) console.warn('Keep-position pin: could not measure the hand; pinning to the surface instead.');
-    }
-    applyMeshPin3D(pinArmedSide, resolved.box, resolved.x, resolved.y, resolved.z, resolved.normal, extras, false);
-    jointEditorPinDirty3D[pinArmedSide] = true;
-    return true;
-  }
-  applyMeshPin3D(pinArmedSide, resolved.box, resolved.x, resolved.y, resolved.z, resolved.normal);
-  return true;
-}
-
-// Arms/disarms pin-aiming mode for one side, showing the crosshair overlay
-// and the confirm button while armed. 'both' can't be armed — a pin is one
-// point, and left/right need their own separate points.
-function armMeshPin(side) {
-  if (side === 'both') { alert('Pick Left Hand or Right Hand above (not Both) before pinning to the mesh.'); return; }
-  pinArmedSide = pinArmedSide === side ? null : side;
-  updatePinModeUI();
-  // Make sure the 3D view is actually the thing sitting behind the shrunk
-  // aim bar, even if the page had scrolled away from it.
-  if (pinArmedSide) {
-    const el3D = document.getElementById('preview3D');
-    if (el3D) el3D.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
-}
-function updatePinModeUI() {
-  const btn = document.getElementById('pinMeshBtn');
-  const confirmBtn = document.getElementById('pinConfirmBtn');
-  const reticle = document.getElementById('pinReticle');
-  const hint = document.getElementById('body3DHint');
-  if (btn) btn.classList.toggle('active', !!pinArmedSide);
-  if (confirmBtn) confirmBtn.style.display = pinArmedSide ? '' : 'none';
-  if (reticle) reticle.style.display = pinArmedSide ? '' : 'none';
-  if (hint) hint.textContent = pinArmedSide
-    ? (jePinModeActive3D ? `Orbit/pinch to line the crosshair up, then tap Apply`
-       : `Orbit/pinch to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here"`)
-    : 'Drag to rotate · Scroll/pinch to zoom · Right-drag or two-finger drag to pan';
-
-  // Armed: shrink the popup down to just a small aim bar and let clicks/
-  // touches on the rest of the screen pass through the backdrop, so the 3D
-  // view (never actually hidden behind the popup) is visible and orbitable
-  // instead of being fully blocked by it.
-  const overlay = document.getElementById('poseModalOverlay');
-  const box = document.getElementById('poseModalBox');
-  const mainContent = document.getElementById('poseModalMainContent');
-  const aimBar = document.getElementById('pinAimBar');
-  const aimHint = document.getElementById('pinAimHint');
-  if (overlay) overlay.classList.toggle('pin-armed', !!pinArmedSide);
-  if (box) box.classList.toggle('pin-armed', !!pinArmedSide);
-  if (mainContent) mainContent.style.display = pinArmedSide ? 'none' : '';
-  if (aimBar) aimBar.style.display = pinArmedSide ? 'flex' : 'none';
-  if (aimHint) aimHint.textContent = pinArmedSide
-    ? `Orbit/pinch the 3D view above to line the crosshair up with the ${pinArmedSide} hand's target, then tap "Pin Here".`
-    : '';
-}
-// "✓ Done" — pins whatever's under the crosshair right now (same as one
-// last "Pin Here" tap) AND exits aim mode, so a single tap both confirms
-// the position and closes the aim bar. Kept separate from "📍 Pin Here"
-// (which stays armed, for re-aiming/re-pinning the same spot) since the
-// two most-needed actions — "place it" and "I'm done placing it" — were
-// otherwise the same button, easy to miss on mobile.
-function finishMeshPin() {
-  if (!pinArmedSide) return;
-  if (confirmMeshPinAtCrosshair3D()) cancelMeshPin();
-}
-// "✕ Cancel" on the aim bar — disarms without pinning, same as tapping
-// "🎯 Aim & Pin" again to toggle it off.
-function cancelMeshPin() {
-  pinArmedSide = null;
-  updatePinModeUI();
-}
-// ---- Which face of a mesh is a pin on? ----
-// A pin stores the exact surface point (box-relative x/y/z) AND the surface's
-// outward normal. The face is just the dominant axis of that normal in the
-// mesh's own frame: +z front, -z back, +x the model's right side, -x the
-// model's left side, +y top, -y bottom. If a second axis is at least half as
-// strong (a rounded/corner spot) it's mentioned too. Named presets
-// (e.g. "hip-side") don't carry a surface normal, so they show just their name.
-const PIN_BOX_NAMES_3D = { head: 'head', neck: 'neck', torso: 'torso', waist: 'waist/hip', leftLeg: 'left leg', rightLeg: 'right leg', leftFoot: 'left foot', rightFoot: 'right foot' };
-function pinFaceLabel3D(ht) {
-  if (!ht || typeof ht === 'string' || ht.nx == null) return '';
-  const axes = [
-    { v: ht.nx || 0, pos: "model's right side", neg: "model's left side" },
-    { v: ht.ny || 0, pos: 'top', neg: 'bottom' },
-    { v: ht.nz || 0, pos: 'front', neg: 'back' },
-  ].map(a => ({ mag: Math.abs(a.v), name: a.v >= 0 ? a.pos : a.neg })).sort((a, b) => b.mag - a.mag);
-  if (axes[0].mag < 0.05) return '';
-  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
-  return axes[1].mag >= axes[0].mag * 0.5
-    ? `${cap(axes[0].name)} face, toward ${axes[1].name}`
-    : `${cap(axes[0].name)} face`;
-}
+// Human-readable summary of a pin in the new {mesh, face, offset} shape.
 function describePin3D(ht) {
-  if (!ht) return 'not pinned';
-  if (typeof ht === 'string') return `${ht} (preset)`;
-  const part = PIN_BOX_NAMES_3D[ht.box] || ht.box;
-  if (ht.fromPreset) return `${part} (converted preset — re-pin for face)`;
-  const face = pinFaceLabel3D(ht);
+  if (!ht || !ht.mesh) return 'not pinned';
+  const mesh = PIN_MESH_LABELS_3D[ht.mesh] || ht.mesh;
+  const face = PIN_FACE_LABELS_3D[ht.face] || ht.face || '';
   const off = pinOffsetText3D(ht);
-  return (face ? `${part} — ${face}` : part) + off;
+  return (face ? `${mesh} — ${face}` : mesh) + off;
 }
-// ", 3.2 cm off" for a kept-position pin (hand stays put, offset from the face).
+// ", 3.2 cm off" — how far the hand currently sits from the pinned face.
 function pinOffsetText3D(ht) {
-  if (!ht || typeof ht === 'string' || !ht.offset) return '';
+  if (!ht || !ht.offset) return '';
   const d = Math.hypot(ht.offset.x || 0, ht.offset.y || 0, ht.offset.z || 0);
   return `, ${d.toFixed(1)} cm off`;
 }
-// Editor wrist-panel readout for the selected side's current pin.
+// Editor wrist-panel readout for the selected side's current pin — also
+// keeps the Pinned Mesh / Pinned Face Part dropdowns in sync with it.
 function updateJePinStatus3D() {
   const el = document.getElementById('jePinStatus');
-  if (!el) return;
-  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') { el.textContent = ''; return; }
+  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') { if (el) el.textContent = ''; return; }
   const pose = POSES3D[currentPose3D];
   const side = selectedJoint3D.side;
-  const ex = pose ? expandPose3D(pose) : null;
-  const ht = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
-  el.textContent = ht ? `Pinned to: ${describePin3D(ht)}` : 'Not pinned';
-  // The "Pin Hand To" dropdown shows where this hand is pinned right now. If you
-  // pick something in it yourself, that choice limits the next Aim & Pin (until
-  // a pin lands, which resets it back to showing the current pin).
-  const sel = document.getElementById('jePinTarget');
-  if (sel && !pinFilterUserSet3D) {
-    const grp = ht && typeof ht === 'object' ? ({ head: 'head', neck: 'neck', torso: 'torso', waist: 'waistbox', leftLeg: 'legs', rightLeg: 'legs', leftFoot: 'feet', rightFoot: 'feet' })[ht.box] : '';
-    sel.value = grp || '';
-  }
-}
-// Live readout while aiming: what (and which face) is under the crosshair.
-let pinLiveLastT3D = 0;
-function updatePinLiveFace3D() {
-  if (!pinArmedSide) return;
-  const now = performance.now();
-  if (now - pinLiveLastT3D < 200) return;
-  pinLiveLastT3D = now;
-  const r = resolveMeshPinAtCrosshair3D();
-  const hit = r ? { box: r.box, nx: r.normal.x, ny: r.normal.y, nz: r.normal.z } : null;
-  const el = document.getElementById('pinLiveFace');
-  if (el) el.textContent = r ? `Crosshair on: ${describePin3D(hit)}` : 'Crosshair on: nothing pinnable';
-  const det = document.getElementById('jpmDetecting');
-  if (det && jePinModeActive3D) det.textContent = 'Now detecting: ' + (pinPartsText3D(hit) || 'nothing under the crosshair');
+  const ht = pose && pose[side] && pose[side].handTarget;
+  if (el) el.textContent = ht ? `Pinned to: ${describePin3D(ht)}` : 'Not pinned — using the Default Setter position';
+  const meshSel = document.getElementById('jePinnedMesh');
+  if (meshSel) meshSel.value = (ht && ht.mesh) || '';
+  const faceSel = document.getElementById('jePinnedFace');
+  if (faceSel) { faceSel.disabled = !(ht && ht.mesh); faceSel.value = (ht && ht.face) || 'front'; }
 }
 
-// ---- Saving pins to GitHub (same pose-overrides.json as pose edits) ----
+// ---- Saving pins/defaults to GitHub (same pose-overrides.json as pose edits) ----
 // Pins ride in the same per-pose, per-side records as wrist/elbow edits, under
 // a `handTarget` field (null = "unpinned"), so the existing pull re-applies
-// them on load. Debounced and serialized so several quick Pin Here taps
-// become one commit and never race each other's file sha.
+// them on load. Debounced and serialized so several quick pin changes become
+// one commit and never race each other's file sha. The Default Setter's
+// captured positions ride along in the same file under PIN_DEFAULTS_KEY (see
+// quickSaveJointsToGitHub3D/quickLoadJointsFromGitHub3D near the bottom).
 let pinPushChain3D = Promise.resolve();
 const pinPushTimers3D = {};
 function setPinSaveStatus3D(msg, ms) {
@@ -799,6 +705,7 @@ function flushPinSave3D(poseKey, side) {
     const ht = pose[side] && pose[side].handTarget;
     try {
       await pushPoseOverrideToGitHub(poseKey, side, { handTarget: ht === undefined ? null : ht });
+      await pushPinDefaultsToGitHub3D();
       setPinSaveStatus3D(`Saved ${side} hand pin for "${pose.label}" to GitHub`);
     } catch (e) { setPinSaveStatus3D(`Pin save to GitHub failed: ${e.message}`, 4000); }
   };
@@ -810,37 +717,23 @@ function schedulePinSave3D(poseKey, side) {
   clearTimeout(pinPushTimers3D[k]);
   pinPushTimers3D[k] = setTimeout(() => { delete pinPushTimers3D[k]; flushPinSave3D(poseKey, side); }, 1200);
 }
-
-function applyMeshPin3D(side, box, x, y, z, normal, extras, persist = true) {
-  const pose = POSES3D[currentPose3D];
-  if (!pose) return;
-  pose[side] = pose[side] || {};
-  pose[side].handTarget = normal
-    ? { box, x, y, z, nx: round2(normal.x), ny: round2(normal.y), nz: round2(normal.z) }
-    : { box, x, y, z };
-  if (extras) Object.assign(pose[side].handTarget, extras); // { offset, pole } for kept-position pins
-  // An IK-driven side ignores the fixed-angle overrides entirely (see
-  // applyPose3D) — clear them so the panel doesn't keep showing dead values.
-  handRotationOverride[side] = null;
-  wristRotationOverride[side] = null; wristSwingOverride[side] = null;
-  elbowBendOverride[side] = null;
-  elbowLiftOverride[side] = null;
-  refreshHandWristButtons();
-  applyPose3D(currentPose3D, { reframe: false });
-  pinFilterGroup3D = null; pinFilterUserSet3D = false;
-  updateJePinStatus3D();
-  setPinSaveStatus3D(`Pinned ${side} hand to ${describePin3D(pose[side].handTarget)}` + (persist ? '' : ' (not saved yet)'));
-  if (persist) schedulePinSave3D(currentPose3D, side);
+// Persists pinDefaults3D (the Default Setter's captured positions) into the
+// same pose-overrides.json file, under its own top-level key so the regular
+// per-pose Load logic ignores it harmlessly (same pattern as JOINT_EDITS_KEY).
+const PIN_DEFAULTS_KEY = '__pinDefaults3D';
+async function pushPinDefaultsToGitHub3D() {
+  const s = ghGetSettings();
+  if (!s.token || !s.owner || !s.repo) return;
+  if (!pinDefaults3D.left && !pinDefaults3D.right) return;
+  await githubUpdatePoseOverrides3D('Save Default Setter positions', all => { all[PIN_DEFAULTS_KEY] = pinDefaults3D; });
 }
-// Clears the pin(s) for whichever side(s) the side selector is currently
-// on, reverting that hand to the pose's own plain fixed angles.
+// Clears the pin for one side (or both, via the side selector), reverting
+// that hand to its Default Setter position (or the legacy fixed-angle path
+// if no default has been captured yet).
 function unpinHandWrist() {
-  const pose = POSES3D[currentPose3D];
-  if (!pose) return;
   const sides = handWristTargetSide === 'both' ? ['left', 'right'] : [handWristTargetSide];
-  sides.forEach(s => { if (pose[s]) delete pose[s].handTarget; schedulePinSave3D(currentPose3D, s); });
+  sides.forEach(s => unpinHandWrist3D(s));
   refreshHandWristButtons();
-  applyPose3D(currentPose3D, { reframe: false });
 }
 
 const round1 = n => Math.round((n || 0) * 10) / 10;
@@ -931,6 +824,8 @@ async function pullPoseOverridesFromGitHub() {
     // Saved 3D-editor joint edits ride in the same file — load them right now
     // (no Load button needed).
     if (all._jointEdits) { jointEditsSaved3D = all._jointEdits; applySavedJointEdits3D(); }
+    // Default Setter positions ride in the same file too (see PIN_DEFAULTS_KEY).
+    if (all[PIN_DEFAULTS_KEY]) { pinDefaults3D = all[PIN_DEFAULTS_KEY]; if (sceneInited3D) applyPose3D(currentPose3D, { reframe: false }); }
   } catch (e) { console.warn('Could not load pose edits from GitHub:', e); }
 }
 // Pushes one side's saved fields for one pose up to the GitHub file,
@@ -998,20 +893,16 @@ async function clearAllSavedPoseEdits() {
 // reading straight from lastPoseResolved3D so what gets saved always
 // matches what's on screen, rather than re-deriving it from the overrides
 // (which only capture what's been touched, not the pose's own baseline for
-// whichever fields haven't been). Only touches wristTurn/wrist/elbow/
-// shoulderAbd, so any handTarget (mesh pin) already on the pose is left
-// exactly as authored — this is the "/pin" part of the panel state:
-// nothing here overwrites it, it just isn't clobbered by the save either.
-// An IK-driven (pinned) side skips elbow/shoulderAbd entirely — those are
-// pure IK output every rebuild, so baking in raw numbers would just leave
-// dead fields the IK path ignores. wristSwing is different: it's never
-// touched by the IK solve (see applyPose3D), so it always saves normally,
-// pinned or not. wristTurn/wrist (Bend/Turn) are normally IK-derived too,
-// but if the user has manually dragged them off the auto-solved facing
-// (see the ovSet checks in applyPose3D's IK branch), that adjustment is
-// baked into the PIN itself as a faceLock — the same mechanism
-// mirrorPinSpec3D already uses for "exact hand facing" — since a raw
-// wristTurn/wrist number on a pinned side is still IK-ignored otherwise.
+// whichever fields haven't been). wristTurn/wrist/wristSwing (hand facing)
+// are always real, pose-authored numbers now — position-based pinning only
+// ever drives the shoulder/elbow (see applyArmPosition3D), never the hand's
+// own facing — so they always save normally. elbow/shoulderAbd are
+// different: on a side currently running the position-based system
+// (isPositioned) those are pure by-products of the 3D aim solve every
+// render, so baking in raw numbers would just leave dead fields that path
+// ignores; only a fixed-angle side saves them. Any handTarget (mesh/face
+// pin) already on the pose is left exactly as authored either way — this
+// is the "/pin" part of the panel state: nothing here overwrites it.
 // Also pushes the same fields to a JSON file in your GitHub repo (see
 // above) so the edit survives a page reload, not just the rest of this
 // session — needs owner/repo/token filled in on the GitHub Presets panel.
@@ -1023,27 +914,16 @@ async function savePoseFromHandWristPanel() {
     const resolved = lastPoseResolved3D[side];
     if (!resolved) return;
     pose[side] = pose[side] || {};
-    if (resolved.isIK) {
-      pose[side].wristSwing = round1(resolved.swing || 0);
-      const fields = { wristSwing: pose[side].wristSwing };
-      if (ovSet(handRotationOverride[side]) || ovSet(wristRotationOverride[side])) {
-        // Clone before writing — pose[side].handTarget is very often a
-        // SHARED preset object (e.g. PIN_HIP_SIDE.right, reused across many
-        // poses), so mutating it in place would silently corrupt every
-        // other pose pinned the same way.
-        pose[side].handTarget = Object.assign({}, pose[side].handTarget, {
-          faceLock: { turn: round1(resolved.wristTurn), hinge: round1(resolved.wrist) },
-        });
-        fields.handTarget = pose[side].handTarget;
-      }
-      toPush.push({ side, fields });
-      return;
-    }
     pose[side].wristTurn = round1(resolved.wristTurn);
     pose[side].wrist = round1(resolved.wrist);
     pose[side].wristSwing = round1(resolved.swing || 0);
-    pose[side].elbow = round1(resolved.elbow);
-    pose[side].shoulderAbd = round1(resolved.shoulderAbd);
+    const fields = { wristTurn: pose[side].wristTurn, wrist: pose[side].wrist, wristSwing: pose[side].wristSwing };
+    if (!resolved.isPositioned) {
+      pose[side].elbow = round1(resolved.elbow);
+      pose[side].shoulderAbd = round1(resolved.shoulderAbd);
+      fields.elbow = pose[side].elbow;
+      fields.shoulderAbd = pose[side].shoulderAbd;
+    }
     // The values above are now the per-side source of truth going forward,
     // so drop any word-alias fields on this side that would otherwise still
     // take priority over a *shared* (non-side) raw field per expandPose3D's
@@ -1051,10 +931,7 @@ async function savePoseFromHandWristPanel() {
     // but leaving stale ones around is just confusing to read later.
     delete pose[side].handRotation;
     delete pose[side].wristRotation;
-    toPush.push({ side, fields: {
-      wristTurn: pose[side].wristTurn, wrist: pose[side].wrist, wristSwing: pose[side].wristSwing,
-      elbow: pose[side].elbow, shoulderAbd: pose[side].shoulderAbd,
-    }});
+    toPush.push({ side, fields });
   });
   // The pose's own numbers now already equal what the overrides were
   // producing, so clear the overrides — leaving them active would just be
@@ -1091,52 +968,29 @@ async function savePoseFromHandWristPanel() {
   }
 }
 
-// Hand pins converted from the old named presets (hip-side, chin-rest,
-// behind-back, head-side-salute). Each is a normal mesh pin — box-relative
-// x/y/z + surface normal + elbow pole angles — so it can be re-aimed and
-// saved like any pin. `fromPreset` just marks it as a converted value whose
-// stored normal is the old hand-facing direction (not a true surface face);
-// re-pinning with Aim & Pin replaces it with a real one.
-const PIN_HIP_SIDE = {
-  left:  { box:'waist', x:-0.5, y:0.72, z:-0.05, nx:-0.37, ny:-0.74, nz:-0.56, poleAngles:{ flex:40, abd:25, roll:-30 }, fromPreset:true },
-  right: { box:'waist', x:0.5, y:0.72, z:-0.05, nx:0.37, ny:-0.74, nz:-0.56, poleAngles:{ flex:40, abd:25, roll:-30 }, fromPreset:true },
-};
-const PIN_CHIN_REST = {
-  left:  { box:'head', x:0.04, y:-0.04, z:0.18, nx:0.0, ny:1.0, nz:0.0, poleAngles:{ flex:-40, abd:0, roll:-22 }, fromPreset:true },
-  right: { box:'head', x:0.04, y:-0.04, z:0.18, nx:0.0, ny:1.0, nz:0.0, poleAngles:{ flex:-40, abd:0, roll:-22 }, fromPreset:true },
-};
-const PIN_BEHIND_BACK = {
-  left:  { box:'waist', x:-0.1, y:0.42, z:-0.2, nx:0.0, ny:0.29, nz:-0.96, poleAngles:{ flex:55, abd:0, roll:0 }, fromPreset:true },
-  right: { box:'waist', x:-0.1, y:0.42, z:-0.2, nx:0.0, ny:0.29, nz:-0.96, poleAngles:{ flex:55, abd:0, roll:0 }, fromPreset:true },
-};
-const PIN_SALUTE = {
-  left:  { box:'head', x:-0.48, y:0.8, z:0.58, nx:-0.83, ny:0.45, nz:0.33, poleAngles:{ flex:-65, abd:55, roll:40 }, fromPreset:true },
-  right: { box:'head', x:0.48, y:0.8, z:0.58, nx:0.83, ny:0.45, nz:0.33, poleAngles:{ flex:-65, abd:55, roll:40 }, fromPreset:true },
-};
-
 const POSES3D = {
   // ── Standing ──────────────────────────────────────────────────────────
   'stand-relaxed':        { section:'Standing', label:'Relaxed' },
   'stand-arms-out':        { section:'Standing', label:'Arms Out (T-Pose)', shoulderAbd:85 },
-  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'stand-hands-hips':      { section:'Standing', label:'Hands on Hips', shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{}, left:{} },
   'stand-arms-overhead':   { section:'Standing', label:'Arms Overhead', shoulder:-175, elbow:-5 },
   'stand-arms-crossed':    { section:'Standing', label:'Arms Crossed', shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
-  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right} },
+  'stand-one-hand-hip':    { section:'Standing', label:'One Hand on Hip', right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-weight-shift':    { section:'Standing', label:'Weight on One Hip', spineSide:6, right:{hipAbd:9}, left:{hipAbd:2} },
   'stand-hip-pop':         { section:'Standing', label:'Hip Pop', spineSide:10, right:{hipAbd:15}, left:{hipAbd:-2} },
-  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, right:{handTarget:PIN_BEHIND_BACK.right}, left:{handTarget:PIN_BEHIND_BACK.left} },
-  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right} },
+  'stand-arms-behind':     { section:'Standing', label:'Arms Behind Back', shoulder:55, elbow:-90, wrist:-15, wristTurn:-90, right:{}, left:{} },
+  'stand-akimbo-overhead': { section:'Standing', label:'One Up, One on Hip', left:{shoulder:-170, elbow:-10, wrist:-10}, right:{shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35} },
   'stand-feet-apart':      { section:'Standing', label:'Feet Apart, Arms Crossed', hipAbd:14, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'stand-look-back':       { section:'Standing', label:'Looking Over Shoulder', spineTwist:35 },
   'stand-lean':            { section:'Standing', label:'Casual Lean', spineSide:-8, shoulder:-70, elbow:-105, shoulderAbd:8, wrist:-15, wristTurn:20 },
   'stand-point':           { section:'Standing', label:'Pointing Forward', right:{shoulder:-95, elbow:-10, wrist:5} },
-  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
+  'stand-thinking':        { section:'Standing', label:'Chin in Hand', right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
   'stand-arms-open':       { section:'Standing', label:'Arms Wide Open', shoulder:20, shoulderAbd:60 },
   'stand-hands-head':      { section:'Standing', label:'Hands Behind Head', shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
   'stand-pocket':          { section:'Standing', label:'Casual, One Hand Tucked', right:{shoulder:5, elbow:-130, wrist:-20, wristTurn:15} },
   'stand-turned-out':      { section:'Standing', label:'Feet Turned Out', hipAbd:8, ankleTurn:25 },
   'stand-soft-knee':       { section:'Standing', label:'Soft Bent Knee', right:{knee:14} },
-  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115, handTarget:PIN_SALUTE.right} },
+  'stand-salute':          { section:'Standing', label:'Salute', right:{shoulder:-65, shoulderAbd:55, shoulderRoll:40, elbow:-155, wrist:15, wristTurn:-115} },
 
   // ── Standing — Dynamic & Action ──────────────────────────────────────
   'dyn-leg-up':      { section:'Standing — Dynamic', label:'Knee Raised', right:{hip:-45, knee:110, ankle:-30} },
@@ -1169,12 +1023,12 @@ const POSES3D = {
   'sit-arms-crossed':   { section:'Sitting', label:'Arms Crossed', hip:-90, knee:90, ankle:-8, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
   'sit-hand-on-table':  { section:'Sitting', label:'One Arm Resting Forward', hip:-90, knee:90, ankle:-8, right:{shoulder:-80, elbow:-10, wrist:60}, left:{shoulder:5, elbow:-30, wrist:-15} },
   'sit-phone':          { section:'Sitting', label:'Looking at Phone', hip:-90, knee:90, ankle:-8, spineBend:12, shoulder:-70, elbow:-130, shoulderAbd:6, wrist:-70, wristTurn:-60 },
-  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
+  'sit-thinking':       { section:'Sitting', label:'Thinking', hip:-90, knee:90, ankle:-8, spineBend:8, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
   'sit-legs-apart':     { section:'Sitting', label:'Legs Apart', hip:-90, knee:90, ankle:-8, hipAbd:16 },
   'sit-legs-side':      { section:'Sitting', label:'Legs Tucked to the Side', hip:-90, knee:90, ankle:-8, spineTwist:15, hipAbd:35 },
   'sit-stretch-up':     { section:'Sitting', label:'Stretching Arms Up', hip:-90, knee:90, ankle:-8, spineBend:-8, shoulder:-175, elbow:-5 },
   'sit-hands-head':     { section:'Sitting', label:'Hands Behind Head', hip:-90, knee:90, ankle:-8, shoulder:-121, shoulderAbd:74, shoulderRoll:-41, elbow:-135, wrist:0, wristTurn:30 },
-  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right}, left:{shoulder:-10, wrist:-15} },
+  'sit-chin-elbow':     { section:'Sitting', label:'Elbow on Knee, Chin in Hand', hip:-90, knee:90, ankle:-8, spineBend:55, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65}, left:{shoulder:-10, wrist:-15} },
   'sit-look-back':      { section:'Sitting', label:'Looking Back', hip:-90, knee:90, ankle:-8, spineTwist:40 },
   'sit-slouch':         { section:'Sitting', label:'Slouching', spineBend:-20, hip:-80, knee:100, shoulder:5 },
   'sit-one-leg-out':    { section:'Sitting', label:'One Leg Extended', right:{hip:-60, knee:25, ankle:-40}, left:{hip:-90, knee:95} },
@@ -1193,7 +1047,7 @@ const POSES3D = {
   'perch-phone':        { section:'Sitting on Something', label:'Checking Phone', hip:-75, knee:70, ankle:-15, spineBend:10, shoulder:-65, elbow:-120, wrist:-70, wristTurn:-60 },
   'perch-legs-apart':   { section:'Sitting on Something', label:'Legs Apart', hip:-75, knee:70, ankle:-15, hipAbd:14 },
   'perch-look-side':    { section:'Sitting on Something', label:'Looking to the Side', hip:-75, knee:70, ankle:-15, spineTwist:30 },
-  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65, handTarget:PIN_CHIN_REST.right} },
+  'perch-chin-rest':    { section:'Sitting on Something', label:'Chin Resting on Hand', hip:-75, knee:70, ankle:-15, right:{shoulder:-40, shoulderAbd:0, shoulderRoll:-22, elbow:-155, wrist:10, wristTurn:65} },
   'perch-lean-elbows':  { section:'Sitting on Something', label:'Forward Lean, Elbows on Knees', hip:-75, knee:70, ankle:-15, spineBend:70, shoulder:-69, shoulderAbd:-13, elbow:-45, wrist:-20 },
   'perch-casual-side':  { section:'Sitting on Something', label:'Casual Side Sit', hip:-75, knee:70, ankle:-15, spineTwist:15, hipAbd:20 },
   'perch-back-support': { section:'Sitting on Something', label:'One Arm Back for Support', hip:-75, knee:70, ankle:-15, right:{shoulder:50, elbow:-10, wrist:60}, left:{shoulder:-60, elbow:-90, wrist:-15} },
@@ -1245,7 +1099,7 @@ const POSES3D = {
   'squat-knees-out-low':{ section:'Squatting', label:'Sitting on Heels, Knees Out', hip:-140, knee:170, ankle:-45, hipAbd:35 },
   'squat-look-up':      { section:'Squatting', label:'Squat, Looking Up', hip:-120, knee:140, ankle:-30, spineBend:-20 },
   'squat-lean-fwd':     { section:'Squatting', label:'Squat, Leaning Forward', hip:-125, knee:145, ankle:-35, spineBend:35, shoulder:35, elbow:-15, wrist:-15 },
-  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'squat-hands-hips':   { section:'Squatting', label:'Wide Squat, Hands on Hips', hip:-118, knee:135, ankle:-25, hipAbd:32, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{}, left:{} },
   'squat-relaxed-wide': { section:'Squatting', label:'Relaxed Resting Squat', hip:-130, knee:150, ankle:-35, hipAbd:15, shoulder:-30, elbow:-70, wrist:-15 },
   'squat-shallow':      { section:'Squatting', label:'Shallow Squat', hip:-70, knee:80, ankle:-15 },
   'squat-pickup':       { section:'Squatting', label:'Picking Something Up', hip:-115, knee:135, ankle:-25, spineBend:15, shoulder:-100, elbow:-10, wrist:-30 },
@@ -1312,8 +1166,8 @@ const POSES3D = {
   'kick-up-prep':       { section:'Handstand & Inversions', label:'Kicking Up (Donkey Kick)', spineBend:85, shoulder:-90, elbow:-5, wrist:70, right:{hip:60, knee:20, ankle:20}, left:{hip:-95, knee:5, ankle:-60} },
 
   // ── Model Poses ──────────────────────────────────────────────────────
-  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, handTarget:PIN_HIP_SIDE.right}, left:{hipAbd:-3} },
-  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right, hipAbd:16}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'model-contrapposto': { section:'Model Poses', label:'Classic Contrapposto', spineSide:10, right:{hipAbd:14, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35}, left:{hipAbd:-3} },
+  'model-hands-hips':   { section:'Model Poses', label:'Both Hands on Hips', spineSide:12, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{hipAbd:16}, left:{} },
   'model-over-shoulder':{ section:'Model Poses', label:'Look Over Shoulder', spineTwist:45, spineSide:8 },
   'model-walk':         { section:'Model Poses', label:'Runway Stride', spineTwist:10, right:{hip:-30, knee:15, ankle:-15, shoulder:20}, left:{hip:35, knee:10, ankle:15, shoulder:-25} },
   'model-power':        { section:'Model Poses', label:'Power Stance, Arms Crossed', spineSide:-5, hipAbd:16, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80 },
@@ -1325,11 +1179,11 @@ const POSES3D = {
   'model-hand-face':    { section:'Model Poses', label:'Hand to Face', spineTwist:20, right:{shoulder:-60, shoulderAbd:22, elbow:-105, wrist:-35, wristTurn:-20} },
   'model-back-look':    { section:'Model Poses', label:'Back to Camera, Looking Back', spineTwist:70, right:{hipAbd:10} },
   'model-seated':       { section:'Model Poses', label:'Editorial Seated', spineTwist:20, hip:-90, knee:95, shoulder:-30, elbow:-80, wrist:-15, right:{hipAbd:22}, left:{hipAbd:-10} },
-  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'model-power-wide':   { section:'Model Poses', label:'Wide Power Stance', spineBend:-6, hipAbd:22, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{}, left:{} },
   'model-runway-swing': { section:'Model Poses', label:'Runway Walk, Arms Swinging', right:{hip:-35, knee:10, shoulder:35}, left:{hip:30, knee:10, shoulder:-30} },
   'model-jacket-over':  { section:'Model Poses', label:'Jacket Over Shoulder', spineTwist:-15, right:{shoulder:60, elbow:-20, wrist:-40}, left:{shoulder:-40, elbow:-110, shoulderAbd:10, wrist:-15} },
   'model-lean-wall':    { section:'Model Poses', label:'Crossed Legs, Leaning', spineSide:18, shoulder:-5, shoulderAbd:30, shoulderRoll:-70, elbow:-105, wrist:-70, wristTurn:80, right:{hipAbd:14}, left:{hip:8, hipAbd:-10} },
-  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{handTarget:PIN_HIP_SIDE.right}, left:{handTarget:PIN_HIP_SIDE.left} },
+  'model-fierce-hips':  { section:'Model Poses', label:'Fierce, Hands on Hips', spineSide:-10, hipAbd:18, shoulder:40, shoulderAbd:25, shoulderRoll:-30, elbow:-80, wrist:-25, wristTurn:35, right:{}, left:{} },
   'model-collarbone':   { section:'Model Poses', label:'Elegant Hand at Collarbone', spineTwist:12, right:{shoulder:90, shoulderAbd:90, elbow:-158, wrist:-30, wristTurn:-20} },
   'model-dynamic-jump': { section:'Model Poses', label:'Dynamic Editorial Jump', spineSide:10, hipAbd:20, knee:20, shoulder:-40, shoulderAbd:65 },
 };
@@ -1441,7 +1295,6 @@ function initScene3D() {
   scene3D.add(poseRootGroup3D);
 
   window.addEventListener('resize', resizeBody3D);
-  initMeshPinRaycaster3D();
   initJointEditor3D();
   sceneInited3D = true;
   animate3D();
@@ -1462,7 +1315,6 @@ function animate3D() {
   if (!sceneInited3D || document.getElementById('preview3D').style.display === 'none') return;
   controls3D.update();
   renderer3D.render(scene3D, camera3D);
-  if (pinArmedSide) updatePinLiveFace3D();
   updateWristSliderOverlay3D();
 }
 
@@ -1603,48 +1455,23 @@ function pelvisPointToSpineLocal3D(pt, bendDeg, twistDeg, sideDeg) {
   return { x: v.x, y: v.y, z: v.z };
 }
 
-// Recovers "which way did this gesture's ORIGINAL hand-tuned fixed angles
-// point the upper arm" — used as the IK pole (the "which side does the
-// elbow bend toward" hint) for a converted pose, so the IK solve reproduces
-// the same natural elbow plane the pose was designed with, just re-aimed
-// for exact reach instead of a baked angle. Mirrors setBallJoint's exact
-// math (flex unsigned, abd/roll mirrored by side).
-function poleFromAngles3D(side, flexDeg, abdDeg, rollDeg) {
-  const sideSign = side === 'right' ? 1 : -1;
-  const euler = new THREE.Euler(
-    deg2rad(flexDeg || 0), deg2rad((rollDeg || 0) * sideSign), deg2rad((abdDeg || 0) * sideSign), 'XYZ'
-  );
-  const dir = new THREE.Vector3(0, -1, 0).applyEuler(euler);
-  return { x: dir.x, y: dir.y, z: dir.z };
-}
-
-// Named hand-target presets (a pose saying `handTarget: 'some-name'`). All of
-// the old ones have been converted to normal mesh pins or removed, so this is
-// intentionally empty now — hand targets are mesh-pin objects. The lookup is
-// kept so a stray string name resolves to "no target" instead of throwing.
-// A preset here could return {point, normal} and carry a `.poleAngles`.
-const HAND_TARGET_PRESETS_3D = {
-};
-
 // ---- Generic mesh-face pinning ---------------------------------------------
-// The named presets above are hand-tuned one-off spots. This is the general
-// case: pin a hand to ANY of the body's rest-position boxes (not just head/
-// torso/waist), at any point on that box's face, given as fractions of that
-// box's OWN current width/height/depth — exactly like boxTargetPoint3D's
-// xFrac/yFrac/zFrac (0.5/0.5 = box center, ±0.5 on x or z = a side/front/
-// back face, y:0/1 = the bottom/top face). Because the fractions are read
-// fresh off that box's current size every rebuild, the pin automatically
-// tracks the mesh through any resize with no extra math.
+// Pin a hand to ANY of the body's rest-position boxes (not just head/torso/
+// waist), at a named FACE of that box (front/back/left/right/top/bottom —
+// see FACE_FRACS_3D above), given as fractions of that box's OWN current
+// width/height/depth. Because the fractions are read fresh off that box's
+// current size every rebuild, a pinned face automatically tracks the mesh
+// through any resize with no extra math — see resolvePinFacePoint3D above.
 // Deliberately limited to boxes that sit at a fixed rest position relative
 // to their own parent (pelvis or spine) — head, neck, torso, waist/hip, and
 // the legs/feet. Arms and hands are themselves posed (rotated by whatever
-// pose is active), so their CURRENT world position isn't recoverable from
-// the flat 2D box alone; pinning a hand to another hand/arm still goes
-// through a hand-tuned preset like 'opposite-shoulder' above.
+// the shoulder/elbow are doing), so their CURRENT world position isn't
+// recoverable from the flat 2D box alone — pinning a hand to the OTHER hand/
+// arm isn't supported by this system.
 // `pelvisAnchored: true` marks a box that hangs off the pelvis (bodyGroup3D)
 // rather than the spine pivot — its raw point needs the same
-// pelvisPointToSpineLocal3D correction 'hip-side' above uses, or a spine
-// bend/twist will pull the pin off the mesh it's supposed to sit on.
+// pelvisPointToSpineLocal3D correction, or a spine bend/twist will pull the
+// pin off the mesh it's supposed to sit on.
 const MESH_PIN_ANCHORS_3D = {
   head:       { get: geom => geom.headBox,        pelvisAnchored: false },
   neck:       { get: geom => geom.neckBox,        pelvisAnchored: false },
@@ -1656,81 +1483,23 @@ const MESH_PIN_ANCHORS_3D = {
   rightFoot:  { get: geom => geom.footBoxes.right,pelvisAnchored: true },
 };
 
-// Resolves a pose's `handTarget` field to a concrete spine-local point,
-// whichever form it's given in: a named string preset (existing behavior,
-// HAND_TARGET_PRESETS_3D above) or a generic mesh-pin descriptor object
-// `{ box: 'waist'|'torso'|'head'|'neck'|'leftLeg'|'rightLeg'|'leftFoot'|
-// 'rightFoot', x, y, z, poleAngles? }` (x/y/z default to 0/0.5/0.5, the
-// box's front-center, if omitted). Returns null if the target can't be
-// resolved (mesh not built this side, e.g. a missing leg), same as a
-// preset returning null — applyArmIK already treats that as "skip IK".
-function resolveHandTarget3D(side, targetSpec, geom) {
-  if (!targetSpec) return null;
-  if (typeof targetSpec === 'string') {
-    const preset = HAND_TARGET_PRESETS_3D[targetSpec];
-    if (!preset) return null;
-    const result = preset(side, geom);
-    if (!result) return null;
-    // Presets historically returned a bare {x,y,z} point. Newer presets can
-    // return {point, normal} instead to also drive automatic hand
-    // orientation (see solveHandOrientationForNormal) — support both.
-    const point = result.point || result;
-    if (!point) return null;
-    return { point, poleAngles: preset.poleAngles, normal: result.normal || null };
-  }
-  const anchor = MESH_PIN_ANCHORS_3D[targetSpec.box];
-  const box = anchor ? anchor.get(geom) : null;
-  let point = boxTargetPoint3D(box, targetSpec.x ?? 0, targetSpec.y ?? 0.5, targetSpec.z ?? 0.5);
-  const sd = geom.spineDeg || { bend: 0, twist: 0, side: 0 };
-  if (point && anchor.pelvisAnchored) {
-    point = pelvisPointToSpineLocal3D(point, sd.bend, sd.twist, sd.side);
-  }
-  if (!point) return null;
-  // A crosshair-pinned target also carries the surface normal it was
-  // picked on (see resolveMeshPinAtCrosshair3D) — named string presets
-  // above never have one, so they fall back to the old behavior (no
-  // orientation solve, just the fixed-angle wrist values as authored). A
-  // pelvis-anchored normal needs the exact same spine-bend correction the
-  // point above just got — it's a pure rotation, so pelvisPointToSpineLocal3D
-  // (built for points) works unchanged as a direction transform too.
-  let normal = (targetSpec.nx != null) ? { x: targetSpec.nx, y: targetSpec.ny, z: targetSpec.nz } : null;
-  if (normal && anchor.pelvisAnchored) {
-    normal = pelvisPointToSpineLocal3D(normal, sd.bend, sd.twist, sd.side);
-  }
-  // "Keep hand where it is" pins also carry the wrist's offset from the picked
-  // surface point (stored in the SAME frame as the point, so it takes the same
-  // pelvis→spine correction) and the elbow-direction hint it was pinned with.
-  let offset = null;
-  if (targetSpec.offset) {
-    offset = { x: targetSpec.offset.x || 0, y: targetSpec.offset.y || 0, z: targetSpec.offset.z || 0 };
-    if (anchor.pelvisAnchored) offset = pelvisPointToSpineLocal3D(offset, sd.bend, sd.twist, sd.side);
-  }
-  // A `pole` on a pin is only ever legitimate as part of a "keep position"
-  // pin's bundle (offset + joints + target — see computeKeepPositionExtras3D),
-  // meaning it's already scoped to that exact captured wrist offset. A `pole`
-  // with no `offset` alongside it isn't something any current pin-creation
-  // path produces — it can only be leftover data from an older/buggy save
-  // (e.g. a stale mirror). Ignore it so old saved poses self-heal instead of
-  // permanently locking one arm's elbow to a now-mismatched direction.
-  const pole = (targetSpec.pole && targetSpec.offset) ? targetSpec.pole : null;
-  return { point, poleAngles: targetSpec.poleAngles, normal, offset, pole };
-}
-
 const v3 = (x, y, z) => ({ x, y, z });
 const v3sub = (a, b) => v3(a.x - b.x, a.y - b.y, a.z - b.z);
+const v3add = (a, b) => v3(a.x + b.x, a.y + b.y, a.z + b.z);
 const v3dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
 const v3cross = (a, b) => v3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
 const v3len = (a) => Math.hypot(a.x, a.y, a.z);
 const v3norm = (a) => { const l = v3len(a) || 1; return v3(a.x / l, a.y / l, a.z / l); };
+const v3scale = (a, s) => v3(a.x * s, a.y * s, a.z * s);
 
-// Builds the shoulder's Euler angles (matching three.js's default 'XYZ'
-// Object3D rotation order, so this is exactly what gets assigned to
-// rotation.x/.y/.z) from two things we actually know: the direction the
-// upper arm should point (colY, negated — the rest pose points down local
-// -y), and the direction the elbow's hinge axis should end up pointing
-// (colX). The remaining local axis (colZ) is whatever completes a
-// right-handed frame — its exact value doesn't matter, only that the
-// frame is orthonormal, which colX/colY already are by construction below.
+// Builds a bone's Euler angles (matching three.js's default 'XYZ' Object3D
+// rotation order, so this is exactly what gets assigned to
+// rotation.x/.y/.z) from two things: the direction the bone should point
+// (aimDir, negated — the rest pose points down local -y), and a rough
+// "which way is up" hint (hingeDir) used only to fix the otherwise-
+// ambiguous roll about the bone's own long axis. Both vectors are in the
+// SAME local frame as the bone's parent (i.e. the frame the bone's own
+// position/rotation are defined in).
 function eulerXYZFromAimAndHinge(aimDir, hingeDir) {
   const colY = v3(-aimDir.x, -aimDir.y, -aimDir.z);
   let colX = v3sub(hingeDir, v3(colY.x * v3dot(hingeDir, colY), colY.y * v3dot(hingeDir, colY), colY.z * v3dot(hingeDir, colY)));
@@ -1746,203 +1515,102 @@ function eulerXYZFromAimAndHinge(aimDir, hingeDir) {
     flexRad = Math.atan2(-colZ.y, colZ.z);
     zRad = Math.atan2(-colY.x, colX.x);
   } else {
-    // Gimbal lock (roll ≈ ±90°) — extremely unlikely for these presets,
-    // but fall back to something valid rather than producing NaN.
+    // Gimbal lock (roll ≈ ±90°) — extremely unlikely in practice, but fall
+    // back to something valid rather than producing NaN.
     flexRad = Math.atan2(colX.y, colY.y);
     zRad = 0;
   }
   return { flexRad, rollRad, zRad };
 }
-
-// Full 2-bone solve: shoulderPos/target in the spine's local frame, L1/L2
-// the upper-arm/forearm lengths, pole a rough "which way the elbow points"
-// direction (defaults to outward + a bit forward + a bit down, like a
-// natural human elbow, unless the preset/pose gives its own).
-function solveArmIK(shoulderPos, target, L1, L2, pole) {
-  if (!target) return null;
-  const toTarget = v3sub(target, shoulderPos);
-  const rawD = v3len(toTarget);
-  const maxReach = L1 + L2;
-  // If the requested reach is longer than the arm's two segments can ever
-  // cover — the "hand's facing position is too long for the elbow/shoulder
-  // to connect" case — clamp the solve distance so the chain still forms a
-  // valid (fully-extended) triangle, and report how far over we were so the
-  // caller can visibly rotate the hand/wrist outward to sell the stretch
-  // instead of just silently snapping the hand short of the real target.
-  const d = Math.max(Math.abs(L1 - L2) + 0.01, Math.min(rawD, maxReach - 0.01));
-  const overreachCm = Math.max(0, rawD - maxReach);
-  const dirToTarget = rawD > 1e-6 ? v3norm(toTarget) : v3(0, -1, 0);
-  // Angle at the shoulder between "straight at target" and "where the
-  // upper arm actually points" (law of cosines on the S–Elbow–Target
-  // triangle), and the elbow's own bend (our convention: negative).
-  const cosAlpha = (L1 * L1 + d * d - L2 * L2) / (2 * L1 * d);
-  const alpha = Math.acos(Math.max(-1, Math.min(1, cosAlpha)));
-  const cosInterior = (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2);
-  const interiorDeg = Math.acos(Math.max(-1, Math.min(1, cosInterior))) * 180 / Math.PI;
-  const elbowDeg = -(180 - interiorDeg);
-  // In-plane direction (perpendicular to dirToTarget) the elbow swings
-  // toward, from projecting the pole hint into that plane.
-  const dot = v3dot(dirToTarget, pole);
-  let p = v3sub(pole, v3(dirToTarget.x * dot, dirToTarget.y * dot, dirToTarget.z * dot));
-  if (v3len(p) < 1e-6) p = v3(1, 0, 0); // pole parallel to target dir — arbitrary fallback
-  p = v3norm(p);
-  const ca = Math.cos(alpha), sa = Math.sin(alpha);
-  const upperArmDir = v3(
-    ca * dirToTarget.x + sa * p.x,
-    ca * dirToTarget.y + sa * p.y,
-    ca * dirToTarget.z + sa * p.z
-  );
-  // The hinge axis this specific bend needs is perpendicular to the plane
-  // containing the shoulder, elbow and target — i.e. perpendicular to both
-  // dirToTarget and p. This exact cross-product order is what makes a
-  // NEGATIVE elbowDeg (this file's normal elbow-flexion sign) bend toward
-  // the target rather than away from it.
-  const hingeAxis = v3cross(dirToTarget, p);
-  const euler = eulerXYZFromAimAndHinge(upperArmDir, hingeAxis);
-  return { flexRad: euler.flexRad, rollRad: euler.rollRad, zRad: euler.zRad, elbowDeg, overreachCm };
+// Fixed "which way is up" hint used to resolve the shoulder/elbow's roll
+// ambiguity when aiming a bone at a target point (see eulerXYZFromAimAndHinge
+// above) — mirrors outward/forward/down per side, like a natural human
+// elbow, since there's no pose-authored pole vector in this position-only
+// system.
+function defaultAimHint3D(side) {
+  const sideSign = side === 'right' ? 1 : -1;
+  return v3(sideSign * 0.5, -0.3, 0.8);
 }
 
-// Given the arm's already-solved shoulder/elbow rotation (sol, from
-// solveArmIK) and a target surface normal in the SAME local frame the IK
-// solve itself works in, finds the wrist turn/hinge that makes the hand's
-// flat face (its local Z axis — the axis makeBoxMesh's thin "thickness"
-// dimension runs along, i.e. exactly the axis wristTurn's 180°-about-Y flip
-// already swaps between the two flat faces) point along that normal — so
-// the hand lies flush against the surface instead of the pose's leftover/
-// default wrist angle potentially clipping it edge-first into the mesh.
-// Tries both flat faces (the normal and its opposite) since either one
-// could be the face that ends up resting on the surface, and keeps
-// whichever needs LESS wristTurn than the physical pronation/supination
-// range (WRIST_TURN_RANGE) allows — i.e. "whichever face it can manage"
-// rather than always forcing one specific face and fighting the wrist's
-// own limit to get there. Deliberately does NOT add elbow-lift
-// compensation for whatever's left over (unlike the fixed-angle path) —
-// the wrist's own reach is already the more forgiving of the two once both
-// faces are considered, and lifting the elbow here would nudge the wrist
-// off the position IK just solved for.
-function solveHandOrientationForNormal(side, sol, normalLocal) {
-  const shoulderQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(sol.flexRad, sol.rollRad, sol.zRad, 'XYZ'));
-  const elbowQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(deg2rad(sol.elbowDeg), 0, 0, 'XYZ'));
-  const toElbowLocal = shoulderQuat.clone().multiply(elbowQuat).invert();
-  const dA = new THREE.Vector3(normalLocal.x, normalLocal.y, normalLocal.z).applyQuaternion(toElbowLocal);
-
-  const candidate = (d) => {
-    // Two-angle aim solve for wristGroup's Euler(rotX, rotY, 0, 'XYZ')
-    // mapping its local Z axis (0,0,1) onto direction d — see the
-    // derivation in the file's IK notes: with rotZ fixed at 0, XYZ order
-    // gives local Z -> (cos(x)sin(y), -sin(x), cos(x)cos(y)).
-    const y = Math.max(-1, Math.min(1, d.y));
-    const rotXRad = -Math.asin(y);
-    const rotYRad = Math.atan2(d.x, d.z);
-    const hingeDeg = Math.max(-80, Math.min(80, rad2deg(rotXRad)));
-    // NOT side-negated: for a target/normal pair that's a true mirror image
-    // between left and right (hip-side, opposite-shoulder — same preset
-    // fed each side's own mirrored point+normal), the elbow-local `d` this
-    // function receives is ALSO an exact mirror image (dA.x flips sign,
-    // dA.y/dA.z don't — verified numerically against the solved shoulder/
-    // elbow quaternions). Negating rotYRad again for the left side undid
-    // that mirror and collapsed both sides toward the SAME raw number, so
-    // one side would land inside its dorsum range while the other didn't
-    // (a hip-side pose could render one hand red and the other blue for
-    // what's meant to be an identical symmetric gesture). Leaving it
-    // un-negated makes left/right come out equal-magnitude, OPPOSITE sign —
-    // which is exactly what's needed given WRIST_TURN_RANGE is itself
-    // mirrored (left [0,180], right [-180,0]): both sides then land in the
-    // same palm/dorsum half together. Do not reintroduce this negation.
-    const rawTurnDeg = rad2deg(rotYRad);
-    const { clamped, elbowLift } = clampWristTurn(side, rawTurnDeg);
-    return { turnDeg: clamped, hingeDeg, overshoot: elbowLift };
-  };
-
-  const a = candidate(dA);
-  const b = candidate(dA.clone().negate());
-  let best = a.overshoot <= b.overshoot ? a : b;
-  // Tie-break (within a few degrees of overshoot, so it's not a hard cutoff)
-  // toward whichever candidate reads as dorsum — matches the "dorsum facing
-  // down by default" preference when either face works about as well.
-  if (Math.abs(a.overshoot - b.overshoot) < 5) {
-    const aFlipped = isHandFlipped(side, a.turnDeg), bFlipped = isHandFlipped(side, b.turnDeg);
-    if (aFlipped && !bFlipped) best = b;
-    else if (!aFlipped && bFlipped) best = a;
+// ═══════════════════════════════════════════════════════════════════════
+// New position-based hand pin + elbow system.
+//
+// resolveHandAbsolutePos3D gives the wrist's absolute (spine-local) target
+// position for a side: the pinned face + its stored offset if pinned,
+// otherwise the Default Setter's saved wrist position (captureDefaultSetter3D),
+// otherwise null (caller falls back to the legacy fixed-angle rig).
+//
+// resolveElbowTargetPos3D gives the elbow's absolute target position: its
+// own Default Setter position, shifted by exactly however far the wrist has
+// moved from ITS Default Setter position — "its own elbow location + any
+// shifts in position affected by the hand it's attached to."
+//
+// applyArmPosition3D then aims (never re-lengths) the shoulder→elbow and
+// elbow→wrist segments at those two targets in turn. Because each segment
+// is aimed rather than stretched, both bones stay exactly their built
+// length at all times — the only thing that can happen when a target is
+// out of reach is the final segment's direction landing slightly off the
+// literal target point, which is the "move the hand accordingly in any
+// direction (xyz) to a minimum so the elbow is not restricted to breaking"
+// behavior asked for: the smallest possible correction, never a bigger one.
+// ═══════════════════════════════════════════════════════════════════════
+function resolveHandAbsolutePos3D(side, pose) {
+  const ht = pose && pose[side] && pose[side].handTarget;
+  if (ht && ht.mesh && ht.offset) {
+    const facePoint = resolvePinFacePoint3D(ht.mesh, ht.face, ikContext3D);
+    if (facePoint) return v3add(facePoint, ht.offset);
+    // Mesh not built this side/body (e.g. a missing leg) — fall through to
+    // the default position rather than leaving the hand stranded.
   }
-  return { wristTurnDeg: best.turnDeg, wristHingeDeg: best.hingeDeg };
+  const def = pinDefaults3D[side];
+  return def && def.wrist ? v3(def.wrist.x, def.wrist.y, def.wrist.z) : null;
 }
-
-// Runs the IK above for one arm and applies the result straight to the rig,
-// using whatever the CURRENT body proportions are (from ikContext3D).
-// Returns false if IK couldn't run at all, or an object {wristTurnBoost,
-// orientedWristTurnDeg?, orientedWristHingeDeg?} on success —
-// wristTurnBoost is 0 for a normal in-reach solve, and a small
-// outward-rotation nudge (degrees, unsigned) when the target was farther
-// than the arm can physically reach, so the caller can add it to the pose's
-// own wristTurn and visibly sell the hand "reaching" rather than the arm
-// silently coming up short of the mesh it was supposed to lock onto. The
-// oriented* fields are only present for a mesh-pinned target that carries a
-// surface normal (see resolveHandTarget3D) — the caller uses them in place
-// of the pose's own wristTurn/wrist so the hand actually lies flush against
-// whatever it got pinned to instead of keeping a stale fixed-angle facing.
-// targetSpec is whatever the pose's handTarget field holds — a named preset
-// string or a generic mesh-pin descriptor object; see resolveHandTarget3D.
-function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
-  if (!shoulderGrp || !elbowGrp) return false;
-  const resolved = resolveHandTarget3D(side, targetSpec, ikContext3D);
-  if (!resolved) return false;
+function resolveElbowTargetPos3D(side, wristAbsPos) {
+  const def = pinDefaults3D[side];
+  if (!def || !def.elbow || !def.wrist) return null;
+  return v3add(v3(def.elbow.x, def.elbow.y, def.elbow.z), v3sub(wristAbsPos, v3(def.wrist.x, def.wrist.y, def.wrist.z)));
+}
+// Aims shoulderGrp/elbowGrp so the wrist lands as close as physically
+// possible (rigid segment lengths) to wristAbsPos, routing through an elbow
+// that follows resolveElbowTargetPos3D's default-plus-hand-delta rule.
+// Returns true if it ran (defaults are captured for this side), false if
+// the caller should fall back to the legacy fixed-angle rig.
+function applyArmPosition3D(side, shoulderGrp, elbowGrp, pose) {
+  const def = pinDefaults3D[side];
   const shoulderPos = ikContext3D.shoulders[side];
   const lens = ikContext3D.armLens[side];
-  if (!shoulderPos || !lens) return false;
-  const sideSign = side === 'right' ? 1 : -1;
-  const pole = resolved.pole
-    ? { x: resolved.pole.x, y: resolved.pole.y, z: resolved.pole.z }
-    : resolved.poleAngles
-    ? poleFromAngles3D(side, resolved.poleAngles.flex, resolved.poleAngles.abd, resolved.poleAngles.roll)
-    : { x: sideSign * 0.5, y: -0.3, z: 0.8 };
-  // Pinned-to-a-surface targets: aim the WRIST (not the hand's face) at a
-  // point pulled off the surface by half the hand's own thickness, so once
-  // the hand is oriented face-down onto the normal below, its near face —
-  // not its center — is the thing actually touching the surface.
-  let targetPoint = resolved.point;
-  if (resolved.offset) {
-    // Kept-position pin: the wrist sits at the surface point plus the stored
-    // offset — exactly where the hand was when it was pinned.
-    targetPoint = v3(
-      resolved.point.x + resolved.offset.x,
-      resolved.point.y + resolved.offset.y,
-      resolved.point.z + resolved.offset.z
-    );
-  } else if (resolved.normal) {
-    const halfThick = (ikContext3D.handDepths[side] || 0) / 2;
-    targetPoint = v3(
-      resolved.point.x + resolved.normal.x * halfThick,
-      resolved.point.y + resolved.normal.y * halfThick,
-      resolved.point.z + resolved.normal.z * halfThick
-    );
-  }
-  const sol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower, pole);
-  if (!sol) return false;
-  shoulderGrp.rotation.x = sol.flexRad;
-  shoulderGrp.rotation.y = sol.rollRad;
-  shoulderGrp.rotation.z = sol.zRad;
-  elbowGrp.rotation.x = deg2rad(sol.elbowDeg);
-  const maxReach = (lens.upper + lens.lower) || 1;
-  const wristTurnBoost = Math.min(30, (sol.overreachCm / maxReach) * 90);
-  let result = { wristTurnBoost };
-  if (resolved.offset && typeof targetSpec === 'object' && targetSpec.joints && targetSpec.target) {
-    const t = targetSpec.target;
-    const dist = Math.hypot(targetPoint.x - t.x, targetPoint.y - t.y, targetPoint.z - t.z);
-    const J = targetSpec.joints;
-    if (dist < 0.15 && J.s && J.e && J.w) {
-      shoulderGrp.quaternion.set(J.s[0], J.s[1], J.s[2], J.s[3]);
-      elbowGrp.quaternion.set(J.e[0], J.e[1], J.e[2], J.e[3]);
-      keptWristQuat3D[side] = new THREE.Quaternion(J.w[0], J.w[1], J.w[2], J.w[3]);
-      result = { wristTurnBoost: 0 };
-    }
-  }
-  if (resolved.normal && !resolved.offset) { // a kept-position pin doesn't re-aim the hand at the surface
-    const oriented = solveHandOrientationForNormal(side, sol, resolved.normal);
-    result.orientedWristTurnDeg = oriented.wristTurnDeg;
-    result.orientedWristHingeDeg = oriented.wristHingeDeg;
-  }
-  return result;
+  if (!def || !def.elbow || !def.wrist || !shoulderGrp || !elbowGrp || !shoulderPos || !lens) return false;
+  const wristAbsPos = resolveHandAbsolutePos3D(side, pose);
+  if (!wristAbsPos) return false;
+  const elbowTargetPos = resolveElbowTargetPos3D(side, wristAbsPos);
+  if (!elbowTargetPos) return false;
+
+  // Shoulder → elbow: aim only, length is always exactly lens.upper.
+  let elbowDir = v3sub(elbowTargetPos, shoulderPos);
+  if (v3len(elbowDir) < 1e-6) elbowDir = v3(0, -1, 0); // degenerate target — straight down, never breaks
+  elbowDir = v3norm(elbowDir);
+  const shoulderEuler = eulerXYZFromAimAndHinge(elbowDir, defaultAimHint3D(side));
+  shoulderGrp.rotation.x = shoulderEuler.flexRad;
+  shoulderGrp.rotation.y = shoulderEuler.rollRad;
+  shoulderGrp.rotation.z = shoulderEuler.zRad;
+  const elbowActualPos = v3add(shoulderPos, v3scale(elbowDir, lens.upper));
+
+  // Elbow → wrist: same idea, aimed from the elbow's ACTUAL (post-aim)
+  // position, in elbowGrp's own local frame (elbowGrp is a child of
+  // shoulderGrp, so its local axes are shoulderGrp's local axes BEFORE
+  // shoulderGrp's own rotation — undo that rotation to express the desired
+  // world/spine-local direction in elbowGrp's frame).
+  let wristDirWorld = v3sub(wristAbsPos, elbowActualPos);
+  if (v3len(wristDirWorld) < 1e-6) wristDirWorld = elbowDir; // degenerate — keep going straight, never breaks
+  wristDirWorld = v3norm(wristDirWorld);
+  const invShoulderQuat = shoulderGrp.quaternion.clone().invert();
+  const wristDirLocalV = new THREE.Vector3(wristDirWorld.x, wristDirWorld.y, wristDirWorld.z).applyQuaternion(invShoulderQuat);
+  const hintLocalV = new THREE.Vector3(defaultAimHint3D(side).x, defaultAimHint3D(side).y, defaultAimHint3D(side).z).applyQuaternion(invShoulderQuat);
+  const elbowEuler = eulerXYZFromAimAndHinge(v3(wristDirLocalV.x, wristDirLocalV.y, wristDirLocalV.z), v3(hintLocalV.x, hintLocalV.y, hintLocalV.z));
+  elbowGrp.rotation.x = elbowEuler.flexRad;
+  elbowGrp.rotation.y = elbowEuler.rollRad;
+  elbowGrp.rotation.z = elbowEuler.zRad;
+  return true;
 }
 
 // (Re)builds every box mesh from the current 2D layout. Called automatically
@@ -2118,9 +1786,10 @@ function buildBody3D() {
     const upperH = elbowOffsetCm;
     const lowerH = armBox.hCm - upperH;
     // Record this side's shoulder position (in the spine's local frame,
-    // same frame HAND_TARGET_PRESETS_3D targets are given in) and segment
-    // lengths, so an IK-driven pose can reach for a target using this
-    // build's actual proportions.
+    // the same frame the Default Setter's captured positions and any hand
+    // pin's face point are given in — see resolveHandAbsolutePos3D /
+    // captureDefaultSetter3D) and segment lengths, so the position-based arm
+    // system can aim using this build's actual proportions.
     ikContext3D.shoulders[side] = { x: armBox.xCm, y: pivot.bottomCm - waistTopY, z: 0 };
     ikContext3D.armLens[side] = { upper: upperH, lower: lowerH };
 
@@ -2369,22 +2038,27 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   setHinge(rig3D.leftKnee, p.kneeL);   setHinge(rig3D.rightKnee, p.kneeR);
   setAnkle(rig3D.leftAnkle,  p.ankleL,  p.ankleTurnL);
   setAnkle(rig3D.rightAnkle, p.ankleR,  p.ankleTurnR);
-  // IK-driven arms (pose sets handTarget) reach for a mesh directly and
-  // skip the fixed-angle path entirely; everything else still uses the
-  // authored flex/abd/roll/elbow numbers exactly as before. Pelvis-anchored
-  // targets (hip-side) need to know how much the spine is currently
+  // Position-driven arms (a Default Setter has been captured for that side,
+  // see captureDefaultSetter3D/applyArmPosition3D) fully determine their own
+  // shoulder+elbow every render and skip the fixed-angle path entirely —
+  // but never touch wristTurn/wrist/wristSwing, which always come from the
+  // pose's own authored numbers either way (hand FACING is independent of
+  // hand POSITION in this system). Everything else still uses the authored
+  // flex/abd/roll/elbow numbers exactly as before. Pelvis-anchored pin faces
+  // (waist, legs, feet) need to know how much the spine is currently
   // bent/twisted/leaned to stay correctly locked — see
   // pelvisPointToSpineLocal3D — so stamp that onto ikContext3D right before
-  // solving, using this pose's own spine numbers.
+  // resolving, using this pose's own spine numbers.
   ikContext3D.spineDeg = { bend: p.spineBend || 0, twist: p.spineTwist || 0, side: p.spineSide || 0 };
-  const leftIK = p.handTargetL ? applyArmIK('left', rig3D.leftShoulder, rig3D.leftElbow, p.handTargetL) : false;
-  // Actually-applied elbow bend/lift for this render — defaults to the
-  // pose's own numbers (untouched) for an IK-driven side, and gets replaced
-  // inside the non-IK branch below when an override is active. Declared out
-  // here (rather than as consts inside the branch) so the Save button below
-  // can read back exactly what was rendered, regardless of which path ran.
+  const leftPositioned = applyArmPosition3D('left', rig3D.leftShoulder, rig3D.leftElbow, p);
+  // Actually-applied elbow bend/lift for this render — meaningless for a
+  // position-driven side (the aim solve fully owns shoulder/elbow rotation
+  // there), kept only so the Save button below has a real number to skip
+  // instead of undefined. Declared out here (rather than as consts inside
+  // the branch) so the Save button below can read back exactly what was
+  // rendered, regardless of which path ran.
   let leftElbowBend = p.elbowL, leftElbowLift = 0;
-  if (!leftIK) {
+  if (!leftPositioned) {
     // Clamp wristTurn to its physical range BEFORE positioning the shoulder,
     // so any overshoot can be folded into this same shoulder call as extra
     // abduction (elbow lift) rather than silently vanishing. The Hand/Wrist
@@ -2400,44 +2074,10 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     setBallJoint(rig3D.leftShoulder, p.shoulderL, (p.shoulderAbdL || 0) + leftElbowLift, -1);
     if (rig3D.leftShoulder) rig3D.leftShoulder.rotation.y = deg2rad((p.shoulderRollL || 0) * -1);
     setHinge(rig3D.leftElbow, leftElbowBend);
-  } else {
-    // A mesh-pinned target with a surface normal fully determines the
-    // hand's facing (see applyArmIK/solveHandOrientationForNormal) — that
-    // wins over whatever wristTurn/wrist the pose itself authored, the same
-    // way the position IK above already wins over the pose's fixed shoulder/
-    // elbow numbers. Named presets with no normal (stomach, collarbone,
-    // face-cheek...) leave these fields untouched, same as before.
-    if (leftIK.orientedWristTurnDeg !== undefined) {
-      // A manual Bend/Turn slider tweak (Hand/Wrist Facing panel) is a more
-      // explicit signal than the surface-normal solve, so it wins here the
-      // same way it already wins over a pose's own authored angles above —
-      // otherwise a pinned hand could never be fine-tuned off the flush
-      // surface facing (e.g. angling the fingers slightly while still
-      // resting on the hip).
-      if (!ovSet(handRotationOverride.left))  p.wristTurnL = leftIK.orientedWristTurnDeg;
-      if (!ovSet(wristRotationOverride.left)) p.wristL = leftIK.orientedWristHingeDeg;
-    }
-    if (leftIK.wristTurnBoost && !ovSet(handRotationOverride.left)) {
-      // Target was farther than the arm can reach — rotate the wrist a bit
-      // further outward on top of whatever's set above, instead of letting
-      // the hand quietly stop short of the mesh it's locked onto. IK
-      // already fixed the shoulder/elbow to reach the target, so an
-      // overshoot here just clamps (no elbow-lift compensation — lifting
-      // the elbow now would pull the hand off the target it's locked onto).
-      // Skipped once the user has manually dialed in a turn — the boost
-      // would otherwise silently fight their chosen value.
-      p.wristTurnL = clampWristTurn('left', (p.wristTurnL || 0) + leftIK.wristTurnBoost).clamped;
-    }
-    // A mirrored pin carries the exact hand facing to use (see mirrorPinSpec3D).
-    const flL = p.handTargetL && p.handTargetL.faceLock;
-    if (flL) {
-      if (!ovSet(handRotationOverride.left))  p.wristTurnL = clampTurnFree(flL.turn);
-      if (!ovSet(wristRotationOverride.left)) p.wristL = clampWristBend(flL.hinge);
-    }
   }
-  const rightIK = p.handTargetR ? applyArmIK('right', rig3D.rightShoulder, rig3D.rightElbow, p.handTargetR) : false;
+  const rightPositioned = applyArmPosition3D('right', rig3D.rightShoulder, rig3D.rightElbow, p);
   let rightElbowBend = p.elbowR, rightElbowLift = 0;
-  if (!rightIK) {
+  if (!rightPositioned) {
     const rightWrist = turnFreeR ? { clamped: clampTurnFree(p.wristTurnR), elbowLift: 0 } : clampWristTurn('right', p.wristTurnR);
     p.wristTurnR = rightWrist.clamped;
     rightElbowLift = rightWrist.elbowLift + (elbowLiftOverride.right || 0);
@@ -2448,19 +2088,6 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     // elbow's hinge axis without disturbing flex/abd.
     if (rig3D.rightShoulder) rig3D.rightShoulder.rotation.y = deg2rad((p.shoulderRollR || 0) * 1);
     setHinge(rig3D.rightElbow, rightElbowBend);
-  } else {
-    if (rightIK.orientedWristTurnDeg !== undefined) {
-      if (!ovSet(handRotationOverride.right))  p.wristTurnR = rightIK.orientedWristTurnDeg;
-      if (!ovSet(wristRotationOverride.right)) p.wristR = rightIK.orientedWristHingeDeg;
-    }
-    if (rightIK.wristTurnBoost && !ovSet(handRotationOverride.right)) {
-      p.wristTurnR = clampWristTurn('right', (p.wristTurnR || 0) + rightIK.wristTurnBoost).clamped;
-    }
-    const flR = p.handTargetR && p.handTargetR.faceLock;
-    if (flR) {
-      if (!ovSet(handRotationOverride.right))  p.wristTurnR = clampTurnFree(flR.turn);
-      if (!ovSet(wristRotationOverride.right)) p.wristR = clampWristBend(flR.hinge);
-    }
   }
   // wrist: bend is a hinge exactly like the elbow (same fixed sign
   // convention — see the pose-authoring notes above); wristTurn re-aims
@@ -2468,7 +2095,9 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   // long axis, applied AFTER the bend, the same way shoulderRoll is applied
   // after the shoulder's own flex/abd. Mirrored the same way as
   // shoulderRoll/hipTurn: a shared value turns the hands to face each other
-  // (useful for clasped hands), not the same way.
+  // (useful for clasped hands), not the same way. Unaffected by whether the
+  // arm is position-driven or fixed-angle — hand facing is always these
+  // plain pose numbers.
   setHinge(rig3D.leftWrist, p.wristL); setHinge(rig3D.rightWrist, p.wristR);
   if (rig3D.leftWrist)  rig3D.leftWrist.rotation.y  = deg2rad((p.wristTurnL || 0) * -1);
   if (rig3D.rightWrist) rig3D.rightWrist.rotation.y = deg2rad((p.wristTurnR || 0) *  1);
@@ -2495,12 +2124,13 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   }
   // Snapshot of exactly what got rendered this call — the Save button in the
   // Hand/Wrist Facing panel reads this rather than re-deriving it, so what
-  // gets written to POSES3D is guaranteed to match what's on screen. isIK
-  // sides are flagged so Save knows to leave their handTarget-driven fields
-  // alone instead of writing dead angle numbers the IK path would ignore.
+  // gets written to POSES3D is guaranteed to match what's on screen.
+  // isPositioned sides are flagged so Save knows to leave their elbow/
+  // shoulderAbd alone (pure by-products of the 3D aim solve every render)
+  // instead of writing dead angle numbers that path ignores.
   lastPoseResolved3D = {
-    left:  { wristTurn: p.wristTurnL, wrist: p.wristL, swing: p.wristSwingL, elbow: leftElbowBend,  shoulderAbd: (p.shoulderAbdL || 0) + leftElbowLift,  isIK: !!leftIK },
-    right: { wristTurn: p.wristTurnR, wrist: p.wristR, swing: p.wristSwingR, elbow: rightElbowBend, shoulderAbd: (p.shoulderAbdR || 0) + rightElbowLift, isIK: !!rightIK },
+    left:  { wristTurn: p.wristTurnL, wrist: p.wristL, swing: p.wristSwingL, elbow: leftElbowBend,  shoulderAbd: (p.shoulderAbdL || 0) + leftElbowLift,  isPositioned: !!leftPositioned },
+    right: { wristTurn: p.wristTurnR, wrist: p.wristR, swing: p.wristSwingR, elbow: rightElbowBend, shoulderAbd: (p.shoulderAbdR || 0) + rightElbowLift, isPositioned: !!rightPositioned },
   };
   // Re-stamp any manual Joint Editor drags on top of what the pose/IK just
   // computed above, so a hand-dragged elbow/wrist survives pose switches,
@@ -2658,8 +2288,6 @@ function openPoseModal() {
 function closePoseModal() {
   const overlay = document.getElementById('poseModalOverlay');
   if (overlay) overlay.classList.remove('open');
-  pinArmedSide = null;
-  updatePinModeUI();
 }
 function switchPoseModalTab(tab) {
   const poseTab = document.getElementById('poseModalTabPose');
@@ -2813,7 +2441,6 @@ function aimBoneToWorldPoint3D(boneGroup, restLocalVec, targetWorldPos) {
 
 function selectJoint3D(side, jointType) {
   selectedJoint3D = { side, jointType };
-  pinFilterGroup3D = null; pinFilterUserSet3D = false;
   transformControls3D.enabled = true;
   transformControls3D.visible = true;
   attachGizmoToSelection3D();
@@ -3033,13 +2660,13 @@ function copyElbowWristFromPose3D() {
   const src = readPoseElbowWristQuats3D(sel.value);
   const matchElbowPos = !!(document.getElementById('jeCopyShoulderChk') || {}).checked;
   const copyPins = !!(document.getElementById('jeCopyPinsChk') || {}).checked;
-  // Pins: copy the source pose's hand target (mesh pin or named preset) for
-  // each chosen side. A pin is stored as box-relative fractions (or a preset
-  // name), not world coordinates, so it re-resolves against THIS pose's own
-  // mesh positions — the hand lands on the same spot of the body, at wherever
-  // that spot currently is. A pinned arm is solved by IK, so any manual
-  // shoulder/elbow/wrist rotation on that side is cleared and not copied
-  // (it would fight the IK result).
+  // Pins: copy the source pose's hand target (mesh+face pin) for each chosen
+  // side. A pin is stored as mesh/face names + an offset (not world
+  // coordinates), so it re-resolves against THIS pose's own mesh positions —
+  // the hand lands on the same spot of the body, at wherever that spot
+  // currently is. A pinned arm's shoulder/elbow are position-driven (see
+  // applyArmPosition3D), so any manual shoulder/elbow rotation on that side
+  // is cleared and not copied (it would just be overwritten every render).
   const pinned = { left: false, right: false };
   if (copyPins) {
     const cur = POSES3D[currentPose3D];
@@ -3243,52 +2870,40 @@ function setJointEditorCameraView3D(view) {
 function mirrorQuat3D(q) {
   return new THREE.Quaternion(q.x, -q.y, -q.z, q.w);
 }
-// Reflects a hand pin across the body's midline: same surface spot on the
-// opposite side (leg/foot boxes swap sides, x and the surface normal flip), plus
-// the stored offset / elbow direction / saved joint rotations of keep-position pins.
-function mirrorPinSpec3D(ht, wr) {
-  if (!ht || typeof ht === 'string') return ht; // named presets are already side-aware
+// Reflects a hand pin across the body's midline: mesh swaps to its opposite
+// (legs/feet), face swaps left/right (front/back/top/bottom stay put), and
+// the stored offset's x flips — the new {mesh,face,offset} shape has no
+// per-pose facing/joint baggage left to carry over (see the block comment
+// above resolveHandAbsolutePos3D — hand facing is fully decoupled from
+// position now), so this is now just a straight geometric mirror.
+function mirrorPinSpec3D(ht) {
+  if (!ht || !ht.mesh) return ht;
   const c = JSON.parse(JSON.stringify(ht));
-  const swap = { leftLeg: 'rightLeg', rightLeg: 'leftLeg', leftFoot: 'rightFoot', rightFoot: 'leftFoot' };
-  if (swap[c.box]) c.box = swap[c.box];
-  const flipX = o => { if (o && typeof o.x === 'number') o.x = round2(-o.x); };
-  flipX(c);
-  if (typeof c.nx === 'number') c.nx = round2(-c.nx);
-  // The opposite hand's IK would re-derive its own facing (not always an exact
-  // reflection), so pin the reflected Bend/Turn on the pin itself.
-  delete c.faceLock;
-  if (wr) c.faceLock = { turn: round1(wr.wristTurn), hinge: round1(wr.wrist) };
-  flipX(c.offset); flipX(c.pole); flipX(c.target);
-  if (c.joints) Object.keys(c.joints).forEach(k => {
-    const q = c.joints[k];
-    if (Array.isArray(q) && q.length === 4) c.joints[k] = [q[0], -q[1], -q[2], q[3]];
-  });
+  const swapMesh = { leftLeg: 'rightLeg', rightLeg: 'leftLeg', leftFoot: 'rightFoot', rightFoot: 'leftFoot' };
+  const swapFace = { left: 'right', right: 'left' };
+  if (swapMesh[c.mesh]) c.mesh = swapMesh[c.mesh];
+  if (swapFace[c.face]) c.face = swapFace[c.face];
+  if (c.offset && typeof c.offset.x === 'number') c.offset.x = round2(-c.offset.x);
   return c;
 }
 // Mobile-friendly debug readout (no devtools needed): shows the raw stored
 // handTarget for both wrists plus what it currently RESOLVES to (the actual
-// spine-local point/normal/offset applyArmIK will aim at, given the CURRENT
-// body geometry) — via resolveHandTarget3D, the same function applyArmIK
-// itself calls. If the two `resolved` points aren't an exact mirror
-// (same y/z, opposite x) at the current geometry, the bug is in the
-// resolve/geometry path; if they ARE a mirror but the rendered hands still
-// look wrong, the bug is downstream in the IK solve itself.
+// spine-local point the new position system will use, given the CURRENT
+// body geometry) — via resolveHandAbsolutePos3D, the same function
+// applyArmPosition3D itself calls. If the two `resolved` points aren't an
+// exact mirror (same y/z, opposite x) at the current geometry, the bug is in
+// the resolve/geometry path; if they ARE a mirror but the rendered hands
+// still look wrong, the bug is downstream in the aim solve itself.
 function debugShowPins3D() {
   const pose = POSES3D[currentPose3D];
-  const ex = pose ? expandPose3D(pose) : null;
   const lines = [];
   ['left', 'right'].forEach(side => {
-    const raw = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
+    const raw = pose && pose[side] && pose[side].handTarget;
     lines.push(`${side.toUpperCase()} raw: ${raw ? JSON.stringify(raw) : '(none)'}`);
-    if (raw) {
-      const resolved = resolveHandTarget3D(side, raw, ikContext3D);
-      lines.push(`${side.toUpperCase()} resolved: ${resolved ? JSON.stringify({
-        point: resolved.point,
-        normal: resolved.normal,
-        offset: resolved.offset,
-        pole: resolved.pole,
-      }) : '(could not resolve — box/mesh missing this side)'}`);
-    }
+    const resolved = resolveHandAbsolutePos3D(side, pose);
+    lines.push(`${side.toUpperCase()} resolved wrist target: ${resolved ? JSON.stringify(resolved) : '(no Default Setter captured, and not pinned — legacy fixed-angle path)'}`);
+    const def = pinDefaults3D[side];
+    lines.push(`${side.toUpperCase()} defaults: ${def ? JSON.stringify(def) : '(not captured — see Default Setter)'}`);
     const shoulder = ikContext3D.shoulders && ikContext3D.shoulders[side];
     const lens = ikContext3D.armLens && ikContext3D.armLens[side];
     lines.push(`${side.toUpperCase()} shoulder/lens: ${JSON.stringify({ shoulder, lens })}`);
@@ -3300,53 +2915,23 @@ function mirrorSelectedJoint3D() {
   const { side, jointType } = selectedJoint3D;
   const other = side === 'left' ? 'right' : 'left';
   const pose = POSES3D[currentPose3D];
-  const ex = pose ? expandPose3D(pose) : null;
-  const srcPin = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
-  const sharedPin = !!(pose && pose.handTarget) && !(pose[side] && pose[side].handTarget) && !(pose[other] && pose[other].handTarget);
+  const srcPin = pose && pose[side] && pose[side].handTarget;
   const shoulderGrp = rig3D[side + 'Shoulder'];
   const elbowGrp = rig3D[side + 'Elbow'];
   const wr = lastPoseResolved3D && lastPoseResolved3D[side];
-  if (srcPin && !sharedPin) {
-    // Pinned source: mirror the PIN, and let the opposite hand's IK solve the
-    // arm and hand facing from it (manual arm angles would fight the pin).
+  if (srcPin) {
+    // Pinned source: mirror the PIN itself — the opposite hand then tracks
+    // its own mirrored face independently (see resolveHandAbsolutePos3D),
+    // same as any other pin.
     snapshotPinsForCancel3D();
     pose[other] = pose[other] || {};
-    // Mirror the pin as-is. If the source pin already carries its own
-    // `pole` (a "keep position" pin sets one — see computeKeepPositionExtras3D),
-    // mirrorPinSpec3D already flips it correctly (flipX(c.pole)) and that's
-    // fine to keep, since it was captured relative to that pin's own offset,
-    // not baked from a one-off arm snapshot.
-    //
-    // Deliberately NOT injecting a fresh `pole` captured from the source
-    // arm's current shoulder->elbow direction here (an earlier version of
-    // this fix did). That direction is only valid for the CURRENT shoulder
-    // width: as shoulder width changes, the shoulder pivot moves while a
-    // waist/hip target doesn't, so the correct elbow-swing plane genuinely
-    // rotates with it. A pole frozen from one width can end up nearly
-    // parallel to the shoulder->target line at another width, which drives
-    // solveArmIK's pole-projection into its degenerate-pole fallback (an
-    // arbitrary elbow direction) and throws the hand wildly off target
-    // (e.g. into the leg) — and it stays wrong until Mirror is run again.
-    //
-    // Leaving `pole` unset instead falls through to applyArmIK's own
-    // default, `{ x: sideSign * 0.5, y: -0.3, z: 0.8 }` — sideSign is ±1 by
-    // side, so it's already an exact left/right mirror of itself, and it's
-    // recomputed fresh on every solve, so it stays correct at any shoulder
-    // width with nothing to go stale.
-    pose[other].handTarget = mirrorPinSpec3D(srcPin, wr);
+    pose[other].handTarget = mirrorPinSpec3D(srcPin);
     jointEditorPinDirty3D[other] = true;
-    handRotationOverride[other] = null; wristRotationOverride[other] = null; wristSwingOverride[other] = null;
-    elbowBendOverride[other] = null; elbowLiftOverride[other] = null;
-    // IMPORTANT: do NOT stamp shoulderQuat/elbowQuat/wristQuat here. A pin's
-    // whole point is that it re-solves IK fresh off the CURRENT body geometry
-    // (see resolveHandTarget3D / applyArmIK) so it keeps tracking the mesh
-    // through any later resize (shoulder width, waist width, height, etc).
-    // A frozen quaternion snapshot does the opposite: reapplyManualJointEdits3D
-    // re-stamps it after every rebuild regardless of geometry, so the instant
-    // shoulder width (or anything else) changes, the mirrored arm silently
-    // stops tracking its pin even though pose[other].handTarget still reports
-    // "pinned" correctly. Clear any earlier stamp so the mirrored side goes
-    // back to a live IK solve, same as any other pinned hand.
+    // A pin's whole point is that it re-resolves fresh off the CURRENT body
+    // geometry every render (see resolveHandAbsolutePos3D) so it keeps
+    // tracking its face through any later resize. A frozen quaternion
+    // snapshot does the opposite — clear any earlier manual joint edit on
+    // the mirrored side so it goes back to a live, tracking pin.
     const jePinned = jointEditsForPose3D(currentPose3D);
     jePinned[other].shoulderQuat = null;
     jePinned[other].elbowQuat    = null;
@@ -3451,17 +3036,12 @@ function syncWristSliders3D() {
   el.querySelector('#wsSwingVal3D').textContent = Math.round(parseFloat(swing.value));
   el.querySelector('#wsBendVal3D').textContent = Math.round(parseFloat(bend.value));
   el.querySelector('#wsTurnVal3D').textContent = Math.round(parseFloat(turn.value));
-  // Swing was never actually overwritten by IK (it's applied unconditionally
-  // in applyPose3D), and Bend/Turn now win over the surface-locked facing
-  // once the user drags them (see the ovSet checks in the IK branch of
-  // applyPose3D) — so none of the three sliders need to be disabled while
-  // pinned any more. The note instead just explains what dragging does on a
-  // pinned hand, since it's adjusting away from the auto-solved facing
-  // rather than from the pose's own authored angle.
-  const pinned = !!res.isIK;
+  // Bend/Turn/Swing are always the pose's own authored hand-facing numbers,
+  // pinned or not — a hand pin (or the Default Setter) only ever drives the
+  // shoulder/elbow's POSITION (see applyArmPosition3D), never the hand's own
+  // facing, so there's nothing pin-specific left to explain here.
   bend.disabled = false; turn.disabled = false; swing.disabled = false;
-  el.querySelector('#wsNote3D').textContent = 'Hand is pinned — dragging adjusts off the auto-solved facing.';
-  el.querySelector('#wsNote3D').style.display = pinned ? 'block' : 'none';
+  el.querySelector('#wsNote3D').style.display = 'none';
 }
 function onWristSlider3D(axis, n) {
   if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist' || isNaN(n)) return;
@@ -3749,101 +3329,15 @@ function setJointHandFacing3D(kind, value) {
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
 }
-// "Aim & Pin" in the wrist panel — opens the proven Hand/Wrist Facing aim-bar
-// flow (crosshair + Pin Here/Done) rather than a second copy of it, scoped to
-// the selected side and, if a specific mesh was chosen in the dropdown below,
-// filtered to just that mesh (pinFilterGroup3D) for a targeted pin instead of
-// "nearest anything."
-function jointPanelAimAndPin3D() {
-  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') return;
-  enterEditorPinMode3D(selectedJoint3D.side);
-}
-// ---- Editor Pin Mode ----
-// Closes every open menu (joint settings, copy pop-up, pose modal) and the
-// gizmo so the model is unobstructed, shows the crosshair in the center and a
-// small bar on top: Apply pins whatever's under the crosshair, Cancel leaves
-// without changing anything.
-function enterEditorPinMode3D(side) {
-  if (side !== 'left' && side !== 'right') return;
-  closeCopyPopup3D();
-  closePoseModal();               // also disarms any old pin state
-  deselectJoint3D();              // hides the ⚙ panel + gizmo
-  jePinModeActive3D = true;
-  pinArmedSide = side;
-  const preview = document.getElementById('preview3D');
-  if (preview) preview.classList.add('je-pin-mode');
-  updatePinModeUI();
-  refreshPinModeInfo3D();
-  const det = document.getElementById('jpmDetecting');
-  if (det) det.textContent = 'Now detecting: …';
-}
-function exitEditorPinMode3D(apply) {
-  if (!jePinModeActive3D) return;
-  const side = pinArmedSide;
-  if (apply) {
-    if (!confirmMeshPinAtCrosshair3D()) return; // nothing under the crosshair — stay in Pin Mode
-    // A pinned arm is solved by IK; leftover manual shoulder/elbow/wrist
-    // edits on that side would be stamped on top and pull the hand off the pin.
-    if (side) {
-      const je = jointEditsForPose3D(currentPose3D);
-      je[side].shoulderQuat = null;
-      je[side].elbowQuat = null;
-      je[side].wristQuat = null;
-      applyPose3D(currentPose3D, { reframe: false });
-    }
-  }
-  jePinModeActive3D = false;
-  pinArmedSide = null;
-  const preview = document.getElementById('preview3D');
-  if (preview) preview.classList.remove('je-pin-mode');
-  updatePinModeUI();
-  const status = document.getElementById('jeMirrorStatus');
-  if (status) {
-    const pose = POSES3D[currentPose3D], ex = pose ? expandPose3D(pose) : null;
-    const ht = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
-    status.textContent = apply ? `Pinned ${side} hand: ${pinPartsText3D(ht) || 'done'}` : 'Pin cancelled';
-    status.style.opacity = '1';
-    clearTimeout(copyElbowWristFromPose3D._t);
-    copyElbowWristFromPose3D._t = setTimeout(() => { status.style.opacity = '0'; }, 2400);
-  }
-}
-// "Face · Mesh" wording for a pin (or a live crosshair hit).
-function pinPartsText3D(ht) {
-  if (!ht) return null;
-  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
-  if (typeof ht === 'string') return `${cap(ht)} (preset)`;
-  const mesh = cap(PIN_BOX_NAMES_3D[ht.box] || ht.box || 'mesh');
-  const face = pinFaceLabel3D(ht);
-  return (face ? `${face} · ${mesh}` : mesh) + pinOffsetText3D(ht);
-}
-function refreshPinModeInfo3D() {
-  const side = pinArmedSide;
-  const work = document.getElementById('jpmWorking');
-  if (work) work.textContent = `Working on: ${side === 'left' ? 'Left' : 'Right'} hand`;
-  const cur = document.getElementById('jpmCurrent');
-  if (cur) {
-    const pose = POSES3D[currentPose3D], ex = pose ? expandPose3D(pose) : null;
-    const ht = ex ? (side === 'left' ? ex.handTargetL : ex.handTargetR) : null;
-    cur.textContent = 'Current face: ' + (pinPartsText3D(ht) || 'not pinned');
-  }
-}
-// ✕ Unpin in the wrist settings: frees the selected hand from its pin. Session
-// only until ⬆ Save (Cancel undoes it).
+// ✕ Unpin in the wrist settings: frees the selected hand from its pin (back
+// to the Default Setter position, or the legacy fixed-angle path if no
+// default has been captured). Session only until ⬆ Save (Cancel undoes it).
 function jointPanelUnpin3D() {
   if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') return;
-  const side = selectedJoint3D.side, pose = POSES3D[currentPose3D];
-  if (!pose || !pose[side] || pose[side].handTarget === undefined) return;
   snapshotPinsForCancel3D();
-  delete pose[side].handTarget;
-  jointEditorPinDirty3D[side] = true;
-  pinFilterGroup3D = null; pinFilterUserSet3D = false;
-  applyPose3D(currentPose3D, { reframe: false });
+  unpinHandWrist3D(selectedJoint3D.side);
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
-}
-function setPinFilterGroup3D(value) {
-  pinFilterGroup3D = value || null;
-  pinFilterUserSet3D = true;
 }
 
 function openJointPanel3D() {
@@ -3992,33 +3486,16 @@ async function fetchPoseOverridesFile(s) {
 // Hand Facing / Wrist Facing dropdowns are saved PER POSE: on ⬆ Save the
 // current override for each side is written into that pose's own record as raw
 // wristTurn / wrist degrees (same fields the pose loader already re-applies),
-// then the live override is cleared. IK-pinned sides can't take raw
-// wristTurn/wrist numbers (the IK solve ignores them), so a Bend/Turn
-// override on a pinned side is baked onto the PIN itself as a faceLock
-// instead — same mechanism savePoseFromHandWristPanel()'s isIK branch and
-// mirrorPinSpec3D already use. Swing is never IK-driven, so it always saves
-// as a plain per-side field either way. Returns [{side, fields}] to push.
+// then the live override is cleared. Hand facing is fully independent of the
+// position-based pin/Default Setter system now (see applyArmPosition3D) —
+// pinned or not, every side saves the same way. Returns [{side, fields}] to push.
 function bakeHandFacingIntoPose3D() {
   const pose = POSES3D[currentPose3D];
   const out = [];
   if (!pose) return out;
   const lit = (poseLiteralFacing3D && poseLiteralFacing3D[currentPose3D]) || {};
   ['left', 'right'].forEach(side => {
-    const r = lastPoseResolved3D && lastPoseResolved3D[side];
     pose[side] = pose[side] || {};
-    if (r && r.isIK) {
-      const fields = { wristSwing: round1(r.swing || 0) };
-      pose[side].wristSwing = fields.wristSwing;
-      if (ovSet(handRotationOverride[side]) || ovSet(wristRotationOverride[side])) {
-        pose[side].handTarget = Object.assign({}, pose[side].handTarget, {
-          faceLock: { turn: round1(r.wristTurn), hinge: round1(r.wrist) },
-        });
-        fields.handTarget = pose[side].handTarget;
-      }
-      handRotationOverride[side] = null; wristRotationOverride[side] = null; wristSwingOverride[side] = null;
-      out.push({ side, fields });
-      return;
-    }
     const hv = handRotationOverride[side], wv = wristRotationOverride[side];
     const fields = {};
     if (hv === 'default') {
@@ -4136,6 +3613,7 @@ async function quickLoadJointsFromGitHub3D() {
     if (!all[JOINT_EDITS_KEY]) throw new Error('No saved joint edits found yet.');
     jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
     applyJointEditsState3D(all[JOINT_EDITS_KEY]);
+    if (all[PIN_DEFAULTS_KEY]) pinDefaults3D = all[PIN_DEFAULTS_KEY];
     reapplyManualJointEdits3D(); groundBody3D(false);
     if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
     setBtn('✓ Loaded', false);
@@ -4173,6 +3651,7 @@ async function autoLoadJointsFromGitHub3D() {
   try {
     const { all } = await fetchPoseOverridesFile(s);
     if (all[JOINT_EDITS_KEY]) { jointEditsSaved3D = all[JOINT_EDITS_KEY]; applySavedJointEdits3D(); }
+    if (all[PIN_DEFAULTS_KEY]) pinDefaults3D = all[PIN_DEFAULTS_KEY];
   } catch (e) { console.warn('Could not auto-load joint edits from GitHub:', e); }
   finally { jointEditsFetching3D = false; }
 }
