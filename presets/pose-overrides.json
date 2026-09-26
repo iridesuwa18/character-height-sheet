@@ -1,0 +1,115 @@
+{
+  "stand-relaxed": {
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.8,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -13.2,
+        "y": 12.47,
+        "z": 0
+      },
+      "leftWrist": {
+        "x": -24.95,
+        "y": -15.2,
+        "z": 0
+      },
+      "leftHandTurn": {
+        "x": -28.96,
+        "y": -24.65,
+        "z": 0
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.8,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 13.2,
+        "y": 12.47,
+        "z": 0
+      },
+      "rightWrist": {
+        "x": 24.95,
+        "y": -15.2,
+        "z": 0
+      },
+      "rightHandTurn": {
+        "x": 28.96,
+        "y": -24.65,
+        "z": 0
+      },
+      "leftHip": {
+        "x": -7.85,
+        "y": -5.87,
+        "z": 0
+      },
+      "leftKnee": {
+        "x": -7.85,
+        "y": -46.93,
+        "z": 0
+      },
+      "leftAnkle": {
+        "x": -7.85,
+        "y": -87.99,
+        "z": 0
+      },
+      "rightHip": {
+        "x": 7.85,
+        "y": -5.87,
+        "z": 0
+      },
+      "rightKnee": {
+        "x": 7.85,
+        "y": -46.93,
+        "z": 0
+      },
+      "rightAnkle": {
+        "x": 7.85,
+        "y": -87.99,
+        "z": 0
+      }
+    }
+  },
+  "_jointEdits": {
+    "pose": "stand-relaxed",
+    "manualJointEdits": {
+      "stand-relaxed": {
+        "left": {
+          "shoulderQuat": null,
+          "elbowQuat": [
+            0,
+            0,
+            -0.1994,
+            0.9799
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null
+        },
+        "right": {
+          "shoulderQuat": [
+            0,
+            0,
+            0,
+            1
+          ],
+          "elbowQuat": [
+            0,
+            0,
+            0.1994,
+            0.9799
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null
+        }
+      }
+    }
+  }
+}
