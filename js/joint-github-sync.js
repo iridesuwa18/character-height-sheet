@@ -1,14 +1,13 @@
 // ── joint-github-sync.js ──────────────────────────────────────────────────
 // Part of the 3d_character.js split. Saves/loads the Joint Editor's own
 // manual drags (manualJointEdits3D) to the same GitHub pose-overrides.json
-// file, under the reserved "_jointEdits" key — kept for backward-compat
-// loading of anything saved before this pass. The ⬆ Save button itself
-// (quickSaveJointsToGitHub3D, below) now does one thing only: snapshot every
-// joint's current XYZ position (captureAllJointXYZ3D, in
-// hand-pins-github.js) and push it, on press. Everything else (hand-facing
-// overrides, manual joint-editor drags) still drives the live pose the same
-// as before, it's just not what ⬆ Save persists right now — that's the
-// "unpinned XYZ baseline first" foundation a future pin system builds on.
+// file, under the reserved "_jointEdits" key. The ⬆ Save button
+// (quickSaveJointsToGitHub3D, below) does two things on press: snapshot
+// every joint's current XYZ position (captureAllJointXYZ3D, in
+// hand-pins-github.js — a read-only baseline for a future pin system, not
+// yet consumed on load) AND persist the current manualJointEdits3D rotation
+// quaternions under "_jointEdits" — that second part is what actually
+// reproduces the on-screen pose after a refresh, via applySavedJointEdits3D.
 // Shares one global scope with the other files below (plain <script> tags,
 // no modules) — load order matters, see index.html.
 
@@ -89,10 +88,16 @@ async function quickSaveJointsToGitHub3D() {
   // read and save something other than what was actually on screen.
   const poseKey = currentPose3D;
   const jointXYZ = captureAllJointXYZ3D();
+  const jointEditsState = collectJointEditsState3D();
   try {
-    await githubUpdatePoseOverrides3D('Save joint XYZ: ' + poseKey, all => {
+    await githubUpdatePoseOverrides3D('Save joint XYZ + edits: ' + poseKey, all => {
       all[poseKey] = all[poseKey] || {};
       all[poseKey].jointXYZ = jointXYZ;
+      // Also persist the rotation edits that actually drive the rig, so a
+      // refresh restores what's on screen. jointXYZ alone can't do this —
+      // it's a position snapshot with no consumer yet (see notes above);
+      // the quaternion edits below are what applySavedJointEdits3D re-applies.
+      all[JOINT_EDITS_KEY] = jointEditsState;
     });
     setBtn('✓ Saved', false);
     setTimeout(() => setBtn('⬆ Save', false), 1600);
