@@ -367,19 +367,40 @@ let poseOverridesCache3D = null;
 // Exact wrist rotation restored by a kept-position pin for this render (see applyArmIK).
 let keptWristQuat3D = { left: null, right: null };
 
-// Hysteresis for solveHandOrientationForNormal's two-candidate face pick
-// (see below) — remembers which of the hand's two flat faces ('a' = dA,
-// or its opposite) each side last settled on, so a practically-zero
-// geometry nudge (a 0.1cm shoulder/waist/height slider change, or even
-// sub-pixel getBoundingClientRect rounding on an otherwise-identical
-// rebuild) can't flip the hand's rendered facing by ~180° just because
-// the two candidates' overshoot happened to swap order by a fraction of
-// a degree. null = no prior pick yet for this side (first solve, or the
-// pose changed — see the reset in setPose3D).
-let lastHandFaceIsA3D = { left: null, right: null };
-// Only abandon the previously-used face for the other one if the other
-// is better by at least this much — not just technically lower.
-const FACE_HYSTERESIS_MARGIN_DEG = 12;
+// ---- "Hand position always fixed" mode for mesh-pinned hands --------------
+// A pinned hand's target point/normal is recomputed fresh off the current
+// mesh every rebuild by design (see resolveHandTarget3D) — that's what lets
+// it track a resize automatically. In practice that recompute (plus the
+// orientation solve below, which is sensitive to the shoulder's exact
+// current rotation) has proven unstable: a tiny slider nudge can swing the
+// hand's rendered facing by ~180°. Rather than keep chasing that
+// numerically, this freezes each pin's result the FIRST time it's resolved
+// and reuses that exact frozen point/normal/orientation on every later
+// rebuild — nothing about a pin drifts or flips again, ever, no matter what
+// height/shoulder/waist/etc. does. The shoulder/elbow bend is NOT frozen —
+// solveArmIK below still re-solves them fresh each rebuild so the arm still
+// physically reaches the (now-fixed) target from wherever the shoulder
+// currently sits ("elbows follow suit").
+// Keyed by pose name + side + the pin's own current field values (not just
+// object identity), so: (a) different poses that happen to share the same
+// preset object (PIN_HIP_SIDE is reused by several "hands on hips"-style
+// poses) each get their own independently-frozen target, and (b) editing a
+// pin's values (re-pinning, dragging in the 3D editor, mirroring) changes
+// the key automatically and gets a fresh unfrozen resolve next time — no
+// manual cache-clearing needed anywhere else in the file.
+const frozenHandResolve3D = {};
+function frozenHandKey3D(side, targetSpec) {
+  try { return currentPose3D + '|' + side + '|' + JSON.stringify(targetSpec); }
+  catch (e) { return null; } // shouldn't happen (targetSpec is plain data), but never let this break IK
+}
+// Manual escape hatch (console: resetFrozenHandTargets3D()) — clears every
+// frozen pin so the next rebuild re-resolves fresh off the current mesh.
+// Not wired to any button; only needed if you want to re-baseline a pin
+// without editing its values (editing it already gets a fresh key above).
+function resetFrozenHandTargets3D() {
+  Object.keys(frozenHandResolve3D).forEach(k => delete frozenHandResolve3D[k]);
+  if (typeof buildBody3D === 'function' && sceneInited3D) buildBody3D();
+}
 // Snapshot of the last applyPose3D() call's fully-resolved per-side values
 // (post-override, post-clamp) — see where it's written at the end of
 // applyPose3D for exactly what it holds. null until the first pose is
@@ -1871,28 +1892,14 @@ function solveHandOrientationForNormal(side, sol, normalLocal) {
   const a = candidate(dA);
   const b = candidate(dA.clone().negate());
   let best = a.overshoot <= b.overshoot ? a : b;
-  let bestIsA = best === a;
   // Tie-break (within a few degrees of overshoot, so it's not a hard cutoff)
   // toward whichever candidate reads as dorsum — matches the "dorsum facing
   // down by default" preference when either face works about as well.
   if (Math.abs(a.overshoot - b.overshoot) < 5) {
     const aFlipped = isHandFlipped(side, a.turnDeg), bFlipped = isHandFlipped(side, b.turnDeg);
-    if (aFlipped && !bFlipped) { best = b; bestIsA = false; }
-    else if (!aFlipped && bFlipped) { best = a; bestIsA = true; }
+    if (aFlipped && !bFlipped) best = b;
+    else if (!aFlipped && bFlipped) best = a;
   }
-  // Hysteresis: don't let a negligible geometry change flip which face gets
-  // used (see lastHandFaceIsA3D above). Only let the pick move away from
-  // whichever face this side is already showing if the other one is
-  // clearly better by a real margin.
-  const prevIsA = lastHandFaceIsA3D[side];
-  if (prevIsA !== null && prevIsA !== bestIsA) {
-    const staying = prevIsA ? a : b;
-    const switching = prevIsA ? b : a;
-    if (!(switching.overshoot + FACE_HYSTERESIS_MARGIN_DEG < staying.overshoot)) {
-      best = staying; bestIsA = prevIsA;
-    }
-  }
-  lastHandFaceIsA3D[side] = bestIsA;
   return { wristTurnDeg: best.turnDeg, wristHingeDeg: best.hingeDeg };
 }
 
@@ -1945,6 +1952,16 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
       resolved.point.z + resolved.normal.z * halfThick
     );
   }
+  // Freeze this pin's target the first time it's resolved (see
+  // frozenHandResolve3D above) — every later rebuild reuses this exact
+  // point instead of recomputing it off the current mesh.
+  const freezeKey = (typeof targetSpec === 'object') ? frozenHandKey3D(side, targetSpec) : null;
+  let frozen = freezeKey ? frozenHandResolve3D[freezeKey] : null;
+  if (freezeKey && !frozen) {
+    frozen = { targetPoint };
+    frozenHandResolve3D[freezeKey] = frozen;
+  }
+  if (frozen) targetPoint = frozen.targetPoint;
   const sol = solveArmIK(shoulderPos, targetPoint, lens.upper, lens.lower, pole);
   if (!sol) return false;
   shoulderGrp.rotation.x = sol.flexRad;
@@ -1966,9 +1983,20 @@ function applyArmIK(side, shoulderGrp, elbowGrp, targetSpec) {
     }
   }
   if (resolved.normal && !resolved.offset) { // a kept-position pin doesn't re-aim the hand at the surface
-    const oriented = solveHandOrientationForNormal(side, sol, resolved.normal);
-    result.orientedWristTurnDeg = oriented.wristTurnDeg;
-    result.orientedWristHingeDeg = oriented.wristHingeDeg;
+    // Same freeze as the target point above: the orientation solve is the
+    // part that was actually flip-flopping (it depends on the shoulder's
+    // exact current rotation, which shifts by a hair every rebuild), so
+    // once we have a frozen answer for this pin, keep using it instead of
+    // re-deriving it from this render's shoulder/elbow rotation.
+    if (frozen && frozen.oriented) {
+      result.orientedWristTurnDeg = frozen.oriented.wristTurnDeg;
+      result.orientedWristHingeDeg = frozen.oriented.wristHingeDeg;
+    } else {
+      const oriented = solveHandOrientationForNormal(side, sol, resolved.normal);
+      result.orientedWristTurnDeg = oriented.wristTurnDeg;
+      result.orientedWristHingeDeg = oriented.wristHingeDeg;
+      if (frozen) frozen.oriented = oriented;
+    }
   }
   return result;
 }
@@ -2603,10 +2631,6 @@ function setPose3D(poseName) {
   // pose automatically gets its own bucket instead of inheriting this one's.
   elbowBendOverride = { left: null, right: null };
   elbowLiftOverride = { left: null, right: null };
-  // A new pose's IK targets are a different reach entirely — don't let the
-  // last pose's face pick (see lastHandFaceIsA3D/solveHandOrientationForNormal)
-  // bias this one.
-  lastHandFaceIsA3D = { left: null, right: null };
   applyPose3D(poseName, { reframe: true });
   document.querySelectorAll('.pose-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.pose === currentPose3D);
