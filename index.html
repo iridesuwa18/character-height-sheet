@@ -4977,6 +4977,28 @@ function importFaceExcel(event) {
   reader.readAsArrayBuffer(file);
 }
 </script>
-<script>document.write('<script src="3d_character.js?v=' + Date.now() + '"><\/script>');</script>
+<script>
+// 3d_character.js was split into smaller files under js/ (see each file's
+// own header comment for what it covers). Still plain global <script> tags,
+// not modules, so load order matters — this is the same dependency order
+// the single file used to define things in. js/3d-init.js MUST be last: it
+// runs the handful of top-level calls (pullPoseOverridesFromGitHub(),
+// resetDepthSlidersToDefault(), renderPosePanel3D()) that need every other
+// file's functions to already exist.
+[
+  'js/char-constants.js',
+  'js/hand-wrist-panel.js',
+  'js/hand-pins-github.js',
+  'js/poses-data.js',
+  'js/body-scene.js',
+  'js/arm-ik.js',
+  'js/body-build-pose.js',
+  'js/joint-editor-core.js',
+  'js/joint-mirror.js',
+  'js/joint-panel-sliders.js',
+  'js/joint-github-sync.js',
+  'js/3d-init.js',
+].forEach(src => document.write('<script src="' + src + '?v=' + Date.now() + '"><\/script>'));
+</script>
 </body>
 </html>
