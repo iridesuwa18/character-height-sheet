@@ -12,6 +12,7 @@
 // no modules) — load order matters, see index.html.
 
 const JOINT_EDITS_KEY = '_jointEdits';
+const HAND_WRIST_OVERRIDES_KEY = '_handWristOverrides';
 
 function collectJointEditsState3D() {
   const r4 = (n) => Math.round(n * 10000) / 10000;
@@ -89,6 +90,7 @@ async function quickSaveJointsToGitHub3D() {
   const poseKey = currentPose3D;
   const jointXYZ = captureAllJointXYZ3D();
   const jointEditsState = collectJointEditsState3D();
+  const handWristState = collectHandWristOverridesState3D();
   try {
     await githubUpdatePoseOverrides3D('Save joint XYZ + edits: ' + poseKey, all => {
       all[poseKey] = all[poseKey] || {};
@@ -98,6 +100,11 @@ async function quickSaveJointsToGitHub3D() {
       // it's a position snapshot with no consumer yet (see notes above);
       // the quaternion edits below are what applySavedJointEdits3D re-applies.
       all[JOINT_EDITS_KEY] = jointEditsState;
+      // Wrist Bend/Turn/Swing (and the elbow overrides) write to their own
+      // sticky, pose-independent state instead of a quaternion — see
+      // onWristSlider3D — so they need their own save/load, separate from
+      // the block above. This is what was missing for "Turn" specifically.
+      all[HAND_WRIST_OVERRIDES_KEY] = handWristState;
     });
     setBtn('✓ Saved', false);
     setTimeout(() => setBtn('⬆ Save', false), 1600);
@@ -116,10 +123,15 @@ async function quickLoadJointsFromGitHub3D() {
   setBtn('Loading…', true);
   try {
     const { all } = await fetchPoseOverridesFile(s);
-    if (!all[JOINT_EDITS_KEY]) throw new Error('No saved joint edits found yet.');
-    jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
-    applyJointEditsState3D(all[JOINT_EDITS_KEY]);
-    reapplyManualJointEdits3D(); groundBody3D(false);
+    const hasJointEdits = !!all[JOINT_EDITS_KEY];
+    const hasHandWrist = !!all[HAND_WRIST_OVERRIDES_KEY];
+    if (!hasJointEdits && !hasHandWrist) throw new Error('No saved joint edits found yet.');
+    if (hasJointEdits) {
+      jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
+      applyJointEditsState3D(all[JOINT_EDITS_KEY]);
+      reapplyManualJointEdits3D(); groundBody3D(false);
+    }
+    if (hasHandWrist) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
     if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
     setBtn('✓ Loaded', false);
     setTimeout(() => setBtn('⬇ Load', false), 1600);
@@ -156,6 +168,7 @@ async function autoLoadJointsFromGitHub3D() {
   try {
     const { all } = await fetchPoseOverridesFile(s);
     if (all[JOINT_EDITS_KEY]) { jointEditsSaved3D = all[JOINT_EDITS_KEY]; applySavedJointEdits3D(); }
+    if (all[HAND_WRIST_OVERRIDES_KEY]) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
   } catch (e) { console.warn('Could not auto-load joint edits from GitHub:', e); }
   finally { jointEditsFetching3D = false; }
 }

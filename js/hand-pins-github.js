@@ -137,7 +137,7 @@ function capturePoseLiteralFacing3D() {
 // rig from) on top of POSES3D.
 function applyPoseOverridesData3D(all) {
   Object.keys(all).forEach(poseKey => {
-    if (poseKey === '_jointEdits') return; // joint-editor save blob, handled separately
+    if (poseKey === '_jointEdits' || poseKey === '_handWristOverrides') return; // reserved blobs, handled separately
     const pose = POSES3D[poseKey];
     if (!pose) return;
     ['left', 'right'].forEach(side => {
@@ -170,6 +170,7 @@ async function pullPoseOverridesFromGitHub() {
     // Saved 3D-editor joint edits ride in the same file — load them right now
     // (no Load button needed).
     if (all._jointEdits) { jointEditsSaved3D = all._jointEdits; applySavedJointEdits3D(); }
+    if (all._handWristOverrides) applyHandWristOverridesState3D(all._handWristOverrides);
   } catch (e) { console.warn('Could not load pose edits from GitHub:', e); }
 }
 

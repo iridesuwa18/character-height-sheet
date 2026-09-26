@@ -86,6 +86,34 @@ function clearHandWristOverrides() {
   refreshHandWristButtons();
   if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
 }
+// ---- Persisting these overrides across reloads ---------------------------
+// handRotationOverride/wristRotationOverride/wristSwingOverride/elbow*Override
+// are pose-independent "sticky" state (see the comment at the top of this
+// file) rather than per-pose data, so they're captured/restored as one flat
+// snapshot — not folded into manualJointEdits3D, which only covers the
+// rotate-gizmo's shoulder/elbow/wrist/handTurn quaternions. Without this,
+// the wrist Bend/Turn/Swing sliders (which write here, not to a quaternion —
+// see onWristSlider3D) had nothing saving them at all.
+function collectHandWristOverridesState3D() {
+  return {
+    handRotationOverride: { ...handRotationOverride },
+    wristRotationOverride: { ...wristRotationOverride },
+    wristSwingOverride: { ...wristSwingOverride },
+    elbowBendOverride: { ...elbowBendOverride },
+    elbowLiftOverride: { ...elbowLiftOverride },
+  };
+}
+function applyHandWristOverridesState3D(state) {
+  if (!state) return;
+  const merge = (base, saved) => ({ left: null, right: null, ...base, ...(saved || {}) });
+  handRotationOverride  = merge(handRotationOverride,  state.handRotationOverride);
+  wristRotationOverride = merge(wristRotationOverride, state.wristRotationOverride);
+  wristSwingOverride    = merge(wristSwingOverride,    state.wristSwingOverride);
+  elbowBendOverride     = merge(elbowBendOverride,     state.elbowBendOverride);
+  elbowLiftOverride     = merge(elbowLiftOverride,     state.elbowLiftOverride);
+  refreshHandWristButtons();
+  if (sceneInited3D && meshRecords3D.length) applyPose3D(currentPose3D, { reframe: false });
+}
 // Which value to show as "active"/populated for the currently selected
 // target side(s) — for 'both', only lit up (or filled in) when left and
 // right actually agree; used for both the word-preset buttons (compared
