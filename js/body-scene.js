@@ -187,3 +187,11 @@ const FOOT_DEPTH_WIDTH_MULT = 2;
 // shouldn't inflate a thin neck's or arm's depth. Hands are pinned to their
 // own width too, but flatter — half their width — since a hand is a flat shape.
 function computeBodyDepth3D(b) {
+  if (b.group === 'neck' || b.group === 'arms') return { depthCm: 1.2 * b.wCm, zOffset: 0 };
+  if (b.group === 'hands') return { depthCm: 0.5 * b.wCm, zOffset: 0 };
+  const normalDepthCm = bodyDepthMult * headWidthCm3D + 0.25 * b.wCm;
+  if (b.group !== 'feet') return { depthCm: normalDepthCm, zOffset: 0 };
+  const footDepthCm = FOOT_DEPTH_WIDTH_MULT * b.wCm;
+  const depthCm = Math.max(normalDepthCm, footDepthCm);
+  return { depthCm, zOffset: (depthCm - normalDepthCm) / 2 };
+}

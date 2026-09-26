@@ -3,15 +3,6 @@
 // Shares one global scope with the other files below (plain <script> tags,
 // no modules) — load order matters, see index.html.
 
-  if (b.group === 'neck' || b.group === 'arms') return { depthCm: 1.2 * b.wCm, zOffset: 0 };
-  if (b.group === 'hands') return { depthCm: 0.5 * b.wCm, zOffset: 0 };
-  const normalDepthCm = bodyDepthMult * headWidthCm3D + 0.25 * b.wCm;
-  if (b.group !== 'feet') return { depthCm: normalDepthCm, zOffset: 0 };
-  const footDepthCm = FOOT_DEPTH_WIDTH_MULT * b.wCm;
-  const depthCm = Math.max(normalDepthCm, footDepthCm);
-  return { depthCm, zOffset: (depthCm - normalDepthCm) / 2 };
-}
-
 // ── Simple 2-bone arm IK ────────────────────────────────────────────────
 // Lets a pose say "reach for this point on the head/torso mesh" instead of
 // baking in fixed joint angles that only look right at one body size. Given
