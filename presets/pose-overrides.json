@@ -47,7 +47,12 @@
       "stand-hands-hips": {
         "left": {
           "shoulderQuat": null,
-          "elbowQuat": null,
+          "elbowQuat": [
+            -0.5749,
+            0,
+            -0.0269,
+            0.8178
+          ],
           "wristQuat": null
         },
         "right": {
@@ -101,7 +106,9 @@
           "turn": -78,
           "hinge": 22
         }
-      }
+      },
+      "wristTurnEdit": -61,
+      "wrist": 19
     }
   },
   "stand-relaxed": {
