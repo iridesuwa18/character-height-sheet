@@ -679,6 +679,7 @@ function updateJePinStatus3D() {
   if (meshSel) meshSel.value = (ht && ht.mesh) || '';
   const faceSel = document.getElementById('jePinnedFace');
   if (faceSel) { faceSel.disabled = !(ht && ht.mesh); faceSel.value = (ht && ht.face) || 'front'; }
+  if (typeof updatePinGlow3D === 'function') updatePinGlow3D();
 }
 
 // ---- Saving pins/defaults to GitHub (same pose-overrides.json as pose edits) ----
@@ -1537,22 +1538,20 @@ function defaultAimHint3D(side) {
 //
 // resolveHandAbsolutePos3D gives the wrist's absolute (spine-local) target
 // position for a side: the pinned face + its stored offset if pinned,
-// otherwise the Default Setter's saved wrist position (captureDefaultSetter3D),
-// otherwise null (caller falls back to the legacy fixed-angle rig).
+// otherwise the Default Setter's saved wrist position (captureDefaultSetter3D)
+// shifted by however far the shoulder has moved since capture, otherwise
+// null (caller falls back to the legacy fixed-angle rig).
 //
-// resolveElbowTargetPos3D gives the elbow's absolute target position: its
-// own Default Setter position, shifted by exactly however far the wrist has
-// moved from ITS Default Setter position — "its own elbow location + any
-// shifts in position affected by the hand it's attached to."
-//
-// applyArmPosition3D then aims (never re-lengths) the shoulder→elbow and
-// elbow→wrist segments at those two targets in turn. Because each segment
-// is aimed rather than stretched, both bones stay exactly their built
-// length at all times — the only thing that can happen when a target is
-// out of reach is the final segment's direction landing slightly off the
-// literal target point, which is the "move the hand accordingly in any
-// direction (xyz) to a minimum so the elbow is not restricted to breaking"
-// behavior asked for: the smallest possible correction, never a bigger one.
+// applyArmPosition3D then solves the shoulder→elbow→wrist chain as a proper
+// two-bone (law-of-cosines) IK aimed at that target, using the Default
+// Setter's captured elbow position only as a POLE HINT for which way the
+// elbow bends — never as a literal position — so the target is reached
+// exactly whenever it's within the arm's physical reach, regardless of
+// where the shoulder itself currently sits (shoulder length, height, etc.
+// all resolve fresh every render). The only time the hand lands off-target
+// at all is when the target is genuinely out of reach, in which case it's
+// pulled in to the nearest reachable point along the same line — the
+// smallest possible correction, never a bigger one.
 // ═══════════════════════════════════════════════════════════════════════
 function resolveHandAbsolutePos3D(side, pose) {
   const ht = pose && pose[side] && pose[side].handTarget;
@@ -1563,16 +1562,31 @@ function resolveHandAbsolutePos3D(side, pose) {
     // the default position rather than leaving the hand stranded.
   }
   const def = pinDefaults3D[side];
-  return def && def.wrist ? v3(def.wrist.x, def.wrist.y, def.wrist.z) : null;
+  if (!def || !def.wrist) return null;
+  const wristDefault = v3(def.wrist.x, def.wrist.y, def.wrist.z);
+  // Carry the default wrist target along with any shoulder movement since
+  // capture (wider/narrower shoulders, a height change, etc.) — otherwise an
+  // unpinned hand stays glued to the exact cm point it was captured at while
+  // the shoulder it's attached to moves away from it.
+  const shoulderNow = ikContext3D.shoulders && ikContext3D.shoulders[side];
+  if (def.shoulder && shoulderNow) {
+    const shoulderDelta = v3sub(shoulderNow, v3(def.shoulder.x, def.shoulder.y, def.shoulder.z));
+    return v3add(wristDefault, shoulderDelta);
+  }
+  return wristDefault;
 }
-function resolveElbowTargetPos3D(side, wristAbsPos) {
-  const def = pinDefaults3D[side];
-  if (!def || !def.elbow || !def.wrist) return null;
-  return v3add(v3(def.elbow.x, def.elbow.y, def.elbow.z), v3sub(wristAbsPos, v3(def.wrist.x, def.wrist.y, def.wrist.z)));
-}
-// Aims shoulderGrp/elbowGrp so the wrist lands as close as physically
-// possible (rigid segment lengths) to wristAbsPos, routing through an elbow
-// that follows resolveElbowTargetPos3D's default-plus-hand-delta rule.
+// Aims shoulderGrp/elbowGrp with a proper two-bone (law-of-cosines) IK solve
+// so wristAbsPos is landed on EXACTLY whenever it's within reach of the two
+// rigid segments (lens.upper + lens.lower), no matter where the shoulder
+// itself currently sits — a shoulder-length change moves shoulderPos, and
+// this re-solves fresh from wherever that now is, every render. The
+// Default Setter's captured elbow position is used only as a POLE HINT
+// (which side the elbow bends toward), never as a literal position to aim
+// at — that's what let the old approach drift off a pinned target as soon
+// as the shoulder moved: it treated a hint as a target. If wristAbsPos is
+// further than the arm can reach (or closer than |upper-lower|), the
+// target is pulled in to the nearest reachable point along the same
+// direction — the smallest possible correction, never a bigger one.
 // Returns true if it ran (defaults are captured for this side), false if
 // the caller should fall back to the legacy fixed-angle rig.
 function applyArmPosition3D(side, shoulderGrp, elbowGrp, pose) {
@@ -1582,25 +1596,53 @@ function applyArmPosition3D(side, shoulderGrp, elbowGrp, pose) {
   if (!def || !def.elbow || !def.wrist || !shoulderGrp || !elbowGrp || !shoulderPos || !lens) return false;
   const wristAbsPos = resolveHandAbsolutePos3D(side, pose);
   if (!wristAbsPos) return false;
-  const elbowTargetPos = resolveElbowTargetPos3D(side, wristAbsPos);
-  if (!elbowTargetPos) return false;
+  const L1 = lens.upper, L2 = lens.lower;
 
-  // Shoulder → elbow: aim only, length is always exactly lens.upper.
-  let elbowDir = v3sub(elbowTargetPos, shoulderPos);
-  if (v3len(elbowDir) < 1e-6) elbowDir = v3(0, -1, 0); // degenerate target — straight down, never breaks
+  // Pole hint: the direction from the CURRENT shoulder toward the Default
+  // Setter's captured elbow position — preserves the pose's natural elbow
+  // orientation (front/back/out) without pinning the elbow to a stale
+  // absolute point.
+  let poleDir = v3sub(v3(def.elbow.x, def.elbow.y, def.elbow.z), shoulderPos);
+  if (v3len(poleDir) < 1e-6) poleDir = defaultAimHint3D(side);
+  poleDir = v3norm(poleDir);
+
+  let toWrist = v3sub(wristAbsPos, shoulderPos);
+  let d = v3len(toWrist);
+  if (d < 1e-6) toWrist = poleDir, d = 1e-6; // degenerate target — reach straight along the pole, never breaks
+  const dirToWrist = v3norm(toWrist);
+  const maxReach = L1 + L2, minReach = Math.abs(L1 - L2);
+  const dClamped = Math.min(maxReach - 1e-4, Math.max(minReach + 1e-4, d));
+
+  // Law of cosines: angle at the shoulder between the upper-arm segment and
+  // the straight line to the (possibly clamped) target.
+  const cosA = Math.max(-1, Math.min(1, (L1 * L1 + dClamped * dClamped - L2 * L2) / (2 * L1 * dClamped)));
+  const angleAtShoulder = Math.acos(cosA);
+
+  // Bend direction: the pole hint flattened into the plane perpendicular to
+  // dirToWrist, so it only ever decides WHICH WAY the elbow bends, never how
+  // far the arm reaches.
+  let bendDir = v3sub(poleDir, v3scale(dirToWrist, v3dot(poleDir, dirToWrist)));
+  if (v3len(bendDir) < 1e-6) {
+    const hint = defaultAimHint3D(side);
+    bendDir = v3sub(hint, v3scale(dirToWrist, v3dot(hint, dirToWrist)));
+  }
+  bendDir = v3len(bendDir) < 1e-6 ? v3(1, 0, 0) : v3norm(bendDir);
+
+  // Shoulder → elbow: aim only, length is always exactly L1.
+  let elbowDir = v3add(v3scale(dirToWrist, Math.cos(angleAtShoulder)), v3scale(bendDir, Math.sin(angleAtShoulder)));
   elbowDir = v3norm(elbowDir);
   const shoulderEuler = eulerXYZFromAimAndHinge(elbowDir, defaultAimHint3D(side));
   shoulderGrp.rotation.x = shoulderEuler.flexRad;
   shoulderGrp.rotation.y = shoulderEuler.rollRad;
   shoulderGrp.rotation.z = shoulderEuler.zRad;
-  const elbowActualPos = v3add(shoulderPos, v3scale(elbowDir, lens.upper));
+  const elbowActualPos = v3add(shoulderPos, v3scale(elbowDir, L1));
 
-  // Elbow → wrist: same idea, aimed from the elbow's ACTUAL (post-aim)
-  // position, in elbowGrp's own local frame (elbowGrp is a child of
-  // shoulderGrp, so its local axes are shoulderGrp's local axes BEFORE
-  // shoulderGrp's own rotation — undo that rotation to express the desired
-  // world/spine-local direction in elbowGrp's frame).
-  let wristDirWorld = v3sub(wristAbsPos, elbowActualPos);
+  // Elbow → wrist: aimed at the same (possibly clamped) target point along
+  // dirToWrist — by construction of the law-of-cosines triangle above, this
+  // point sits EXACTLY L2 from elbowActualPos, so the segment lands dead on
+  // it (equal to wristAbsPos itself whenever the target was in reach).
+  const wristTargetForAim = v3add(shoulderPos, v3scale(dirToWrist, dClamped));
+  let wristDirWorld = v3sub(wristTargetForAim, elbowActualPos);
   if (v3len(wristDirWorld) < 1e-6) wristDirWorld = elbowDir; // degenerate — keep going straight, never breaks
   wristDirWorld = v3norm(wristDirWorld);
   const invShoulderQuat = shoulderGrp.quaternion.clone().invert();
@@ -2967,7 +3009,7 @@ function mirrorSelectedJoint3D() {
   if (selectedJoint3D && (selectedJoint3D.side === other)) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
   const status = document.getElementById('jeMirrorStatus');
   if (status) {
-    status.textContent = `Mirrored ${srcPin && !sharedPin ? 'pin' : 'arm + hand'} to ${other === 'left' ? 'Left' : 'Right'} (exact copy, build 3)`;
+    status.textContent = `Mirrored ${srcPin ? 'pin' : 'arm + hand'} to ${other === 'left' ? 'Left' : 'Right'} (exact copy, build 3)`;
     status.style.opacity = '1';
     clearTimeout(mirrorSelectedJoint3D._t);
     mirrorSelectedJoint3D._t = setTimeout(() => { status.style.opacity = '0'; }, 1600);
@@ -3165,6 +3207,47 @@ function highlightSelectedJoint3D() {
       if (mesh.material.emissive) mesh.material.emissive.setHex(isSel ? 0xf0c040 : 0x000000);
       mesh.material.color.setHex(isSel ? 0xf0c040 : 0xf2f2f2);
     });
+  });
+  updatePinGlow3D();
+}
+// ---- Glow the body part a selected wrist is pinned to --------------------
+// Makes "what is this hand actually pinned to?" visible at a glance: select
+// a wrist, and if it has a Pinned Mesh, that mesh glows green until you
+// select something else or clear the pin. Purely visual — doesn't touch the
+// pin data itself.
+const PIN_GLOW_COLOR_3D = 0x50dc78;
+let pinGlowMeshes3D = [];
+function clearPinGlow3D() {
+  pinGlowMeshes3D.forEach(m => { if (m && m.material && m.material.emissive) m.material.emissive.setHex(0x000000); });
+  pinGlowMeshes3D = [];
+}
+// Matches a meshRecords3D entry (see buildBody3D) against a Pinned Mesh key.
+// leftLeg/rightLeg/leftFoot/rightFoot are split by x sign the same way the
+// original box data was (negative x = left) — see the note above legBoxes.
+function meshRecordMatchesPinKey3D(rec, meshKey) {
+  switch (meshKey) {
+    case 'head':      return rec.group === 'head';
+    case 'neck':       return rec.group === 'neck';
+    case 'torso':      return rec.group === 'torso';
+    case 'waist':      return rec.group === 'waistbox';
+    case 'leftLeg':    return rec.group === 'legs'  && rec.mesh.position.x < 0;
+    case 'rightLeg':   return rec.group === 'legs'  && rec.mesh.position.x >= 0;
+    case 'leftFoot':   return rec.group === 'feet'  && rec.mesh.position.x < 0;
+    case 'rightFoot':  return rec.group === 'feet'  && rec.mesh.position.x >= 0;
+    default: return false;
+  }
+}
+function updatePinGlow3D() {
+  clearPinGlow3D();
+  if (!selectedJoint3D || selectedJoint3D.jointType !== 'wrist') return;
+  const pose = POSES3D[currentPose3D];
+  const ht = pose && pose[selectedJoint3D.side] && pose[selectedJoint3D.side].handTarget;
+  if (!ht || !ht.mesh) return;
+  meshRecords3D.forEach(rec => {
+    if (rec.mesh && rec.mesh.material && rec.mesh.material.emissive && meshRecordMatchesPinKey3D(rec, ht.mesh)) {
+      rec.mesh.material.emissive.setHex(PIN_GLOW_COLOR_3D);
+      pinGlowMeshes3D.push(rec.mesh);
+    }
   });
 }
 

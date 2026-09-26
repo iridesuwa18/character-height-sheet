@@ -959,10 +959,10 @@
     <div id="jeMirrorStatus"></div>
 
     <div id="jointToggleBar" style="display:none;">
-      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="elbow" onclick="toggleJoint3D('left','elbow')">L Elbow</button>
-      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="toggleJoint3D('right','elbow')">R Elbow</button>
-      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')">L Wrist</button>
-      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
+      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="elbow" onclick="toggleJoint3D('left','elbow')" title="Left side of your screen as you look at the model">L Elbow</button>
+      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="toggleJoint3D('right','elbow')" title="Right side of your screen as you look at the model">R Elbow</button>
+      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')" title="Left side of your screen as you look at the model">L Wrist</button>
+      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')" title="Right side of your screen as you look at the model">R Wrist</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="toggleJointSettingsPopup3D()" title="Joint settings">⚙</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="mirrorSelectedJoint3D()" title="Mirror to opposite side">⇄</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="debugShowPins3D()" title="Show raw pin data">🐞</button>
@@ -1077,7 +1077,7 @@
         <button type="button" class="je-btn" onclick="jointPanelUnpin3D()">✕ Unpin</button>
         <div id="jePinStatus" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:-2px 0 8px;"></div>
         <div class="je-section-label">Default Setter</div>
-        <p class="je-note" style="margin:0 0 6px;">Dial Height/Gender to 175cm / Male, hold a neutral pose, then capture — every pin and elbow is calculated relative to whatever's captured here.</p>
+        <p class="je-note" style="margin:0 0 6px;">Dial Height/Gender to 175cm / Male, hold a neutral relaxed pose, then capture ONCE — every pin and every unpinned arm is calculated relative to whatever's captured here. Tapping this again re-captures from whatever pose is on screen right now, which is why the arm can visibly jump right after you tap it if the pose wasn't neutral — that's expected, not a glitch, but it means these buttons aren't safe to tap casually.</p>
         <button type="button" class="je-btn" onclick="captureDefaultSetter3D(selectedJoint3D && selectedJoint3D.side)">📍 Set as Default (this hand)</button>
         <button type="button" class="je-btn" onclick="captureDefaultSetter3D()">📍 Set as Default (both hands)</button>
       </div>
