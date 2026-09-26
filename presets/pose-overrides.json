@@ -74,10 +74,10 @@
     "left": {
       "wristSwing": -18,
       "handTarget": {
-        "mesh": "leftLeg",
+        "mesh": "rightLeg",
         "face": "right",
         "offset": {
-          "x": -14.93,
+          "x": -30.63,
           "y": 43.46,
           "z": -3.48
         }
