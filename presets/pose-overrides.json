@@ -3,11 +3,11 @@
     "left": {
       "handTarget": {
         "mesh": "waist",
-        "face": "front",
+        "face": "left",
         "offset": {
-          "x": -33.93,
-          "y": 17.04,
-          "z": 0.19
+          "x": -19.52,
+          "y": 17.67,
+          "z": 7.19
         }
       }
     }
