@@ -1,0 +1,15 @@
+{
+  "stand-hands-hips": {
+    "left": {
+      "handTarget": {
+        "mesh": "waist",
+        "face": "front",
+        "offset": {
+          "x": -20.55,
+          "y": 5.77,
+          "z": -5.71
+        }
+      }
+    }
+  }
+}
