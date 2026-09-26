@@ -43,6 +43,18 @@
             0.6655
           ]
         }
+      },
+      "stand-hands-hips": {
+        "left": {
+          "shoulderQuat": null,
+          "elbowQuat": null,
+          "wristQuat": null
+        },
+        "right": {
+          "shoulderQuat": null,
+          "elbowQuat": null,
+          "wristQuat": null
+        }
       }
     }
   },
@@ -62,11 +74,6 @@
           "roll": -30
         },
         "fromPreset": true,
-        "pole": {
-          "x": 0.29,
-          "y": -0.9,
-          "z": -0.32
-        },
         "faceLock": {
           "turn": -78,
           "hinge": 22
