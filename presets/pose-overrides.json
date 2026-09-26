@@ -1,15 +1,7 @@
 {
   "stand-hands-hips": {
     "left": {
-      "handTarget": {
-        "mesh": "leftLeg",
-        "face": "left",
-        "offset": {
-          "x": -21.48,
-          "y": 38.25,
-          "z": -19.94
-        }
-      }
+      "handTarget": null
     }
   },
   "__pinDefaults3D": {
