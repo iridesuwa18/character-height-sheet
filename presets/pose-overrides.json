@@ -74,22 +74,12 @@
     "left": {
       "wristSwing": -18,
       "handTarget": {
-        "box": "waist",
-        "x": -0.5,
-        "y": 0.72,
-        "z": -0.05,
-        "nx": -0.37,
-        "ny": -0.74,
-        "nz": -0.56,
-        "poleAngles": {
-          "flex": 40,
-          "abd": 25,
-          "roll": -30
-        },
-        "fromPreset": true,
-        "faceLock": {
-          "turn": -78,
-          "hinge": 22
+        "mesh": "waist",
+        "face": "front",
+        "offset": {
+          "x": -14.93,
+          "y": 5.33,
+          "z": -12.57
         }
       },
       "wristTurnEdit": -61,
