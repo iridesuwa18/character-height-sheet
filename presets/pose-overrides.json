@@ -90,9 +90,9 @@
       "wristSwing": -18,
       "handTarget": {
         "mesh": "waist",
-        "face": "right",
+        "face": "left",
         "offset": {
-          "x": -33.04,
+          "x": -11.64,
           "y": 4.08,
           "z": -0.11
         }
