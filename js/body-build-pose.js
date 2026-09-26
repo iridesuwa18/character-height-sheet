@@ -574,10 +574,14 @@ function updateHeadDepth(value) {
     rec.mesh.geometry.dispose();
     rec.mesh.geometry = new THREE.BoxGeometry(rec.wCm, rec.hCm, headDepthMult * rec.wCm);
     // Only the head box's own black outline should be rebuilt here — matching
-    // on "any child with a .geometry" would also catch the Faces panel's
-    // yellow/pink highlight overlays (see joint-faces-panel.js) and wreck
-    // them by handing them this edges-outline geometry instead of their own.
+    // on "any child with a .geometry" (or even "any LineSegments", since the
+    // Faces panel's own purple outline overlay is a LineSegments too) would
+    // catch the Faces panel's highlight overlays (see joint-faces-panel.js)
+    // and wreck them by handing them this edges-outline geometry instead of
+    // their own. Every Faces overlay's name starts with "__facesOverlay:",
+    // so skip those explicitly and only touch the mesh's real outline child.
     rec.mesh.children.forEach(c => {
+      if (c.name && c.name.indexOf('__facesOverlay:') === 0) return;
       if (c instanceof THREE.LineSegments) { c.geometry.dispose(); c.geometry = new THREE.EdgesGeometry(rec.mesh.geometry); }
     });
   });

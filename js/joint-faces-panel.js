@@ -1,8 +1,9 @@
 // ── joint-faces-panel.js ──────────────────────────────────────────────────
 // The Faces popup (▦, next to ⚙ and ⇄ in the Joint Editor toolbar): pick a
-// mesh group — every mesh in it is tinted a saturated yellow — then pick one
-// of its six box faces on top of that — every matching face is tinted a
-// saturated pink. The Face dropdown is disabled until a mesh is chosen.
+// mesh group — every mesh in it is tinted a saturated green with a glowing
+// purple edge outline — then pick one of its six box faces on top of that —
+// every matching face is tinted a saturated pink. The Face dropdown is
+// disabled until a mesh is chosen.
 //
 // This never touches the target meshes' own materials — other code already
 // mutates those live (e.g. applyHandFlipVisuals3D recolors the forearm mesh
@@ -20,10 +21,18 @@
 // Shares one global scope with the other files below (plain <script> tags,
 // no modules) — load order matters, see index.html.
 
-const FACES_MESH_COLOR = 0xffee00; // saturated yellow
-const FACES_FACE_COLOR = 0xff2fa0; // saturated pink
-const FACES_MESH_TINT_NAME = '__facesMeshTint';
-const FACES_FACE_TINT_NAME = '__facesFaceTint';
+const FACES_MESH_COLOR = 0x5fbf7a;    // desaturated green
+const FACES_OUTLINE_COLOR = 0xb833ff; // glowing purple
+const FACES_FACE_COLOR = 0xff2fa0;    // saturated pink
+// All overlay object names share this prefix so other code (see the head
+// depth slider's cleanup in body-build-pose.js) can reliably tell "one of
+// the Faces panel's overlays" apart from a mesh's own real children, rather
+// than guessing by object type.
+const FACES_OVERLAY_PREFIX = '__facesOverlay:';
+const FACES_MESH_TINT_NAME = FACES_OVERLAY_PREFIX + 'meshTint';
+const FACES_FACE_TINT_NAME = FACES_OVERLAY_PREFIX + 'faceTint';
+const FACES_OUTLINE_CORE_NAME = FACES_OVERLAY_PREFIX + 'outlineCore';
+const FACES_OUTLINE_HALO_NAME = FACES_OVERLAY_PREFIX + 'outlineHalo';
 
 let facesSelectedMeshGroup3D = null; // e.g. 'torso' | null
 let facesSelectedFace3D = null;      // e.g. 'front' | null
@@ -51,6 +60,33 @@ function addFacesMeshOverlay3D(mesh) {
   overlay.name = FACES_MESH_TINT_NAME;
   overlay.position.set(cx, cy, cz);
   mesh.add(overlay);
+}
+
+// A glowing purple outline traced along the mesh's own real edges — unlike
+// the tint box/face plane above, this uses THREE.EdgesGeometry(mesh.geometry)
+// directly rather than the bounding box, so it hugs the actual silhouette
+// (useful once the hourglass waistline's tapered trapezoids are involved,
+// where a bounding-box outline would visibly float off the tapered sides).
+// "Glow" is faked the usual way for a plain WebGLRenderer with no
+// post-processing/bloom pass here: a crisp core line plus a second,
+// slightly-enlarged, more-transparent, additively-blended copy behind it —
+// the halo. The enlargement lives on the halo's own transform (scale), not
+// baked into its geometry, so it survives a geometry swap untouched.
+function addFacesOutlineOverlay3D(mesh) {
+  removeFacesOverlay3D(mesh, FACES_OUTLINE_CORE_NAME);
+  removeFacesOverlay3D(mesh, FACES_OUTLINE_HALO_NAME);
+  const coreGeo = new THREE.EdgesGeometry(mesh.geometry);
+  const coreMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.95, depthWrite: false });
+  const core = new THREE.LineSegments(coreGeo, coreMat);
+  core.name = FACES_OUTLINE_CORE_NAME;
+  mesh.add(core);
+
+  const haloGeo = new THREE.EdgesGeometry(mesh.geometry);
+  const haloMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending });
+  const halo = new THREE.LineSegments(haloGeo, haloMat);
+  halo.name = FACES_OUTLINE_HALO_NAME;
+  halo.scale.multiplyScalar(1.03);
+  mesh.add(halo);
 }
 
 // Face name → an overlay plane's size/position/rotation, all in the target
@@ -89,6 +125,8 @@ function addFacesFaceOverlay3D(mesh, faceName) {
 function clearFacesHighlight3D() {
   meshRecords3D.forEach(r => {
     removeFacesOverlay3D(r.mesh, FACES_MESH_TINT_NAME);
+    removeFacesOverlay3D(r.mesh, FACES_OUTLINE_CORE_NAME);
+    removeFacesOverlay3D(r.mesh, FACES_OUTLINE_HALO_NAME);
     removeFacesOverlay3D(r.mesh, FACES_FACE_TINT_NAME);
   });
 }
@@ -97,6 +135,7 @@ function applyFacesHighlight3D() {
   if (!facesSelectedMeshGroup3D || !meshRecords3D.length) return;
   meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D).forEach(r => {
     addFacesMeshOverlay3D(r.mesh);
+    addFacesOutlineOverlay3D(r.mesh);
     addFacesFaceOverlay3D(r.mesh, facesSelectedFace3D);
   });
 }
