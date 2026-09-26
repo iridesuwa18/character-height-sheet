@@ -17,12 +17,12 @@
         "z": 0
       },
       "leftWrist": {
-        "x": -17.73,
+        "x": -17.74,
         "y": -16.86,
         "z": 0
       },
       "leftHandTurn": {
-        "x": -17.4,
+        "x": -17.41,
         "y": -27.11,
         "z": 0
       },
@@ -37,12 +37,12 @@
         "z": 0
       },
       "rightWrist": {
-        "x": 17.73,
+        "x": 17.74,
         "y": -16.86,
         "z": 0
       },
       "rightHandTurn": {
-        "x": 17.4,
+        "x": 17.41,
         "y": -27.11,
         "z": 0
       },
@@ -115,6 +115,28 @@
           "handTurnQuat": null
         }
       }
+    }
+  },
+  "_handWristOverrides": {
+    "handRotationOverride": {
+      "left": -86,
+      "right": -86
+    },
+    "wristRotationOverride": {
+      "left": null,
+      "right": 0
+    },
+    "wristSwingOverride": {
+      "left": null,
+      "right": 0
+    },
+    "elbowBendOverride": {
+      "left": null,
+      "right": null
+    },
+    "elbowLiftOverride": {
+      "left": null,
+      "right": null
     }
   }
 }
