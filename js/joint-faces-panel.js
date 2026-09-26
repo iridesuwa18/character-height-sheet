@@ -11,11 +11,13 @@
 // there would either get silently overwritten or, if turned into a
 // per-face material array, crash the very next pose update. Instead every
 // highlight here is a separate, purely-visual overlay mesh (a translucent
-// box for the mesh tint, a translucent plane for the face tint), parented
-// directly onto the target mesh so it always tracks it, and sized off the
-// mesh's own real bounding box rather than stored dimensions — which is
-// what makes this work uniformly for both plain boxes and the hourglass
-// waistline's tapered trapezoids without any per-shape-special-casing.
+// prism for the mesh tint, a translucent plane/trapezoid for the face
+// tint), parented directly onto the target mesh so it always tracks it.
+// Every overlay is built from the mesh's own real vertex data (see
+// facesMeshOutline3D) rather than its bounding box, so it correctly follows
+// a tapered piece's slanted shape instead of just enclosing it in a
+// rectangle — see the comment on facesMeshOutline3D and addFacesFaceOverlay3D
+// for how each shape is derived.
 // Purely an inspection/highlight layer for now — the face-anchored pinning
 // system builds on top of this next.
 // Shares one global scope with the other files below (plain <script> tags,
@@ -45,28 +47,67 @@ function removeFacesOverlay3D(mesh, name) {
   existing.material.dispose();
 }
 
-// A translucent box, sized to the mesh's own bounding box (with a small
-// outward margin to avoid z-fighting with the mesh's real surface),
-// parented onto the mesh so it moves/rotates with it automatically.
-function addFacesMeshOverlay3D(mesh) {
+// Samples the geometry's real vertex positions — rather than trusting its
+// axis-aligned bounding box — to find the exact left/right X extent at the
+// bottom (min Y) and top (max Y) of a mesh: the two flat cross-sections
+// every one of these body-part prisms has, whether it's a plain box (same
+// extent top and bottom) or one of the hourglass waistline's tapered
+// trapezoids (narrower at one end, per makeTrapezoidMesh in body-scene.js).
+// This one routine is what lets every overlay below match a tapered mesh's
+// real slanted shape instead of just its rectangular bounding box.
+function facesMeshOutline3D(geo) {
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  const eps = Math.max((bb.max.y - bb.min.y) * 0.002, 0.01);
+  const pos = geo.attributes.position;
+  const extentAtY = (targetY) => {
+    let minX = Infinity, maxX = -Infinity;
+    for (let i = 0; i < pos.count; i++) {
+      if (Math.abs(pos.getY(i) - targetY) <= eps) {
+        const x = pos.getX(i);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+    }
+    return minX === Infinity ? { minX: bb.min.x, maxX: bb.max.x } : { minX, maxX };
+  };
+  return {
+    minY: bb.min.y, maxY: bb.max.y, minZ: bb.min.z, maxZ: bb.max.z,
+    bottom: extentAtY(bb.min.y), top: extentAtY(bb.max.y),
+  };
+}
+
+// A translucent overlay that traces the mesh's own real silhouette (not
+// just its bounding box) enlarged by a small margin — a box for a plain
+// box, an actual tapered prism for a trapezoid piece — via the same
+// Shape+ExtrudeGeometry approach the trapezoid meshes themselves are built
+// with (see makeTrapezoidMesh in body-scene.js), just fed real widths read
+// off the mesh instead of the design-time ones. Parented onto the mesh so
+// it moves/rotates with it automatically.
+function addFacesMeshOverlay3D(mesh, outline) {
   removeFacesOverlay3D(mesh, FACES_MESH_TINT_NAME);
-  mesh.geometry.computeBoundingBox();
-  const bb = mesh.geometry.boundingBox;
-  const sx = (bb.max.x - bb.min.x) * 1.02, sy = (bb.max.y - bb.min.y) * 1.02, sz = (bb.max.z - bb.min.z) * 1.02;
-  const cx = (bb.max.x + bb.min.x) / 2, cy = (bb.max.y + bb.min.y) / 2, cz = (bb.max.z + bb.min.z) / 2;
-  const geo = new THREE.BoxGeometry(Math.max(sx, 0.01), Math.max(sy, 0.01), Math.max(sz, 0.01));
+  const o = outline;
+  const marginXY = Math.max(o.maxY - o.minY, o.top.maxX - o.top.minX, o.bottom.maxX - o.bottom.minX) * 0.015 + 0.03;
+  const marginZ = (o.maxZ - o.minZ) * 0.06 + 0.03;
+  const shape = new THREE.Shape();
+  shape.moveTo(o.bottom.minX - marginXY, o.minY - marginXY);
+  shape.lineTo(o.bottom.maxX + marginXY, o.minY - marginXY);
+  shape.lineTo(o.top.maxX + marginXY, o.maxY + marginXY);
+  shape.lineTo(o.top.minX - marginXY, o.maxY + marginXY);
+  shape.closePath();
+  const depth = (o.maxZ - o.minZ) + marginZ * 2;
+  const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 1 });
+  geo.translate(0, 0, o.minZ - marginZ); // shape's X/Y are already mesh-local; only Z needs placing
   const mat = new THREE.MeshBasicMaterial({ color: FACES_MESH_COLOR, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
   const overlay = new THREE.Mesh(geo, mat);
   overlay.name = FACES_MESH_TINT_NAME;
-  overlay.position.set(cx, cy, cz);
   mesh.add(overlay);
 }
 
-// A glowing purple outline traced along the mesh's own real edges — unlike
-// the tint box/face plane above, this uses THREE.EdgesGeometry(mesh.geometry)
-// directly rather than the bounding box, so it hugs the actual silhouette
-// (useful once the hourglass waistline's tapered trapezoids are involved,
-// where a bounding-box outline would visibly float off the tapered sides).
+// A glowing purple outline traced along the mesh's own real edges — this
+// already uses THREE.EdgesGeometry(mesh.geometry) directly rather than the
+// bounding box, so it already hugs a tapered trapezoid's actual slanted
+// silhouette correctly with no changes needed here.
 // "Glow" is faked the usual way for a plain WebGLRenderer with no
 // post-processing/bloom pass here: a crisp core line plus a second,
 // slightly-enlarged, more-transparent, additively-blended copy behind it —
@@ -89,36 +130,73 @@ function addFacesOutlineOverlay3D(mesh) {
   mesh.add(halo);
 }
 
-// Face name → an overlay plane's size/position/rotation, all in the target
-// mesh's own local space. "Left"/"Right" and "Front"/"Back" follow this
-// app's existing conventions elsewhere (negative X = the character's own
-// left; +Z = front, matching the 'front'/'back' camera views).
-function facesFaceOverlayTransform3D(bb, faceName) {
-  const sx = bb.max.x - bb.min.x, sy = bb.max.y - bb.min.y, sz = bb.max.z - bb.min.z;
-  const cx = (bb.max.x + bb.min.x) / 2, cy = (bb.max.y + bb.min.y) / 2, cz = (bb.max.z + bb.min.z) / 2;
-  const eps = Math.max(sx, sy, sz) * 0.02 + 0.05;
-  switch (faceName) {
-    case 'right':  return { w: sz, h: sy, pos: [bb.max.x + eps, cy, cz], rot: [0,  Math.PI / 2, 0] };
-    case 'left':   return { w: sz, h: sy, pos: [bb.min.x - eps, cy, cz], rot: [0, -Math.PI / 2, 0] };
-    case 'top':    return { w: sx, h: sz, pos: [cx, bb.max.y + eps, cz], rot: [-Math.PI / 2, 0, 0] };
-    case 'bottom': return { w: sx, h: sz, pos: [cx, bb.min.y - eps, cz], rot: [ Math.PI / 2, 0, 0] };
-    case 'front':  return { w: sx, h: sy, pos: [cx, cy, bb.max.z + eps], rot: [0, 0, 0] };
-    case 'back':   return { w: sx, h: sy, pos: [cx, cy, bb.min.z - eps], rot: [0, 0, 0] };
-    default: return null;
-  }
-}
-function addFacesFaceOverlay3D(mesh, faceName) {
+// One face overlay per face name, all built from the mesh's real per-level
+// corners (see facesMeshOutline3D) rather than a rectangle assumed from the
+// bounding box:
+//  - top/bottom: a flat rectangle at that end's own real width (which can
+//    differ from the other end's, on a tapered piece) spanning the full depth.
+//  - front/back: the mesh's own actual cap shape — a rectangle for a plain
+//    box, a genuine trapezoid outline for a tapered piece — traced from its
+//    real corners, so two adjacent tapered pieces (e.g. the male torso's
+//    upper/lower pinch halves) visibly meet and merge at their shared,
+//    narrowest seam rather than each showing a full-width rectangle there.
+//  - left/right: the slanted side surface itself, tilted to converge toward
+//    the narrow end on a tapered piece — built from an actual 3-axis basis
+//    (the constant depth direction, the real bottom→top slant direction,
+//    and their cross product as the outward normal) rather than assumed to
+//    be a flat vertical plane, which is what this basis reduces to anyway
+//    on a plain (untapered) box.
+function addFacesFaceOverlay3D(mesh, faceName, outline) {
   removeFacesOverlay3D(mesh, FACES_FACE_TINT_NAME);
   if (!faceName) return;
-  mesh.geometry.computeBoundingBox();
-  const t = facesFaceOverlayTransform3D(mesh.geometry.boundingBox, faceName);
-  if (!t) return;
-  const geo = new THREE.PlaneGeometry(Math.max(t.w, 0.01), Math.max(t.h, 0.01));
-  const mat = new THREE.MeshBasicMaterial({ color: FACES_FACE_COLOR, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
-  const overlay = new THREE.Mesh(geo, mat);
+  const o = outline;
+  const eps = Math.max(o.maxY - o.minY, o.maxZ - o.minZ, o.bottom.maxX - o.bottom.minX, o.top.maxX - o.top.minX) * 0.02 + 0.05;
+  const mat = () => new THREE.MeshBasicMaterial({ color: FACES_FACE_COLOR, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+  let overlay;
+
+  if (faceName === 'front' || faceName === 'back') {
+    const shape = new THREE.Shape();
+    shape.moveTo(o.bottom.minX, o.minY);
+    shape.lineTo(o.bottom.maxX, o.minY);
+    shape.lineTo(o.top.maxX, o.maxY);
+    shape.lineTo(o.top.minX, o.maxY);
+    shape.closePath();
+    overlay = new THREE.Mesh(new THREE.ShapeGeometry(shape), mat());
+    overlay.position.z = faceName === 'front' ? o.maxZ + eps : o.minZ - eps;
+
+  } else if (faceName === 'top' || faceName === 'bottom') {
+    const atTop = faceName === 'top';
+    const level = atTop ? o.top : o.bottom;
+    const w = Math.max(level.maxX - level.minX, 0.01), cx = (level.maxX + level.minX) / 2;
+    overlay = new THREE.Mesh(new THREE.PlaneGeometry(w, Math.max(o.maxZ - o.minZ, 0.01)), mat());
+    overlay.rotation.x = atTop ? -Math.PI / 2 : Math.PI / 2;
+    overlay.position.set(cx, (atTop ? o.maxY : o.minY) + (atTop ? eps : -eps), (o.minZ + o.maxZ) / 2);
+
+  } else if (faceName === 'left' || faceName === 'right') {
+    const isLeft = faceName === 'left';
+    const bx = isLeft ? o.bottom.minX : o.bottom.maxX;
+    const tx = isLeft ? o.top.minX : o.top.maxX;
+    const dx = tx - bx, dy = o.maxY - o.minY;
+    const slantLen = Math.max(Math.sqrt(dx * dx + dy * dy), 0.01);
+    const heightDir = new THREE.Vector3(dx, dy, 0).normalize();
+    const widthDir = new THREE.Vector3(0, 0, 1);
+    // Order swapped between left/right so the cross product's outward
+    // direction comes out correct for each side without a separate flip step.
+    const normal = isLeft
+      ? new THREE.Vector3().crossVectors(widthDir, heightDir).normalize()
+      : new THREE.Vector3().crossVectors(heightDir, widthDir).normalize();
+    const basis = new THREE.Matrix4().makeBasis(widthDir, heightDir, normal);
+    overlay = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(o.maxZ - o.minZ, 0.01), slantLen), mat());
+    overlay.quaternion.setFromRotationMatrix(basis);
+    overlay.position.set(
+      (bx + tx) / 2 + normal.x * eps,
+      (o.minY + o.maxY) / 2 + normal.y * eps,
+      (o.minZ + o.maxZ) / 2 + normal.z * eps,
+    );
+  } else {
+    return;
+  }
   overlay.name = FACES_FACE_TINT_NAME;
-  overlay.position.set(t.pos[0], t.pos[1], t.pos[2]);
-  overlay.rotation.set(t.rot[0], t.rot[1], t.rot[2]);
   mesh.add(overlay);
 }
 
@@ -134,9 +212,10 @@ function applyFacesHighlight3D() {
   clearFacesHighlight3D();
   if (!facesSelectedMeshGroup3D || !meshRecords3D.length) return;
   meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D).forEach(r => {
-    addFacesMeshOverlay3D(r.mesh);
+    const outline = facesMeshOutline3D(r.mesh.geometry);
+    addFacesMeshOverlay3D(r.mesh, outline);
     addFacesOutlineOverlay3D(r.mesh);
-    addFacesFaceOverlay3D(r.mesh, facesSelectedFace3D);
+    addFacesFaceOverlay3D(r.mesh, facesSelectedFace3D, outline);
   });
 }
 
