@@ -186,6 +186,15 @@
   }
   #jointToggleBar .jp-btn.jt-icon { flex: 0 0 34px; padding: 0; font-size: 13px; }
 
+  /* Faces popup: identical backdrop/card pattern to #jeCopyPopup. */
+  #jeFacesPopup {
+    position: absolute; inset: 0; z-index: 9030; display: none;
+    align-items: center; justify-content: center; padding: 12px;
+    background: rgba(0,0,0,0.55);
+  }
+  #jeFacesPopup.open { display: flex; }
+  #jeFacesPopup .je-select:disabled { opacity: 0.5; }
+
   /* Copy row: one small button (+ a status chip once something was copied). */
   #jeCopyBar {
     position: absolute; top: calc(74px + env(safe-area-inset-top, 0px)); left: 6px; right: 6px; z-index: 9010;
@@ -970,6 +979,41 @@
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="toggleJointSettingsPopup3D()" title="Joint settings">⚙</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="mirrorSelectedJoint3D()" title="Mirror to opposite side">⇄</button>
+      <button type="button" class="jt-btn jp-btn jt-icon" onclick="openFacesPopup3D()" title="Faces">▦</button>
+    </div>
+
+    <!-- Faces popup: pick a mesh (highlights it saturated yellow), then one
+         of its six box faces (highlights that face saturated pink on top).
+         Same centered-card-over-backdrop pattern as the Copy Poses popup. -->
+    <div id="jeFacesPopup" onclick="if(event.target===this) closeFacesPopup3D()">
+      <div class="jec-card" role="dialog" aria-label="Faces">
+        <div class="jec-head">
+          <span class="jec-title">Faces</span>
+          <button type="button" class="je-close-btn" onclick="closeFacesPopup3D()" aria-label="Close">✕</button>
+        </div>
+        <div class="je-section-label">Mesh</div>
+        <select class="je-select" id="facesMeshSelect" onchange="onFacesMeshChange3D(this.value)">
+          <option value="">None</option>
+          <option value="head">Head</option>
+          <option value="neck">Neck</option>
+          <option value="torso">Torso</option>
+          <option value="waistbox">Waist</option>
+          <option value="arms">Arms</option>
+          <option value="hands">Hands</option>
+          <option value="legs">Legs</option>
+          <option value="feet">Feet</option>
+        </select>
+        <div class="je-section-label">Face</div>
+        <select class="je-select" id="facesFaceSelect" onchange="onFacesFaceChange3D(this.value)" disabled>
+          <option value="">None</option>
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+          <option value="left">Left</option>
+          <option value="right">Right</option>
+          <option value="front">Front</option>
+          <option value="back">Back</option>
+        </select>
+      </div>
     </div>
 
     <div id="jeCopyBar" style="display:none;">
@@ -4942,6 +4986,7 @@ function importFaceExcel(event) {
   'js/joint-editor-core.js',
   'js/joint-mirror.js',
   'js/joint-panel-sliders.js',
+  'js/joint-faces-panel.js',
   'js/joint-github-sync.js',
   'js/3d-init.js',
 ].forEach(src => document.write('<script src="' + src + '?v=' + Date.now() + '"><\/script>'));
