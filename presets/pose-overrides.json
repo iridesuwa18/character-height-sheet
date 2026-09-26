@@ -47,12 +47,7 @@
       "stand-hands-hips": {
         "left": {
           "shoulderQuat": null,
-          "elbowQuat": [
-            -0.5749,
-            0,
-            -0.0269,
-            0.8178
-          ],
+          "elbowQuat": null,
           "wristQuat": null
         },
         "right": {
@@ -66,22 +61,12 @@
   "stand-hands-hips": {
     "right": {
       "handTarget": {
-        "box": "waist",
-        "x": -0.5,
-        "y": 0.72,
-        "z": -0.05,
-        "nx": -0.37,
-        "ny": -0.74,
-        "nz": -0.56,
-        "poleAngles": {
-          "flex": 40,
-          "abd": 25,
-          "roll": -30
-        },
-        "fromPreset": true,
-        "faceLock": {
-          "turn": -78,
-          "hinge": 22
+        "mesh": "waist",
+        "face": "right",
+        "offset": {
+          "x": 11.64,
+          "y": 4.08,
+          "z": -0.11
         }
       },
       "wristSwing": 0
