@@ -86,19 +86,11 @@ function commitHandPin3D(side, meshKey, faceKey) {
     offset: { x: round2(wristPos.x - facePoint.x), y: round2(wristPos.y - facePoint.y), z: round2(wristPos.z - facePoint.z) },
   };
   jointEditorPinDirty3D[side] = true;
-  // The moment this side becomes pinned, applyArmPosition3D's IK solve owns
-  // its shoulder/elbow every render from here on (see reapplyManualJointEdits3D's
-  // isPositioned guard) — any manual shoulder/elbow drag from before the pin
-  // is now permanently inert. Clear it here rather than leaving it sitting
-  // underneath the guard: without this, the Joint Editor panel/gizmo could
-  // still show a stale manual rotation for a joint the pin has already taken
-  // over, which is confusing even though it no longer renders.
-  const jePin = jointEditsForPose3D(currentPose3D);
-  jePin[side].shoulderQuat = null;
-  jePin[side].elbowQuat = null;
   // Stage this hand's current position+rotation as its new Default Setter
   // data for this session (see captureHandDefaultFromCurrent3D) — nothing
-  // is saved to GitHub here; ⬆ Save is what confirms it.
+  // is saved to GitHub here; ⬆ Save is what confirms it. It also clears any
+  // manual shoulder/elbow drag on this side (see the comment inside that
+  // function) now that the pin is what drives this side's position.
   captureHandDefaultFromCurrent3D(side);
   setPinSaveStatus3D(`Pinned ${side} hand to ${describePin3D(pose[side].handTarget)} — click Save to confirm.`);
   updateJePinStatus3D();
@@ -147,7 +139,8 @@ function jointWorldPosSpineLocal3D(side, jointName) {
 // Stages the CURRENT rig's wrist/elbow/shoulder positions plus the wrist's
 // current Bend/Turn/Swing as one side's new Default Setter data — session
 // only, not yet pushed anywhere (see the block comment above). Called from
-// commitHandPin3D the moment a pin is set.
+// commitHandPin3D the moment a pin is set, and from the Update Wrist button
+// (updateHandDefaultAndMirror3D) any time after.
 //
 // IMPORTANT (fixes the "Update keeps moving the elbow/wrist" drift bug):
 // when the hand is PINNED, def.wrist must be the exact LITERAL pin target
@@ -183,6 +176,24 @@ function captureHandDefaultFromCurrent3D(side) {
     rot: res ? { be: round1(res.wrist), tu: round1(res.wristTurn), sw: round1(res.swing || 0) } : (prevRot || { be: 0, tu: 0, sw: 0 }),
   };
   pinDefaultsDirty3D[side] = true;
+  // Whatever a manual shoulder/elbow drag was contributing to the CURRENT
+  // render (captured into `elbow`/`shoulder` above via jointWorldPosSpineLocal3D,
+  // which reads the actual on-screen position either way) is now fully
+  // absorbed into this new default — applyArmPosition3D will reproduce this
+  // same position from the default alone on every future render. Leaving
+  // the manual override active on top of that would be pure redundancy at
+  // best, and a source of drift at worst: the override is a frozen
+  // quaternion snapshot, while the default re-solves fresh off current
+  // geometry every render, so the two silently diverge the moment anything
+  // about the body changes (Generate, a depth slider, a body resize) even
+  // though they agreed at the instant of capture. Clearing it here makes
+  // the freshly-captured default the ONE source of truth for this side's
+  // shoulder/elbow going forward — until the next manual drag sets a new,
+  // equally temporary override, which the next Update/pin will absorb the
+  // same way.
+  const je = jointEditsForPose3D(currentPose3D);
+  je[side].shoulderQuat = null;
+  je[side].elbowQuat = null;
 }
 
 // ── (legacy click-to-pin section removed — superseded by the Pinned Mesh /

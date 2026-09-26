@@ -253,30 +253,15 @@ function onJointGizmoChange3D() {
 
 // Re-stamps every active manual override — called at the end of every
 // applyPose3D() (see the hook there) so a drag isn't silently undone the
-// next time a pose/slider/hand-facing change runs applyPose3D again.
-//
-// Shoulder/elbow are skipped on a side that's currently POSITION-driven
-// (a pin, or a Default Setter position with nothing pinned — see
-// lastPoseResolved3D[side].isPositioned, stamped by applyPose3D right
-// before this runs). On that kind of side, applyArmPosition3D's IK solve
-// already owns the shoulder/elbow every render; re-stamping a leftover
-// manual quaternion on top of it would silently fight the solve (the IK
-// computes the correct aim, then this immediately overwrites it), and
-// that corrupted result is exactly what the Default Setter's "Update"
-// button then captures as the new default — which is why it never
-// settled. The wrist is unaffected by this guard: hand facing is always
-// independent of hand position in this system, so a manual wrist
-// rotation still needs to re-apply regardless of which side is pinned.
+// next time a pose/slider/hand-facing change runs applyPose3D again. Also
+// called directly by the drag/typed-input handlers themselves for
+// immediate visual feedback while editing.
 function reapplyManualJointEdits3D() {
   const je = jointEditsForPose3D(currentPose3D, false);
   ['left', 'right'].forEach(side => {
     const m = je[side];
-    const res = lastPoseResolved3D && lastPoseResolved3D[side];
-    const isPositioned = !!(res && res.isPositioned);
-    if (!isPositioned) {
-      if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
-      if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
-    }
+    if (m.shoulderQuat && rig3D[side + 'Shoulder']) rig3D[side + 'Shoulder'].quaternion.copy(m.shoulderQuat);
+    if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
     if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
   });
 }
