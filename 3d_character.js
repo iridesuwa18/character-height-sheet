@@ -2913,18 +2913,40 @@ function mirrorQuat3D(q) {
   return new THREE.Quaternion(q.x, -q.y, -q.z, q.w);
 }
 // Reflects a hand pin across the body's midline: mesh swaps to its opposite
-// (legs/feet), face swaps left/right (front/back/top/bottom stay put), and
-// the stored offset's x flips — the new {mesh,face,offset} shape has no
-// per-pose facing/joint baggage left to carry over (see the block comment
-// above resolveHandAbsolutePos3D — hand facing is fully decoupled from
-// position now), so this is now just a straight geometric mirror.
-function mirrorPinSpec3D(ht) {
+// (legs/feet), face swaps left/right (front/back/top/bottom stay put).
+// The new offset is recomputed from the source wrist's ACTUAL current
+// rendered position (via currentWristSpineLocalPos3D), not by flipping the
+// stored offset number — a pinned wrist dragged with the gizmo (see
+// onJointGizmoChange3D) moves visually via a manual joint override while
+// its stored handTarget.offset stays exactly as it was when first pinned,
+// so a naive offset-flip would mirror stale data: the destination would
+// land where the pin SAYS the source is, not where it actually is, and
+// mirroring again after moving the source would silently repeat the same
+// (unchanged) stale result. Measuring the live position instead fixes both:
+// the mirror always matches what's on screen, and repeating it after moving
+// the source hand picks up the new position every time.
+function mirrorPinSpec3D(ht, side) {
   if (!ht || !ht.mesh) return ht;
-  const c = JSON.parse(JSON.stringify(ht));
   const swapMesh = { leftLeg: 'rightLeg', rightLeg: 'leftLeg', leftFoot: 'rightFoot', rightFoot: 'leftFoot' };
   const swapFace = { left: 'right', right: 'left' };
-  if (swapMesh[c.mesh]) c.mesh = swapMesh[c.mesh];
-  if (swapFace[c.face]) c.face = swapFace[c.face];
+  const destMesh = swapMesh[ht.mesh] || ht.mesh;
+  const destFace = swapFace[ht.face] || ht.face;
+  const currentPos = side ? currentWristSpineLocalPos3D(side) : null;
+  const facePoint = currentPos ? resolvePinFacePoint3D(destMesh, destFace, ikContext3D) : null;
+  if (currentPos && facePoint) {
+    return {
+      mesh: destMesh, face: destFace,
+      offset: {
+        x: round2(-currentPos.x - facePoint.x),
+        y: round2(currentPos.y - facePoint.y),
+        z: round2(currentPos.z - facePoint.z),
+      },
+    };
+  }
+  // Fallback if live geometry isn't available for some reason — same
+  // straight numeric offset-flip as before.
+  const c = JSON.parse(JSON.stringify(ht));
+  c.mesh = destMesh; c.face = destFace;
   if (c.offset && typeof c.offset.x === 'number') c.offset.x = round2(-c.offset.x);
   return c;
 }
@@ -2967,7 +2989,7 @@ function mirrorSelectedJoint3D() {
     // same as any other pin.
     snapshotPinsForCancel3D();
     pose[other] = pose[other] || {};
-    pose[other].handTarget = mirrorPinSpec3D(srcPin);
+    pose[other].handTarget = mirrorPinSpec3D(srcPin, side);
     jointEditorPinDirty3D[other] = true;
     // A pin's whole point is that it re-resolves fresh off the CURRENT body
     // geometry every render (see resolveHandAbsolutePos3D) so it keeps
