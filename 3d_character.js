@@ -696,6 +696,8 @@ function updateJePinStatus3D() {
     resetBtn.textContent = `↺ Reset ${side === 'left' ? 'L' : 'R'} WRIST`;
     resetBtn.disabled = !(def && def.wrist);
   }
+  const updateBtn = document.getElementById('jeUpdateHandDefaultBtn');
+  if (updateBtn) updateBtn.textContent = `⇧ Update ${side === 'left' ? 'L' : 'R'} WRIST`;
 }
 // Resets one wrist to its saved Default Setter data: unpins it (position
 // then tracks the default wrist position automatically, the same fallback
@@ -2965,9 +2967,7 @@ function debugShowPins3D() {
   });
   alert(lines.join('\n\n'));
 }
-function mirrorSelectedJoint3D() {
-  if (!selectedJoint3D) return;
-  const { side, jointType } = selectedJoint3D;
+function mirrorArmToOtherSide3D(side) {
   const other = side === 'left' ? 'right' : 'left';
   const pose = POSES3D[currentPose3D];
   const srcPin = pose && pose[side] && pose[side].handTarget;
@@ -3035,6 +3035,12 @@ function mirrorSelectedJoint3D() {
   applyPose3D(currentPose3D, { reframe: false });
   reapplyManualJointEdits3D();
   groundBody3D(false);
+  return { other, srcPin: !!srcPin };
+}
+function mirrorSelectedJoint3D() {
+  if (!selectedJoint3D) return;
+  const { side } = selectedJoint3D;
+  const { other, srcPin } = mirrorArmToOtherSide3D(side);
   if (selectedJoint3D && (selectedJoint3D.side === other)) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
   const status = document.getElementById('jeMirrorStatus');
   if (status) {
@@ -3043,6 +3049,26 @@ function mirrorSelectedJoint3D() {
     clearTimeout(mirrorSelectedJoint3D._t);
     mirrorSelectedJoint3D._t = setTimeout(() => { status.style.opacity = '0'; }, 1600);
   }
+}
+// Manually re-syncs one wrist's Default Setter data to wherever it currently
+// sits — fixes the staleness the automatic pin-time capture can't handle:
+// once a pin is tracking a mesh face, later body resizes or gizmo nudges
+// keep moving the LIVE wrist away from whatever was captured at pin time,
+// and neither pinning again nor ⬆ Save ever re-captures it on their own.
+// Also mirrors the freshly-updated arm onto the opposite side and captures
+// ITS resulting position+rotation as its own new default too, so both
+// sides' Default Setter data stays a matched, symmetric pair. Session-only,
+// like everything else here — ⬆ Save is still what pushes it to GitHub.
+function updateHandDefaultAndMirror3D(side) {
+  if (side !== 'left' && side !== 'right') return;
+  captureHandDefaultFromCurrent3D(side);
+  const { other } = mirrorArmToOtherSide3D(side);
+  captureHandDefaultFromCurrent3D(other);
+  if (selectedJoint3D && (selectedJoint3D.side === side || selectedJoint3D.side === other)) {
+    attachGizmoToSelection3D(); updateJointPanelValues3D();
+  }
+  updateJePinStatus3D();
+  setPinSaveStatus3D(`Updated ${side === 'left' ? 'L' : 'R'} wrist default, mirrored to ${other === 'left' ? 'L' : 'R'} — click Save to confirm.`);
 }
 // ---- Wrist Bend / Turn sliders (replace the rotate rings for wrists) ------
 // A small floating card that follows the selected wrist on screen while

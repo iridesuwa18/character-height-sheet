@@ -1091,7 +1091,7 @@
         <div id="jePinStatus" style="font-size:9px;color:var(--muted);font-family:'Space Mono',monospace;margin:-2px 0 8px;"></div>
         <details class="je-default-drawer">
           <summary>Default data (last saved)</summary>
-          <p class="je-note" style="margin:6px 0;">Set automatically when you pin this hand — it's the data ⬆ Save last confirmed. Not directly editable.</p>
+          <p class="je-note" style="margin:6px 0;">Captured when you pin this hand, or whenever you tap Update below — it's the data ⬆ Save last confirmed. Not directly editable.</p>
           <div class="je-xyz-group">
             <div class="je-xyz-row"><span>X</span><input type="text" id="jeDefX" readonly></div>
             <div class="je-xyz-row"><span>Y</span><input type="text" id="jeDefY" readonly></div>
@@ -1103,6 +1103,7 @@
             <div class="je-xyz-row"><span>Sw</span><input type="text" id="jeDefSw" readonly></div>
           </div>
         </details>
+        <button type="button" class="je-btn" id="jeUpdateHandDefaultBtn" onclick="updateHandDefaultAndMirror3D(selectedJoint3D && selectedJoint3D.side)">⇧ Update Wrist</button>
         <button type="button" class="je-btn" id="jeResetHandDefaultBtn" onclick="resetHandToDefault3D(selectedJoint3D && selectedJoint3D.side)">↺ Reset Wrist</button>
       </div>
 
