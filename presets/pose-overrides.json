@@ -73,7 +73,15 @@
     },
     "left": {
       "wristSwing": -18,
-      "handTarget": null,
+      "handTarget": {
+        "mesh": "leftLeg",
+        "face": "front",
+        "offset": {
+          "x": -15.47,
+          "y": 42.65,
+          "z": -12.97
+        }
+      },
       "wristTurnEdit": -61,
       "wrist": 19
     }
