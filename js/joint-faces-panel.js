@@ -26,6 +26,7 @@
 const FACES_MESH_COLOR = 0x5fbf7a;    // desaturated green
 const FACES_OUTLINE_COLOR = 0xb833ff; // glowing purple
 const FACES_FACE_COLOR = 0xff2fa0;    // saturated pink
+const FACES_DOT_COLOR = 0x22e0ff;     // neon blue
 // All overlay object names share this prefix so other code (see the head
 // depth slider's cleanup in body-build-pose.js) can reliably tell "one of
 // the Faces panel's overlays" apart from a mesh's own real children, rather
@@ -35,9 +36,23 @@ const FACES_MESH_TINT_NAME = FACES_OVERLAY_PREFIX + 'meshTint';
 const FACES_FACE_TINT_NAME = FACES_OVERLAY_PREFIX + 'faceTint';
 const FACES_OUTLINE_CORE_NAME = FACES_OVERLAY_PREFIX + 'outlineCore';
 const FACES_OUTLINE_HALO_NAME = FACES_OVERLAY_PREFIX + 'outlineHalo';
+const FACES_DOT_NAME = FACES_OVERLAY_PREFIX + 'dot';
 
 let facesSelectedMeshGroup3D = null; // e.g. 'torso' | null
 let facesSelectedFace3D = null;      // e.g. 'front' | null
+
+// ---- Dot system -------------------------------------------------------
+// A small neon-blue marker that rides on the surface of whichever face is
+// currently highlighted, positioned by two 0-100% sliders (Horizontal /
+// Vertical) rather than a raw XYZ offset, so it always stays glued to that
+// face's real surface — including a tapered/slanted face like the waistline
+// pinch or a torso front — instead of floating in empty space if the mesh
+// changes shape. See facesDotLocalPosition3D for how percent -> position.
+let facesDotEnabled3D = false;
+let facesDotH3D = 50; // 0-100, left -> right across the face
+let facesDotV3D = 50; // 0-100, bottom -> top across the face
+let facesDotFloatingEl3D = null;
+let facesDotFloatingDragging3D = false;
 
 function removeFacesOverlay3D(mesh, name) {
   const existing = mesh.children.find(c => c.name === name);
@@ -45,6 +60,20 @@ function removeFacesOverlay3D(mesh, name) {
   mesh.remove(existing);
   existing.geometry.dispose();
   existing.material.dispose();
+}
+
+// The dot overlay is a small Group (a core sphere + a glow halo sphere)
+// rather than one mesh, so it needs its own cleanup that disposes both
+// children instead of the single geometry/material removeFacesOverlay3D
+// expects.
+function removeFacesDotOverlay3D(mesh) {
+  const existing = mesh.children.find(c => c.name === FACES_DOT_NAME);
+  if (!existing) return;
+  mesh.remove(existing);
+  existing.traverse(o => {
+    if (o.geometry) o.geometry.dispose();
+    if (o.material) o.material.dispose();
+  });
 }
 
 // Samples the geometry's real vertex positions — rather than trusting its
@@ -217,12 +246,114 @@ function addFacesFaceOverlay3D(mesh, faceName, outline) {
   mesh.add(overlay);
 }
 
+// Turns the dot's Horizontal/Vertical percentages into a real mesh-local
+// point on the currently highlighted face — reusing exactly the same real
+// corners (o.bottom/o.top/min/max) that addFacesFaceOverlay3D uses to draw
+// that face's tint, just bilinearly interpolated instead of drawn as a
+// full plane. That's what makes the dot follow a slanted/tapered face (the
+// waistline pinch, an angled torso front, etc.) correctly: it's walking the
+// same real quad the tint overlay traces, not a flat assumption of one.
+//  - front/back: h runs left→right, v runs bottom→top, across the mesh's
+//    real (possibly trapezoid) cap shape.
+//  - top/bottom: h runs left→right across that level's real width, v runs
+//    back→front across the mesh's depth.
+//  - left/right: h runs across the depth (Z), v runs bottom→top along the
+//    side's own real slant (interpolating X together with Y so a tapered
+//    side's dot rides the slant instead of cutting through it).
+function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
+  const o = outline;
+  const h = Math.max(0, Math.min(100, hPct)) / 100;
+  const v = Math.max(0, Math.min(100, vPct)) / 100;
+  const lerp = (a, b, t) => a + (b - a) * t;
+  // Same tiny hairline reasoning as the mesh/face tint overlays above — the
+  // dot's material also has depthTest off, so this only needs to be just
+  // enough to clear the real surface, not a visible gap.
+  const eps = 0.004;
+
+  if (faceName === 'front' || faceName === 'back') {
+    const xBottom = lerp(o.bottom.minX, o.bottom.maxX, h);
+    const xTop = lerp(o.top.minX, o.top.maxX, h);
+    const x = lerp(xBottom, xTop, v);
+    const y = lerp(o.minY, o.maxY, v);
+    const z = faceName === 'front' ? o.maxZ + eps : o.minZ - eps;
+    return new THREE.Vector3(x, y, z);
+  }
+  if (faceName === 'top' || faceName === 'bottom') {
+    const atTop = faceName === 'top';
+    const level = atTop ? o.top : o.bottom;
+    const x = lerp(level.minX, level.maxX, h);
+    const z = lerp(o.minZ, o.maxZ, v);
+    const y = (atTop ? o.maxY : o.minY) + (atTop ? eps : -eps);
+    return new THREE.Vector3(x, y, z);
+  }
+  if (faceName === 'left' || faceName === 'right') {
+    const isLeft = faceName === 'left';
+    const bx = isLeft ? o.bottom.minX : o.bottom.maxX;
+    const tx = isLeft ? o.top.minX : o.top.maxX;
+    const dx = tx - bx, dy = o.maxY - o.minY;
+    const heightDir = new THREE.Vector3(dx, dy, 0).normalize();
+    const widthDir = new THREE.Vector3(0, 0, 1);
+    // Same left/right cross-product order swap as addFacesFaceOverlay3D, so
+    // the dot pops off the same outward side that face's tint does.
+    const normal = isLeft
+      ? new THREE.Vector3().crossVectors(widthDir, heightDir).normalize()
+      : new THREE.Vector3().crossVectors(heightDir, widthDir).normalize();
+    const x = lerp(bx, tx, v);
+    const y = lerp(o.minY, o.maxY, v);
+    const z = lerp(o.minZ, o.maxZ, h);
+    return new THREE.Vector3(x + normal.x * eps, y + normal.y * eps, z + normal.z * eps);
+  }
+  return null;
+}
+
+// The dot itself: a crisp core sphere plus a bigger, additively-blended,
+// more-transparent halo sphere behind it — the same glow trick the purple
+// outline uses — parented onto the mesh so it tracks it like every other
+// overlay here. Only drawn when Dot mode is on AND a face is selected.
+function addFacesDotOverlay3D(mesh, faceName, outline) {
+  removeFacesDotOverlay3D(mesh);
+  if (!faceName || !facesDotEnabled3D) return;
+  const pos = facesDotLocalPosition3D(faceName, outline, facesDotH3D, facesDotV3D);
+  if (!pos) return;
+  // Radius scales gently with the part's own size so it reads sensibly on
+  // both a finger-sized hand piece and a torso, but never shrinks below a
+  // floor that would make it hard to see/grab on a small part.
+  const scale = Math.max(outline.maxY - outline.minY, outline.maxZ - outline.minZ,
+    outline.top.maxX - outline.top.minX, outline.bottom.maxX - outline.bottom.minX);
+  const r = Math.max(scale * 0.02, 0.03);
+  const group = new THREE.Group();
+  group.name = FACES_DOT_NAME;
+  const coreMat = new THREE.MeshBasicMaterial({ color: FACES_DOT_COLOR, depthWrite: false, depthTest: false });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 10), coreMat);
+  core.renderOrder = 4;
+  const haloMat = new THREE.MeshBasicMaterial({ color: FACES_DOT_COLOR, transparent: true, opacity: 0.4, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(r * 2.4, 14, 10), haloMat);
+  halo.renderOrder = 4;
+  group.add(halo, core);
+  group.position.copy(pos);
+  mesh.add(group);
+}
+
+// Rebuilds only the dot (not the mesh tint / outline / face tint) on every
+// mesh currently showing the highlighted face — used while dragging the
+// Horizontal/Vertical sliders so the dot moves smoothly without the other
+// overlays flickering as they'd have to if applyFacesHighlight3D() (which
+// tears down and rebuilds everything) ran on every slider tick.
+function updateFacesDotOnly3D() {
+  if (!facesSelectedMeshGroup3D || !meshRecords3D.length) return;
+  meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D).forEach(r => {
+    const outline = facesMeshOutline3D(r.mesh.geometry);
+    addFacesDotOverlay3D(r.mesh, facesSelectedFace3D, outline);
+  });
+}
+
 function clearFacesHighlight3D() {
   meshRecords3D.forEach(r => {
     removeFacesOverlay3D(r.mesh, FACES_MESH_TINT_NAME);
     removeFacesOverlay3D(r.mesh, FACES_OUTLINE_CORE_NAME);
     removeFacesOverlay3D(r.mesh, FACES_OUTLINE_HALO_NAME);
     removeFacesOverlay3D(r.mesh, FACES_FACE_TINT_NAME);
+    removeFacesDotOverlay3D(r.mesh);
   });
 }
 function applyFacesHighlight3D() {
@@ -233,7 +364,25 @@ function applyFacesHighlight3D() {
     addFacesMeshOverlay3D(r.mesh, outline);
     addFacesOutlineOverlay3D(r.mesh);
     addFacesFaceOverlay3D(r.mesh, facesSelectedFace3D, outline);
+    addFacesDotOverlay3D(r.mesh, facesSelectedFace3D, outline);
   });
+}
+
+// Resets the dot back to its default Off/50/50 state and shows or hides the
+// whole Dot section — it only makes sense (and only shows up) once a face
+// is actually chosen, per the Face dropdown above it.
+function resetFacesDotState3D() {
+  facesDotEnabled3D = false;
+  facesDotH3D = 50;
+  facesDotV3D = 50;
+  const section = document.getElementById('facesDotSection');
+  if (section) section.style.display = facesSelectedFace3D ? '' : 'none';
+  const offBtn = document.getElementById('facesDotOffBtn'), onBtn = document.getElementById('facesDotOnBtn');
+  if (offBtn) offBtn.classList.add('active');
+  if (onBtn) onBtn.classList.remove('active');
+  const controls = document.getElementById('facesDotControls');
+  if (controls) controls.style.display = 'none';
+  syncFacesDotInputs3D();
 }
 
 function onFacesMeshChange3D(value) {
@@ -241,12 +390,153 @@ function onFacesMeshChange3D(value) {
   facesSelectedFace3D = null;
   const faceSel = document.getElementById('facesFaceSelect');
   if (faceSel) { faceSel.value = ''; faceSel.disabled = !facesSelectedMeshGroup3D; }
+  resetFacesDotState3D();
   applyFacesHighlight3D();
 }
 function onFacesFaceChange3D(value) {
   if (!facesSelectedMeshGroup3D) return; // dropdown is disabled until a mesh is picked, but guard anyway
   facesSelectedFace3D = value || null;
+  resetFacesDotState3D();
   applyFacesHighlight3D();
+}
+
+function setFacesDotMode3D(on) {
+  if (!facesSelectedFace3D) return; // Dot section is hidden in this state anyway, but guard regardless
+  facesDotEnabled3D = !!on;
+  const offBtn = document.getElementById('facesDotOffBtn'), onBtn = document.getElementById('facesDotOnBtn');
+  if (offBtn) offBtn.classList.toggle('active', !facesDotEnabled3D);
+  if (onBtn) onBtn.classList.toggle('active', facesDotEnabled3D);
+  const controls = document.getElementById('facesDotControls');
+  if (controls) controls.style.display = facesDotEnabled3D ? '' : 'none';
+  updateFacesDotOnly3D();
+}
+
+// Shared handler for all four Horizontal/Vertical inputs — the popup's own
+// number fields and the floating card's sliders next to the model — so
+// typing a number and dragging a slider always agree with each other.
+function onFacesDotAxisInput3D(axis, value) {
+  let n = parseFloat(value);
+  if (isNaN(n)) return;
+  n = Math.max(0, Math.min(100, n));
+  if (axis === 'h') facesDotH3D = n; else facesDotV3D = n;
+  syncFacesDotInputs3D();
+  updateFacesDotOnly3D();
+}
+
+// Keeps every Horizontal/Vertical control in sync with the live state:
+// the popup's number inputs, and the floating card's sliders + value
+// readouts next to the model. Skips whichever single control currently has
+// focus so it doesn't fight the user mid-type/mid-drag.
+function syncFacesDotInputs3D() {
+  const setNum = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
+  setNum('facesDotHNum', facesDotH3D);
+  setNum('facesDotVNum', facesDotV3D);
+  const setSlider = (id, valId, v) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = v;
+    const val = document.getElementById(valId);
+    if (val) val.textContent = Math.round(v);
+  };
+  setSlider('fdcHSlider', 'fdcHVal', facesDotH3D);
+  setSlider('fdcVSlider', 'fdcVVal', facesDotV3D);
+}
+
+// The floating Horizontal/Vertical slider card that sits next to the
+// highlighted face on screen once the Faces popup is closed — same pattern
+// as ensureWristSliders3D()/#wristSliders3D for the wrist Bend/Turn sliders.
+function ensureFacesDotFloatingCard3D() {
+  if (facesDotFloatingEl3D) return facesDotFloatingEl3D;
+  const host = document.getElementById('preview3D');
+  if (!host) return null;
+  if (!document.getElementById('facesDotFloatCss3D')) {
+    const st = document.createElement('style');
+    st.id = 'facesDotFloatCss3D';
+    st.textContent = `
+      #facesDotFloat3D { position:absolute; z-index:30; width:168px; padding:8px 10px 6px;
+        background:rgba(20,20,24,0.88); border:1px solid #22e0ff; border-radius:10px;
+        font-family:'Space Mono',monospace; font-size:10px; color:#eee; display:none;
+        touch-action:none; user-select:none; -webkit-user-select:none; }
+      #facesDotFloat3D .fd-row { display:flex; align-items:center; gap:6px; margin:4px 0; }
+      #facesDotFloat3D .fd-lab { width:20px; color:#22e0ff; font-weight:700; }
+      #facesDotFloat3D .fd-val { width:30px; text-align:right; }
+      #facesDotFloat3D input[type=range] { flex:1; min-width:0; height:28px; margin:0; accent-color:#22e0ff; touch-action:none; }
+    `;
+    document.head.appendChild(st);
+  }
+  const el = document.createElement('div');
+  el.id = 'facesDotFloat3D';
+  el.innerHTML = `
+    <div class="fd-row"><span class="fd-lab">H</span><input type="range" id="fdcHSlider" min="0" max="100" step="1" value="50"><span class="fd-val" id="fdcHVal">50</span></div>
+    <div class="fd-row"><span class="fd-lab">V</span><input type="range" id="fdcVSlider" min="0" max="100" step="1" value="50"><span class="fd-val" id="fdcVVal">50</span></div>`;
+  // Keep touches/clicks on the card away from orbit/pan on the canvas.
+  ['pointerdown','pointermove','pointerup','touchstart','touchmove','mousedown','wheel'].forEach(ev =>
+    el.addEventListener(ev, e => e.stopPropagation(), { passive: true }));
+  host.appendChild(el);
+  const bind = (id, axis) => {
+    const inp = el.querySelector('#' + id);
+    inp.addEventListener('input', () => onFacesDotAxisInput3D(axis, inp.value));
+    inp.addEventListener('pointerdown', () => { facesDotFloatingDragging3D = true; });
+    const end = () => { facesDotFloatingDragging3D = false; };
+    inp.addEventListener('pointerup', end); inp.addEventListener('pointercancel', end); inp.addEventListener('change', end);
+  };
+  bind('fdcHSlider', 'h'); bind('fdcVSlider', 'v');
+  facesDotFloatingEl3D = el;
+  return el;
+}
+
+// Runs every frame from animate3D (see body-scene.js), same as
+// updateWristSliderOverlay3D(): keeps the popup's live world-XYZ readout
+// current, and shows/positions the floating H/V card next to the dot's
+// actual on-screen position once the Faces popup is closed.
+function updateFacesDotOverlayFrame3D() {
+  const active = !!(facesDotEnabled3D && facesSelectedMeshGroup3D && facesSelectedFace3D && meshRecords3D.length && jointEditorModeActive3D);
+  if (!active) {
+    ['facesDotWorldX', 'facesDotWorldY', 'facesDotWorldZ'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '—';
+    });
+    if (facesDotFloatingEl3D && facesDotFloatingEl3D.style.display !== 'none') facesDotFloatingEl3D.style.display = 'none';
+    return;
+  }
+  const rec = meshRecords3D.find(r => r.group === facesSelectedMeshGroup3D);
+  if (!rec) return;
+  const dotObj = rec.mesh.children.find(c => c.name === FACES_DOT_NAME);
+  if (!dotObj) return;
+  const world = new THREE.Vector3();
+  dotObj.getWorldPosition(world);
+  // Same spine-local frame the joint X/Y/Z panel uses (see
+  // updateJointPanelValues3D), so this reads on the same coordinate system
+  // as every joint's own position.
+  let coord = world;
+  if (rig3D.spine) {
+    rig3D.spine.updateMatrixWorld(true);
+    coord = rig3D.spine.worldToLocal(world.clone());
+  }
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = round1(v).toFixed(1); };
+  setTxt('facesDotWorldX', coord.x);
+  setTxt('facesDotWorldY', coord.y);
+  setTxt('facesDotWorldZ', coord.z);
+
+  const popup = document.getElementById('jeFacesPopup');
+  const popupOpen = !!(popup && popup.classList.contains('open'));
+  const card = ensureFacesDotFloatingCard3D();
+  if (!card) return;
+  if (popupOpen) { card.style.display = 'none'; return; }
+  const host = document.getElementById('preview3D');
+  const W = host.clientWidth, H = host.clientHeight;
+  const proj = world.clone().project(camera3D);
+  const sx = (proj.x * 0.5 + 0.5) * W, sy = (-proj.y * 0.5 + 0.5) * H;
+  if (card.style.display !== 'block') { card.style.display = 'block'; syncFacesDotInputs3D(); }
+  const cw = card.offsetWidth || 168, ch = card.offsetHeight || 70;
+  let x = sx < W / 2 ? sx + 24 : sx - cw - 24;
+  x = Math.max(4, Math.min(W - cw - 4, x));
+  let minY = 4; const hostTop = host.getBoundingClientRect().top;
+  ['jointEditorTopBar', 'jointToggleBar', 'jeCopyBar'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b && b.offsetParent !== null) minY = Math.max(minY, b.getBoundingClientRect().bottom - hostTop + 6);
+  });
+  const y = Math.max(minY, Math.min(H - ch - 4, sy - ch / 2));
+  card.style.left = Math.round(x) + 'px';
+  card.style.top = Math.round(y) + 'px';
 }
 
 // Called whenever the underlying meshes are about to be thrown away (a
@@ -258,6 +548,7 @@ function resetFacesSelection3D() {
   facesSelectedFace3D = null;
   const meshSel = document.getElementById('facesMeshSelect'); if (meshSel) meshSel.value = '';
   const faceSel = document.getElementById('facesFaceSelect'); if (faceSel) { faceSel.value = ''; faceSel.disabled = true; }
+  resetFacesDotState3D();
 }
 function openFacesPopup3D() {
   const el = document.getElementById('jeFacesPopup');
