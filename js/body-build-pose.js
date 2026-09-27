@@ -512,6 +512,17 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   // slider tweaks, and hand/wrist-facing overrides until explicitly reset —
   // see reapplyManualJointEdits3D.
   if (jointEditorInited3D) reapplyManualJointEdits3D();
+  // Distance-leash wrist pins (see applyWristPin3D / enforceWristPinConstraints3D
+  // in joint-faces-panel.js): runs after every pose/slider/rebuild application
+  // (this function fires for all of them, including buildBody3D's automatic
+  // re-apply after a shoulder/waist-length Generate) so a leashed arm's
+  // shoulder+elbow stay reach-clamped to their pinned spots and the hand keeps
+  // leaning toward its dot, live, as the body reshapes. No-ops for any side
+  // that isn't pinned, or pinned with no dot attached.
+  if (typeof enforceWristPinConstraints3D === 'function') {
+    enforceWristPinConstraints3D('left');
+    enforceWristPinConstraints3D('right');
+  }
   groundBody3D(reframe);
 }
 

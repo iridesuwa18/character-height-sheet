@@ -200,6 +200,13 @@ const clampWristBend = (deg) => Math.min(WRIST_BEND_RANGE[1], Math.max(WRIST_BEN
 // pinky side (ulnar, larger range). Same number on both hands = mirrored pair.
 const WRIST_SWING_RANGE = [-40, 20];
 const clampWristSwing = (deg) => Math.min(WRIST_SWING_RANGE[1], Math.max(WRIST_SWING_RANGE[0], deg || 0));
+// How far (degrees, as a single rotation-angle budget) the wrist-dot leash's
+// final hand-aim pass (see enforceWristPinConstraints3D in
+// joint-faces-panel.js) is allowed to rotate the hand away from whatever
+// bend/swing the pose already gave it, when reaching toward a pinned dot
+// that's drifted out of the arm's reach. Reuses WRIST_BEND_RANGE's own span
+// as the budget rather than inventing a separate number.
+const WRIST_PIN_AIM_MAX_DEG = WRIST_BEND_RANGE[1];
 // Overrides hold a preset word ('front'...) or a plain number of degrees.
 // The pose's own built-in facing for one side, ignoring anything saved on top.
 function literalFacing3D(poseName, side) {

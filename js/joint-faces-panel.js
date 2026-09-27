@@ -204,16 +204,141 @@ function applyWristPin3D() {
   const elbowGrp = rig3D && rig3D[side + 'Elbow'];
   const shoulderPos = shoulderGrp ? jointWorldPosSpineLocal3D(shoulderGrp) : null;
   const elbowPos = elbowGrp ? jointWorldPosSpineLocal3D(elbowGrp) : null;
+  // ---- Distance leash (dot <-> wrist) ------------------------------------
+  // If this wrist currently has a dot attachment (Wrist Attachments above),
+  // PIN APPLY also freezes that dot's CURRENT world spot as the "dot
+  // origin" and locks in R = the wrist-to-dot distance right now, plus the
+  // upper-arm (shoulder->elbow) and forearm (elbow->wrist) bone lengths.
+  // Those four frozen numbers are what enforceWristPinConstraints3D below
+  // uses to keep the arm honest as shoulder/waist-length changes move the
+  // live shoulder joint and/or the live dot around — see the big comment
+  // above that function for the actual behavior. A wrist pinned with NO
+  // dot attached gets r/upperLen/foreLen = null, which is exactly what
+  // makes enforceWristPinConstraints3D no-op for it (unchanged, original
+  // "pin is just a frozen Snap Back target" behavior).
+  const att = facesWristAttachment3D[side];
+  const dotOrigin = att ? resolveWristAttachmentPoint3D(att) : null;
   wristPinLocked3D[side] = {
     ...pos, ...rot,
     sx: shoulderPos ? shoulderPos.x : null, sy: shoulderPos ? shoulderPos.y : null, sz: shoulderPos ? shoulderPos.z : null,
     ex: elbowPos ? elbowPos.x : null, ey: elbowPos ? elbowPos.y : null, ez: elbowPos ? elbowPos.z : null,
+    dox: dotOrigin ? dotOrigin.x : null, doy: dotOrigin ? dotOrigin.y : null, doz: dotOrigin ? dotOrigin.z : null,
+    r: dotOrigin ? dist3(dotOrigin, pos) : null,
+    upperLen: (shoulderPos && elbowPos) ? dist3(shoulderPos, elbowPos) : null,
+    foreLen: (elbowPos && pos) ? dist3(elbowPos, pos) : null,
   };
   syncWristPinReadout3D();
 }
 function clearWristPin3D() {
+  // Once cleared, R no longer exists (per spec) — wherever the leash's
+  // live reach-clamping last left the shoulder/elbow/wrist simply becomes
+  // this pose's new resting rotation (already true for free, since nothing
+  // here touches manualJointEdits3D — see enforceWristPinConstraints3D)
+  // rather than being reset back to the original pinned spot.
   wristPinLocked3D[facesWristSelected3D] = null;
   syncWristPinReadout3D();
+}
+// ---- Distance-leash math (shared by the live enforcer and Snap Back) ----
+function dist3(a, b) {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2);
+}
+function spineLocalToWorld3D(v) {
+  if (!rig3D.spine) return null;
+  rig3D.spine.updateMatrixWorld(true);
+  return rig3D.spine.localToWorld(new THREE.Vector3(v.x, v.y, v.z));
+}
+// Clamps `target` so it's never farther than `maxLen` from `origin` — the
+// rigid-bone "reach" a shoulder/elbow can't stretch past. If target is
+// already within reach it's returned completely untouched (position AND
+// identity), which is what lets an elbow that's still reachable "stay put
+// exactly where it was pinned" per the spec, rather than always sliding
+// onto the sphere's surface. All in spine-local cm.
+function reachClampPoint3D(origin, target, maxLen) {
+  const dx = target.x - origin.x, dy = target.y - origin.y, dz = target.z - origin.z;
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (d <= maxLen || d < 1e-6) return { x: target.x, y: target.y, z: target.z };
+  const k = maxLen / d;
+  return { x: origin.x + dx * k, y: origin.y + dy * k, z: origin.z + dz * k };
+}
+// Recomputes, from the CURRENT live shoulder position, where the elbow and
+// wrist should sit right now so neither bone stretches past its own PIN
+// APPLY-time length (upperLen/foreLen) trying to reach its own pinned spot
+// (ex/ey/ez, x/y/z) — then a best-effort final wrist bend/swing pass that
+// leans the hand toward the CURRENT live dot as far as the wrist's normal
+// range allows (see WRIST_PIN_AIM_MAX_DEG), only when the reach-clamp above
+// actually had to move something. This is the one place both
+// enforceWristPinConstraints3D (run continuously, every applyPose3D — see
+// the hook there) and Snap Back (snapWristToPin3D) get their target from,
+// so what Snap Back restores always matches what the live constraint is
+// already holding, just re-applied explicitly (useful after a manual gizmo
+// drag, which doesn't itself run this).
+// NOTE on the final hand-aim: it aims the wrist->handTurn offset straight
+// at the dot (the closest a pure wrist rotation CAN bring that fixed-length
+// point to the dot), capped by how far the wrist is allowed to rotate away
+// from its pose-driven bend/swing — it does not attempt to solve for an
+// exact wrist-to-dot distance of R, which a rotation alone can't guarantee
+// once the arm is already reach-clamped short.
+// Returns null if this side has no leash-pinned wrist (see applyWristPin3D)
+// or the rig/dot can't currently be resolved.
+function computeWristPinAdjustedChain3D(side) {
+  const pin = wristPinLocked3D[side];
+  if (!pin || pin.r == null) return null;
+  const shoulderGrp = rig3D[side + 'Shoulder'], elbowGrp = rig3D[side + 'Elbow'], wristGrp = rig3D[side + 'Wrist'];
+  const handTurnGrp = rig3D[side + 'HandTurn'];
+  if (!shoulderGrp || !elbowGrp || !wristGrp || !rig3D.spine) return null;
+
+  const liveShoulder = jointWorldPosSpineLocal3D(shoulderGrp);
+  if (!liveShoulder) return null;
+  const elbowPin = { x: pin.ex, y: pin.ey, z: pin.ez };
+  const wristPin = { x: pin.x, y: pin.y, z: pin.z };
+  const adjustedElbow = (pin.upperLen != null) ? reachClampPoint3D(liveShoulder, elbowPin, pin.upperLen) : elbowPin;
+
+  const shoulderTargetWorld = spineLocalToWorld3D(adjustedElbow);
+  const qShoulder = aimBoneToWorldPoint3D(shoulderGrp, elbowGrp.position, shoulderTargetWorld);
+  // Apply immediately so the elbow's world position below reflects it —
+  // same apply-then-re-read pattern the original Snap Back used.
+  shoulderGrp.quaternion.copy(qShoulder);
+  const liveElbow = jointWorldPosSpineLocal3D(elbowGrp);
+  const adjustedWrist = (pin.foreLen != null) ? reachClampPoint3D(liveElbow, wristPin, pin.foreLen) : wristPin;
+
+  const elbowTargetWorld = spineLocalToWorld3D(adjustedWrist);
+  const qElbow = aimBoneToWorldPoint3D(elbowGrp, wristGrp.position, elbowTargetWorld);
+  elbowGrp.quaternion.copy(qElbow);
+
+  const elbowMoved = dist3(adjustedElbow, elbowPin) > 1e-4;
+  const wristMoved = dist3(adjustedWrist, wristPin) > 1e-4;
+  let qWristAim = null;
+  const att = facesWristAttachment3D[side];
+  const liveDot = att ? resolveWristAttachmentPoint3D(att) : null;
+  if ((elbowMoved || wristMoved) && liveDot && handTurnGrp) {
+    const dotWorld = spineLocalToWorld3D(liveDot);
+    const qAimFull = aimBoneToWorldPoint3D(wristGrp, handTurnGrp.position, dotWorld);
+    const qCurrent = wristGrp.quaternion.clone();
+    const d = Math.min(1, Math.max(-1, qCurrent.dot(qAimFull)));
+    const angleRad = 2 * Math.acos(Math.abs(d));
+    const maxRad = deg2rad(WRIST_PIN_AIM_MAX_DEG);
+    const t = angleRad > 1e-6 ? Math.min(1, maxRad / angleRad) : 1;
+    qWristAim = qCurrent.clone().slerp(qAimFull, t);
+  }
+  return { adjustedElbow, adjustedWrist, qShoulder, qElbow, qWristAim };
+}
+// Called at the end of every applyPose3D() (see the hook there), for both
+// sides — keeps a leash-pinned arm's shoulder/elbow reach-clamped and the
+// hand leaning toward its dot continuously, live, as shoulder/waist-length
+// (or anything else) moves the shoulder joint or the dot around. Writes
+// nothing into manualJointEdits3D — it's purely a live re-derivation, so
+// PIN CLEAR needs nothing to undo (see clearWristPin3D) and a side with no
+// leash (or no pin at all) is completely untouched.
+function enforceWristPinConstraints3D(side) {
+  const pin = wristPinLocked3D[side];
+  if (!pin || pin.r == null) return;
+  const shoulderGrp = rig3D[side + 'Shoulder'], elbowGrp = rig3D[side + 'Elbow'], wristGrp = rig3D[side + 'Wrist'];
+  if (!shoulderGrp || !elbowGrp || !wristGrp) return;
+  const chain = computeWristPinAdjustedChain3D(side);
+  if (!chain) return;
+  shoulderGrp.quaternion.copy(chain.qShoulder);
+  elbowGrp.quaternion.copy(chain.qElbow);
+  if (chain.qWristAim) wristGrp.quaternion.copy(chain.qWristAim);
 }
 // ---- Snap Back ------------------------------------------------------------
 // Moves a wrist that has since drifted away from its pin (walked via the
@@ -260,6 +385,38 @@ function snapWristToPin3D(side) {
   const elbowGrp = rig3D[side + 'Elbow'];
   const wristGrp = rig3D[side + 'Wrist'];
   if (!elbowGrp || !wristGrp) return;
+
+  // Leash-pinned (a dot was attached at PIN APPLY time, see applyWristPin3D):
+  // snap to the freshly recomputed ADJUSTED chain, not the raw frozen pin —
+  // shoulder/waist-length changes since PIN APPLY may well have pushed the
+  // dot (and so the reach-clamped arm) away from where it was originally
+  // pinned, and that's where the arm should actually rest now. The ORIGINAL
+  // pinned XYZ (ex/ey/ez, x/y/z on wristPinLocked3D) is never touched by
+  // this — only where Snap Back lands moves. See computeWristPinAdjustedChain3D.
+  if (pin.r != null) {
+    const chain = computeWristPinAdjustedChain3D(side);
+    if (!chain) return;
+    jointEditsForPose3D(currentPose3D)[side].shoulderQuat = chain.qShoulder;
+    jointEditsForPose3D(currentPose3D)[side].elbowQuat = chain.qElbow;
+    if (chain.qWristAim) {
+      // The hand-aim quaternion already IS the wrist's full local rotation
+      // (bend+swing combined) — store it as a direct override, same as a
+      // manual translate-gizmo drag would, and clear the numeric Bend/
+      // Swing overrides so they don't fight it on the next repose.
+      jointEditsForPose3D(currentPose3D)[side].wristQuat = chain.qWristAim;
+      wristRotationOverride[side] = null;
+      wristSwingOverride[side] = null;
+    }
+    applyPose3D(currentPose3D, { reframe: false });
+    reapplyManualJointEdits3D();
+    groundBody3D(false);
+    if (selectedJoint3D && selectedJoint3D.side === side) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+    syncWristPinReadout3D();
+    return;
+  }
+
+  // Unleashed pin (no dot attached at PIN APPLY time) — original behavior,
+  // snapping straight back to the frozen pin XYZ/rotation.
   // Step 1: put the elbow back where IT was pinned, by re-aiming the
   // shoulder — same move as dragging the Elbow joint itself. Applied to
   // the live group immediately (not just stored) so the elbow-aim call
@@ -313,6 +470,15 @@ function syncWristPinReadout3D() {
   setTxt('wristPinSw', rot ? rot.swing : null);
   const status = document.getElementById('wristPinStatus');
   if (status) status.textContent = locked ? 'Pinned' : 'Live';
+  // Leash readout: only meaningful once pinned. R is frozen at PIN APPLY
+  // time (see applyWristPin3D) — null means this pin has no dot attached,
+  // so enforceWristPinConstraints3D leaves this arm alone (original
+  // unleashed pin behavior).
+  const leashEl = document.getElementById('wristPinLeashR');
+  if (leashEl) {
+    leashEl.textContent = !locked ? '—'
+      : (locked.r != null ? locked.r.toFixed(1) + ' cm (leashed)' : 'no dot attached');
+  }
   syncWristPinInfoReadout3D();
 }
 // ---- Debug info popover -----------------------------------------------
