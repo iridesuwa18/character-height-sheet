@@ -153,6 +153,18 @@ function applySavedJointEdits3D() {
   jointEditsInitialApplied3D = true;
   applyJointEditsState3D(jointEditsSaved3D, { keepPose: !first });
   reapplyManualJointEdits3D(); // works even before the editor has been opened
+  // Re-enforce distance-leash wrist pins (see enforceWristPinConstraints3D
+  // in joint-faces-panel.js) AFTER re-stamping saved edits above — this
+  // runs straight after applyPose3D's own call to it inside buildBody3D
+  // (see the hook there), and without repeating it here, any saved
+  // shoulderQuat/elbowQuat for the current pose would silently overwrite
+  // the fresh reach-clamp applyPose3D just computed, snapping a leashed
+  // wrist back out of place on every rebuild (e.g. right after a
+  // shoulder/waist-width Generate).
+  if (typeof enforceWristPinConstraints3D === 'function') {
+    enforceWristPinConstraints3D('left');
+    enforceWristPinConstraints3D('right');
+  }
   groundBody3D(false);
   if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
 }

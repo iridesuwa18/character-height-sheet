@@ -108,5 +108,13 @@ function mirrorWristPinSpec3D(pin) {
     turn: pin.turn, bend: pin.bend, swing: pin.swing,
     sx: pin.sx == null ? null : round2(-pin.sx), sy: pin.sy, sz: pin.sz,
     ex: pin.ex == null ? null : round2(-pin.ex), ey: pin.ey, ez: pin.ez,
+    // Leash fields (see applyWristPin3D in joint-faces-panel.js): the dot
+    // origin mirrors the same X-negate/Y,Z-keep rule as the position above;
+    // R and the two bone lengths are plain distances, unaffected by
+    // mirroring, so they copy straight across. Missing these is exactly
+    // what made a mirrored pin read "no dot attached" — r stayed undefined
+    // instead of carrying the source side's value.
+    dox: pin.dox == null ? null : round2(-pin.dox), doy: pin.doy, doz: pin.doz,
+    r: pin.r, upperLen: pin.upperLen, foreLen: pin.foreLen,
   };
 }

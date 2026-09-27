@@ -267,6 +267,13 @@ function cancelJointEditorMode3D() {
   if (jointEditorModeSnapshot3D) {
     manualJointEdits3D = jointEditorModeSnapshot3D;
     reapplyManualJointEdits3D();
+    // Same reasoning as applySavedJointEdits3D in joint-github-sync.js:
+    // restoring a snapshot can re-stamp a stale shoulderQuat/elbowQuat on
+    // top of a leashed wrist's live reach-clamp — re-enforce it right after.
+    if (typeof enforceWristPinConstraints3D === 'function') {
+      enforceWristPinConstraints3D('left');
+      enforceWristPinConstraints3D('right');
+    }
     groundBody3D(false);
   }
   closeJointEditorModeUI3D();
