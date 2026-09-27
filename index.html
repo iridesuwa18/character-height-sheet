@@ -1173,15 +1173,13 @@
         </div>
         <p class="jec-target" id="jeCopyTarget"></p>
         <div class="jec-row">
-          <select id="jeCopyPoseSelect" title="Pose to copy elbows &amp; wrists from" onchange="document.getElementById('jeCopyMsg').textContent=''"></select>
+          <select id="jeCopyPoseSelect" title="Pose to copy arms &amp; wrist pins from" onchange="document.getElementById('jeCopyMsg').textContent=''"></select>
           <select id="jeCopySideSelect" title="Which arm(s) to copy">
             <option value="both">Both</option>
             <option value="left">Left</option>
             <option value="right">Right</option>
           </select>
         </div>
-        <label class="jec-opt"><input type="checkbox" id="jeCopyShoulderChk" checked>
-          <span><b>Match elbow position</b><small>Also copies the shoulder aim</small></span></label>
         <div id="jeCopyMsg"></div>
         <div class="jec-actions">
           <button type="button" onclick="closeCopyPopup3D()">Close</button>
