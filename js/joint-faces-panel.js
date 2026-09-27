@@ -53,6 +53,211 @@ let facesDotH3D = 50; // 0-100, left -> right across the face
 let facesDotV3D = 50; // 0-100, top -> bottom across the face
 let facesDotFloatingEl3D = null;
 let facesDotFloatingDragging3D = false;
+// True once the live dot's current H/V has been Applied as a wrist
+// attachment (see the Wrist Attachments block below) — while true, the
+// H/V number fields and floating slider card are disabled so an attached
+// point can't be nudged out from under whichever wrist depends on it.
+// Remove (or navigating to a different mesh/face, which resets the dot
+// entirely) is the only way back to an editable dot.
+let facesDotLocked3D = false;
+
+// ---- Wrist attachments -------------------------------------------------
+// A purely-visual link from a wrist (left/right) to one exact dot (mesh
+// group + face + H/V%) — NOT an actual IK target: the wrist joint itself
+// never moves because of this, it's only an indicator (see the "Attached
+// Wrists" readout above the Mesh dropdown, and each attached wrist's own
+// small marker sphere below) for planning where a hand should eventually
+// rest. Persistent data, unlike facesSelectedMeshGroup3D/facesDotH3D/etc
+// above (which are just the currently-being-edited dot and get wiped on
+// every mesh/face change or body rebuild) — an attachment survives both,
+// which is why it's stored separately here instead of piggybacking on the
+// live dot state. A wrist can only be attached to one point at a time:
+// re-attaching it elsewhere overwrites its one slot rather than adding a
+// second. Both wrists CAN share the exact same point, though (Apply for
+// Left, then switch the selector to Right and Apply again at the same
+// still-locked spot).
+let facesWristAttachment3D = { left: null, right: null }; // each: {group, face, h, v} | null
+let facesWristSelected3D = 'left'; // which wrist Apply/Remove/Mirror act on
+const FACES_WRIST_DOT_PREFIX = FACES_OVERLAY_PREFIX + 'wristDot:';
+const FACES_WRIST_COLOR = { left: 0xffa63d, right: 0x8dff5c }; // warm orange (L) / lime green (R) — distinct from the neon-blue editing dot and pink face tint
+// Side-specific mesh groups (see the leftArm/rightArm/etc split in
+// body-build-pose.js) mirror to their opposite; side-neutral groups
+// (torso, waistbox, head, neck) mirror to themselves.
+const FACES_GROUP_MIRROR_MAP_3D = {
+  leftArm: 'rightArm', rightArm: 'leftArm',
+  leftHand: 'rightHand', rightHand: 'leftHand',
+  leftLeg: 'rightLeg', rightLeg: 'leftLeg',
+  leftFoot: 'rightFoot', rightFoot: 'leftFoot',
+};
+const FACES_GROUP_LABELS_3D = {
+  head: 'Head', neck: 'Neck', torso: 'Torso', waistbox: 'Waist',
+  leftArm: 'L Arm', rightArm: 'R Arm', leftHand: 'L Hand', rightHand: 'R Hand',
+  leftLeg: 'L Leg', rightLeg: 'R Leg', leftFoot: 'L Foot', rightFoot: 'R Foot',
+};
+const FACES_FACE_LABELS_3D = { top: 'Top', bottom: 'Bottom', left: 'Left', right: 'Right', front: 'Front', back: 'Back' };
+
+function setFacesWristSelect3D(side) {
+  facesWristSelected3D = side;
+  const lBtn = document.getElementById('facesWristSelL'), rBtn = document.getElementById('facesWristSelR');
+  if (lBtn) lBtn.classList.toggle('active', side === 'left');
+  if (rBtn) rBtn.classList.toggle('active', side === 'right');
+}
+// Whether `side`'s stored attachment is exactly the dot currently being
+// edited (same group/face/h/v) — the basis for both the H/V lock and for
+// recomputing it after a Remove (the OTHER wrist may still sit here).
+function facesWristMatchesCurrentDot3D(side) {
+  const a = facesWristAttachment3D[side];
+  return !!(a && a.group === facesSelectedMeshGroup3D && a.face === facesSelectedFace3D
+    && a.h === facesDotH3D && a.v === facesDotV3D);
+}
+function applyFacesWristAttachment3D() {
+  if (!facesSelectedMeshGroup3D || !facesSelectedFace3D || !facesDotEnabled3D) return;
+  facesWristAttachment3D[facesWristSelected3D] = {
+    group: facesSelectedMeshGroup3D, face: facesSelectedFace3D, h: facesDotH3D, v: facesDotV3D,
+  };
+  facesDotLocked3D = true;
+  syncFacesDotInputs3D();
+  refreshFacesWristReadouts3D();
+  applyFacesHighlight3D();
+}
+function removeFacesWristAttachment3D() {
+  const side = facesWristSelected3D;
+  facesWristAttachment3D[side] = null;
+  // The point stays locked if the OTHER wrist still depends on this exact spot.
+  facesDotLocked3D = facesWristMatchesCurrentDot3D(side === 'left' ? 'right' : 'left');
+  syncFacesDotInputs3D();
+  refreshFacesWristReadouts3D();
+  applyFacesHighlight3D();
+}
+function mirrorFacesMeshGroupName3D(group) { return FACES_GROUP_MIRROR_MAP_3D[group] || group; }
+function mirrorFacesFaceName3D(face) {
+  if (face === 'left') return 'right';
+  if (face === 'right') return 'left';
+  return face;
+}
+// front/back/top/bottom all run Horizontal left->right across the face
+// (see facesDotLocalPosition3D), so mirroring those flips H; left/right
+// faces run Horizontal across DEPTH instead (front-to-back), which a
+// left-right mirror shouldn't touch, so only the face itself flips there.
+// Vertical never flips either way (a mirror never turns top into bottom).
+function mirrorWristAttachmentSpec3D(att) {
+  if (!att) return null;
+  const flipH = att.face === 'front' || att.face === 'back' || att.face === 'top' || att.face === 'bottom';
+  return {
+    group: mirrorFacesMeshGroupName3D(att.group),
+    face: mirrorFacesFaceName3D(att.face),
+    h: flipH ? (100 - att.h) : att.h,
+    v: att.v,
+  };
+}
+function mirrorFacesWristAttachment3D() {
+  const src = facesWristAttachment3D.left;
+  if (!src) return;
+  facesWristAttachment3D.right = mirrorWristAttachmentSpec3D(src);
+  facesDotLocked3D = facesWristMatchesCurrentDot3D('left') || facesWristMatchesCurrentDot3D('right');
+  syncFacesDotInputs3D();
+  refreshFacesWristReadouts3D();
+  applyFacesHighlight3D();
+}
+
+// Resolves one attachment's stored (group,face,h,v) into a real spine-local
+// XYZ, for the "Attached Wrists" readout above the Mesh dropdown — this can
+// be asked about a group that ISN'T the currently-selected one, so (unlike
+// the live dot) it re-derives its own mesh records/outline instead of
+// reusing whatever's currently highlighted. A group can resolve into more
+// than one independent stack (e.g. an arm's upper-arm-vs-forearm halves,
+// split at the elbow hinge — see buildFacesDotStacks3D) — an attachment
+// always targets a single-stack group in practice (torso/waist/head/neck/
+// one leg/one foot/one hand), so the first stack found is used.
+function resolveWristAttachmentPoint3D(att) {
+  if (!att || !meshRecords3D.length) return null;
+  const records = meshRecords3D.filter(r => r.group === att.group);
+  if (!records.length) return null;
+  const stacks = buildFacesDotStacks3D(records.map(r => r.mesh));
+  for (const meshes of stacks) {
+    const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
+    const combined = combineFacesOutlineStack3D(pieces);
+    const pt = facesDotLocalPosition3D(att.face, combined, att.h, att.v);
+    if (!pt || !pieces[0].mesh.parent) continue;
+    const world = pieces[0].mesh.parent.localToWorld(pt.clone());
+    if (rig3D.spine) { rig3D.spine.updateMatrixWorld(true); return rig3D.spine.worldToLocal(world.clone()); }
+    return world;
+  }
+  return null;
+}
+// Updates the "Attached Wrists" summary above the Mesh dropdown — call
+// whenever an attachment changes (Apply/Remove/Mirror) or the popup opens,
+// and after a body rebuild (the rig the XYZ is resolved against is new).
+function refreshFacesWristReadouts3D() {
+  ['left', 'right'].forEach(side => {
+    const el = document.getElementById(side === 'left' ? 'facesWristAttachL' : 'facesWristAttachR');
+    if (!el) return;
+    const att = facesWristAttachment3D[side];
+    if (!att) { el.textContent = '—'; return; }
+    const groupLabel = FACES_GROUP_LABELS_3D[att.group] || att.group;
+    const faceLabel = FACES_FACE_LABELS_3D[att.face] || att.face;
+    const pt = resolveWristAttachmentPoint3D(att);
+    const xyz = pt ? `(${round1(pt.x).toFixed(1)}, ${round1(pt.y).toFixed(1)}, ${round1(pt.z).toFixed(1)})` : '(—)';
+    el.textContent = `${groupLabel} · ${faceLabel} · ${xyz}`;
+  });
+}
+// Small colored marker (one color per wrist, distinct from the neon-blue
+// editing dot) at an attached wrist's stored point — same owner-piece and
+// local-space logic as the editing dot's own addFacesDotOverlayAtPosition3D,
+// just its own overlay name/color so both can coexist. Only ever called for
+// the CURRENTLY selected group/face (see applyFacesWristDotsToGroup3D) —
+// "only seen when the correct mesh and face is selected", per spec.
+function addFacesWristDotOverlay3D(meshes, side, att) {
+  const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
+  const combined = combineFacesOutlineStack3D(pieces);
+  const pt = facesDotLocalPosition3D(att.face, combined, att.h, att.v);
+  if (!pt) return;
+  let owner = pieces[0];
+  for (const p of pieces) {
+    const lo = p.mesh.position.y + p.outline.minY, hi = p.mesh.position.y + p.outline.maxY;
+    if (pt.y >= lo - 1e-4 && pt.y <= hi + 1e-4) { owner = p; break; }
+  }
+  const local = new THREE.Vector3(pt.x - owner.mesh.position.x, pt.y - owner.mesh.position.y, pt.z - owner.mesh.position.z);
+  const name = FACES_WRIST_DOT_PREFIX + side;
+  const existing = owner.mesh.children.find(c => c.name === name);
+  if (existing) { owner.mesh.remove(existing); existing.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  const o = owner.outline;
+  const scale = Math.max(o.maxY - o.minY, o.maxZ - o.minZ, o.top.maxX - o.top.minX, o.bottom.maxX - o.bottom.minX);
+  const r = Math.max(scale * 0.022, 0.032);
+  const coreMat = new THREE.MeshBasicMaterial({ color: FACES_WRIST_COLOR[side], depthWrite: false, depthTest: false });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), coreMat);
+  const haloMat = new THREE.MeshBasicMaterial({ color: FACES_WRIST_COLOR[side], transparent: true, opacity: 0.4, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
+  const halo = new THREE.Mesh(new THREE.SphereGeometry(r * 2.2, 12, 8), haloMat);
+  const group = new THREE.Group();
+  group.name = name;
+  group.add(halo, core);
+  group.position.copy(local);
+  owner.mesh.add(group);
+}
+function removeFacesWristDotOverlaysFromRecords3D(records) {
+  ['left', 'right'].forEach(side => {
+    const name = FACES_WRIST_DOT_PREFIX + side;
+    records.forEach(r => {
+      const existing = r.mesh.children.find(c => c.name === name);
+      if (!existing) return;
+      r.mesh.remove(existing);
+      existing.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    });
+  });
+}
+// Places (or clears) each wrist's marker for the currently-selected group —
+// only the wrist(s) whose stored attachment's group AND face match what's
+// currently picked actually get a marker; everything else stays hidden.
+function applyFacesWristDotsToGroup3D(records) {
+  removeFacesWristDotOverlaysFromRecords3D(records);
+  if (!records.length) return;
+  const stacks = buildFacesDotStacks3D(records.map(r => r.mesh));
+  ['left', 'right'].forEach(side => {
+    const att = facesWristAttachment3D[side];
+    if (!att || att.group !== facesSelectedMeshGroup3D || att.face !== facesSelectedFace3D) return;
+    stacks.forEach(meshes => addFacesWristDotOverlay3D(meshes, side, att));
+  });
+}
 
 function removeFacesOverlay3D(mesh, name) {
   const existing = mesh.children.find(c => c.name === name);
@@ -482,6 +687,7 @@ function clearFacesHighlight3D() {
     removeFacesOverlay3D(r.mesh, FACES_FACE_TINT_NAME);
     removeFacesDotOverlay3D(r.mesh);
   });
+  removeFacesWristDotOverlaysFromRecords3D(meshRecords3D);
 }
 function applyFacesHighlight3D() {
   clearFacesHighlight3D();
@@ -494,6 +700,7 @@ function applyFacesHighlight3D() {
     addFacesFaceOverlay3D(r.mesh, facesSelectedFace3D, outline);
   });
   applyFacesDotToGroup3D(records);
+  applyFacesWristDotsToGroup3D(records); // wrist markers only ever render for whichever group/face this is
 }
 
 // Resets the dot back to its default Off/50/50 state and shows or hides the
@@ -503,6 +710,7 @@ function resetFacesDotState3D() {
   facesDotEnabled3D = false;
   facesDotH3D = 50;
   facesDotV3D = 50;
+  facesDotLocked3D = false;
   const section = document.getElementById('facesDotSection');
   if (section) section.style.display = facesSelectedFace3D ? '' : 'none';
   const offBtn = document.getElementById('facesDotOffBtn'), onBtn = document.getElementById('facesDotOnBtn');
@@ -554,14 +762,18 @@ function onFacesDotAxisInput3D(axis, value) {
 // Keeps every Horizontal/Vertical control in sync with the live state:
 // the popup's number inputs, and the floating card's sliders + value
 // readouts next to the model. Skips whichever single control currently has
-// focus so it doesn't fight the user mid-type/mid-drag.
+// focus so it doesn't fight the user mid-type/mid-drag. Also enforces
+// facesDotLocked3D (see its declaration above) by disabling all four
+// controls once this exact dot has been Applied to a wrist — re-enabled
+// automatically the moment Remove clears the last wrist depending on it.
 function syncFacesDotInputs3D() {
-  const setNum = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
+  const setNum = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; el && (el.disabled = facesDotLocked3D); };
   setNum('facesDotHNum', facesDotH3D);
   setNum('facesDotVNum', facesDotV3D);
   const setSlider = (id, valId, v) => {
     const el = document.getElementById(id);
     if (el && document.activeElement !== el) el.value = v;
+    if (el) el.disabled = facesDotLocked3D;
     const val = document.getElementById(valId);
     if (val) val.textContent = Math.round(v);
   };
@@ -690,6 +902,7 @@ function resetFacesSelection3D() {
 function openFacesPopup3D() {
   const el = document.getElementById('jeFacesPopup');
   if (el) el.classList.add('open');
+  refreshFacesWristReadouts3D();
 }
 function closeFacesPopup3D() {
   const el = document.getElementById('jeFacesPopup');

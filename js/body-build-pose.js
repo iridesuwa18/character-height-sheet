@@ -170,10 +170,17 @@ function buildBody3D() {
     const upperH = elbowOffsetCm;
     const lowerH = armBox.hCm - upperH;
 
+    // meshRecords3D's own `group` tag is side-specific (leftArm/rightArm)
+    // even though the mesh's COLOR still comes from the plain 'arms' key
+    // in groupColor3D (passed separately to makeBoxMesh below) — this is
+    // what lets the Faces panel's Mesh dropdown pick one arm at a time
+    // instead of highlighting/dotting both arms together as a single
+    // group (see the Faces panel's own group-per-stack comments).
+    const armGroupTag = side + 'Arm';
     const upper = makeBoxMesh({ wCm: armBox.wCm, hCm: upperH, group: 'arms' }, armDepthCm);
     upper.position.set(armLocalX, -upperH/2, 0);
     group.add(upper);
-    meshRecords3D.push({ mesh: upper, group: 'arms', wCm: armBox.wCm, hCm: upperH });
+    meshRecords3D.push({ mesh: upper, group: armGroupTag, wCm: armBox.wCm, hCm: upperH });
 
     const shoulderJoint = makeJointSphere(armDepthCm);
     shoulderJoint.position.set(armLocalX, 0, 0);
@@ -190,7 +197,7 @@ function buildBody3D() {
     const lower = makeBoxMesh({ wCm: armBox.wCm, hCm: lowerH, group: 'arms' }, armDepthCm);
     lower.position.set(0, -lowerH/2, 0);
     elbowGroup.add(lower);
-    meshRecords3D.push({ mesh: lower, group: 'arms', wCm: armBox.wCm, hCm: lowerH });
+    meshRecords3D.push({ mesh: lower, group: armGroupTag, wCm: armBox.wCm, hCm: lowerH });
     // Kept so applyPose3D can recolor it red/blue for flipped/unflipped
     // (palm/dorsum) every time the pose or a hand/wrist override changes.
     rig3D[side + 'ForearmMesh'] = lower;
@@ -215,6 +222,7 @@ function buildBody3D() {
     elbowGroup.add(wristGroup);
     rig3D[side + 'Wrist'] = wristGroup;
 
+    const handGroupTag = side + 'Hand';
     if (handBox) {
       const handDepthCm = computeBodyDepth3D(handBox).depthCm;
       const wristJointCm = handBox.wCm * 0.6;
@@ -241,7 +249,7 @@ function buildBody3D() {
       const hand = makeBoxMesh({ wCm: handBox.wCm, hCm: handBox.hCm, group: 'hands' }, handDepthCm);
       hand.position.set(0, 0, 0);
       handTurnGroup.add(hand);
-      meshRecords3D.push({ mesh: hand, group: 'hands', wCm: handBox.wCm, hCm: handBox.hCm });
+      meshRecords3D.push({ mesh: hand, group: handGroupTag, wCm: handBox.wCm, hCm: handBox.hCm });
 
       // Thumb: a small block on the hand's edge, near the wrist end, so the
       // hand's facing (which way is palm vs. back, which edge is which) is
@@ -265,7 +273,7 @@ function buildBody3D() {
       thumb.position.set(0, -thumbH/2, 0);
       thumbPivot.add(thumb);
       handTurnGroup.add(thumbPivot);
-      meshRecords3D.push({ mesh: thumb, group: 'hands', wCm: thumbW, hCm: thumbH });
+      meshRecords3D.push({ mesh: thumb, group: handGroupTag, wCm: thumbW, hCm: thumbH });
       rig3D[side + 'ThumbPivot'] = thumbPivot;
       rig3D[side + 'ThumbGeom'] = { wCm: handBox.wCm, hCm: handBox.hCm };
     }
@@ -291,6 +299,12 @@ function buildBody3D() {
     const halfH = legBox.hCm / 2; // thigh height == shin height
     const hipY = legBox.bottomCm + legBox.hCm;
     const side = legBox.xCm < 0 ? 'left' : 'right';
+    // Side-specific tags for meshRecords3D (leftLeg/rightLeg, leftFoot/
+    // rightFoot below) so the Faces panel's Mesh dropdown can target one
+    // leg/foot at a time — color still comes from the plain 'legs'/'feet'
+    // keys in groupColor3D, passed separately to makeBoxMesh.
+    const legGroupTag = side + 'Leg';
+    const footGroupTag = side + 'Foot';
 
     // Hip pivot: thigh + knee + shin + ankle + foot all hang from here, at
     // the leg's own (narrower) centerline, so the whole leg swings as a unit.
@@ -302,7 +316,7 @@ function buildBody3D() {
     const thigh = makeBoxMesh({ wCm: legBox.wCm, hCm: halfH, group: 'legs' }, legDepthCm);
     thigh.position.set(0, -halfH/2, 0);
     hipGroup.add(thigh);
-    meshRecords3D.push({ mesh: thigh, group: 'legs', wCm: legBox.wCm, hCm: halfH });
+    meshRecords3D.push({ mesh: thigh, group: legGroupTag, wCm: legBox.wCm, hCm: halfH });
 
     // Hip joint sphere: fixed to the pelvis (NOT the hip pivot), sitting on
     // the waist/hip box's own side edge, so it stays put in its socket while
@@ -324,7 +338,7 @@ function buildBody3D() {
     const shin = makeBoxMesh({ wCm: legBox.wCm, hCm: halfH, group: 'legs' }, legDepthCm);
     shin.position.set(0, -halfH/2, 0);
     kneeGroup.add(shin);
-    meshRecords3D.push({ mesh: shin, group: 'legs', wCm: legBox.wCm, hCm: halfH });
+    meshRecords3D.push({ mesh: shin, group: legGroupTag, wCm: legBox.wCm, hCm: halfH });
 
     const knee = makeJointSphere(legJointCm);
     knee.position.set(0, 0, 0);
@@ -350,7 +364,7 @@ function buildBody3D() {
       // default, pushed forward the same way it always was.
       foot.position.set(0, -footBox.hCm/2, footZOffset);
       ankleGroup.add(foot);
-      meshRecords3D.push({ mesh: foot, group: 'feet', wCm: footBox.wCm, hCm: footBox.hCm });
+      meshRecords3D.push({ mesh: foot, group: footGroupTag, wCm: footBox.wCm, hCm: footBox.hCm });
     }
 
     noteY(legBox);
@@ -371,6 +385,11 @@ function buildBody3D() {
   applyPose3D(currentPose3D, { reframe: false });
   // A rebuild wipes manual joint edits (above) — put the saved ones back.
   applySavedJointEdits3D();
+  // Wrist ATTACHMENTS (not the Faces selection reset above) are persistent
+  // data, unaffected by a rebuild — but the meshes their XYZ readout is
+  // resolved against are brand new, so refresh the "Attached Wrists"
+  // summary against the rebuilt rig.
+  if (typeof refreshFacesWristReadouts3D === 'function') refreshFacesWristReadouts3D();
 }
 
 // Sets every joint pivot's rotation from a POSES3D entry, tilts the whole
