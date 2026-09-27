@@ -164,11 +164,10 @@ function mirrorFacesWristAttachment3D() {
 // XYZ, for the "Attached Wrists" readout above the Mesh dropdown — this can
 // be asked about a group that ISN'T the currently-selected one, so (unlike
 // the live dot) it re-derives its own mesh records/outline instead of
-// reusing whatever's currently highlighted. A group can resolve into more
-// than one independent stack (e.g. an arm's upper-arm-vs-forearm halves,
-// split at the elbow hinge — see buildFacesDotStacks3D) — an attachment
-// always targets a single-stack group in practice (torso/waist/head/neck/
-// one leg/one foot/one hand), so the first stack found is used.
+// reusing whatever's currently highlighted. Every exposed group now
+// resolves into exactly one stack (see buildFacesDotStacks3D's joint-bridge
+// merge — a hand's thumb is the one exception, its own separate appendage,
+// but an attachment is never placed on it), so the first stack found is used.
 function resolveWristAttachmentPoint3D(att) {
   if (!att || !meshRecords3D.length) return null;
   const records = meshRecords3D.filter(r => r.group === att.group);
@@ -178,8 +177,8 @@ function resolveWristAttachmentPoint3D(att) {
     const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
     const combined = combineFacesOutlineStack3D(pieces);
     const pt = facesDotLocalPosition3D(att.face, combined, att.h, att.v);
-    if (!pt || !pieces[0].mesh.parent) continue;
-    const world = pieces[0].mesh.parent.localToWorld(pt.clone());
+    if (!pt || !combined.refFrame) continue;
+    const world = combined.refFrame.localToWorld(pt.clone());
     if (rig3D.spine) { rig3D.spine.updateMatrixWorld(true); return rig3D.spine.worldToLocal(world.clone()); }
     return world;
   }
@@ -213,11 +212,11 @@ function addFacesWristDotOverlay3D(meshes, side, att) {
   const pt = facesDotLocalPosition3D(att.face, combined, att.h, att.v);
   if (!pt) return;
   let owner = pieces[0];
-  for (const p of pieces) {
-    const lo = p.mesh.position.y + p.outline.minY, hi = p.mesh.position.y + p.outline.maxY;
-    if (pt.y >= lo - 1e-4 && pt.y <= hi + 1e-4) { owner = p; break; }
+  for (let i = 0; i < pieces.length; i++) {
+    const seg = combined.segments[i];
+    if (pt.y >= seg.minY - 1e-4 && pt.y <= seg.maxY + 1e-4) { owner = pieces[i]; break; }
   }
-  const local = new THREE.Vector3(pt.x - owner.mesh.position.x, pt.y - owner.mesh.position.y, pt.z - owner.mesh.position.z);
+  const local = frameLocalToMeshLocal3D(pt, combined.refFrame, owner.mesh);
   const name = FACES_WRIST_DOT_PREFIX + side;
   const existing = owner.mesh.children.find(c => c.name === name);
   if (existing) { owner.mesh.remove(existing); existing.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
@@ -583,79 +582,150 @@ function addFacesDotOverlayAtPosition3D(mesh, localPos, outline) {
 }
 
 // Clusters the group's mesh pieces into "stacks": a stack is one or more
-// pieces that share the same parent AND the same (x, z) position — which is
-// exactly how a body part gets physically split into vertically-stacked
-// halves (e.g. the male torso's pinched upper/lower trapezoids, both
-// children of the same spine group at the same x/z, only offset in y).
-// Two pieces connected by an actual rotating joint instead (an upper arm
-// and its forearm, say) do NOT share a parent, so they correctly land in
-// separate stacks and each keeps its own dot — only a true flat split
-// collapses into one.
+// pieces that together read as ONE continuous limb surface — either a flat
+// split (pieces sharing the same parent AND the same (x, z) position, e.g.
+// the male torso's pinched upper/lower trapezoids) or pieces bridged by a
+// real rotating joint (a thigh + its shin, an upper arm + its forearm) —
+// merged in a second pass below so the whole limb gets ONE dot the same
+// way the torso already does, including across a bent knee/elbow. A joint
+// bridge is recognised structurally: the lower piece's own pivot group
+// sits DIRECTLY INSIDE the upper piece's pivot group (kneeGroup is a child
+// of hipGroup, which is exactly the thigh's own parent) — as opposed to an
+// unrelated appendage stuck on the SIDE of the same pivot (a thumb's pivot
+// is a SIBLING of the hand's pivot, both hanging off the wrist group, not
+// nested one level inside it), which correctly stays its own separate stack.
 function buildFacesDotStacks3D(meshes) {
-  const stacks = [];
+  const flat = [];
   meshes.forEach(mesh => {
-    const s = stacks.find(s => s.parent === mesh.parent
+    const s = flat.find(s => s.parent === mesh.parent
       && Math.abs(s.x - mesh.position.x) < 1e-4
       && Math.abs(s.z - mesh.position.z) < 1e-4);
     if (s) s.meshes.push(mesh);
-    else stacks.push({ parent: mesh.parent, x: mesh.position.x, z: mesh.position.z, meshes: [mesh] });
+    else flat.push({ parent: mesh.parent, x: mesh.position.x, z: mesh.position.z, meshes: [mesh] });
   });
-  stacks.forEach(s => s.meshes.sort((a, b) => a.position.y - b.position.y));
-  return stacks.map(s => s.meshes);
+  flat.forEach(s => s.meshes.sort((a, b) => a.position.y - b.position.y));
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < flat.length && !merged; i++) {
+      for (let j = 0; j < flat.length && !merged; j++) {
+        if (i === j) continue;
+        const upperMesh = flat[i].meshes[flat[i].meshes.length - 1];
+        const lowerMesh = flat[j].meshes[0];
+        if (lowerMesh.parent && lowerMesh.parent.parent === upperMesh.parent) {
+          // Bottom-to-top order: the lower (deeper-nested) cluster's own
+          // pieces first, then the upper (ancestor) cluster's.
+          flat[j].meshes = flat[j].meshes.concat(flat[i].meshes);
+          flat.splice(i, 1);
+          merged = true;
+        }
+      }
+    }
+  }
+  return flat.map(s => s.meshes);
 }
 
-// Combines a bottom-to-top ordered stack of same-parent, same-(x,z) piece
-// outlines into one outline spanning the whole stack, expressed in their
-// shared parent's local frame. X/Z corners come straight from the
-// bottommost/topmost piece (X/Z always line up across a stack — see
-// buildFacesDotStacks3D — only Y differs between pieces), so only Y needs
-// each piece's own position folded in.
-// Also carries `segments`: each individual piece's own absolute Y range
-// plus its OWN bottom/top corners (not just the stack's outer two), in the
-// same shared-parent frame. facesDotLocalPosition3D walks these instead of
-// treating the whole stack as one straight-sided shape, so a stack that
-// actually bends partway (e.g. the hourglass waistline's upper/lower
-// trapezoids narrowing to a pinch then widening back out) gets a dot path
-// that bends at the real seam instead of cutting straight through it.
-function combineFacesOutlineStack3D(pieces) {
-  const segments = pieces.map(p => ({
-    minY: p.mesh.position.y + p.outline.minY,
-    maxY: p.mesh.position.y + p.outline.maxY,
-    bottom: p.outline.bottom,
-    top: p.outline.top,
-  }));
-  if (pieces.length === 1) return { ...pieces[0].outline, segments }; // lone piece IS the whole stack
-  const bottom = pieces[0], top = pieces[pieces.length - 1];
+// Reads one piece's real outline into `refGroup`'s own local frame. When the
+// piece's own parent already IS refGroup this is the plain translation the
+// flat-split case always needed (the torso's own upper/lower halves, say —
+// only Y differs between pieces, see the header comment above). When the
+// piece sits one real rotating joint deeper (a shin inside the knee pivot,
+// nested inside the hip pivot that owns the thigh) there's an actual
+// rotation to account for, not just a translation — so this instead reads
+// the piece's 8 real corners through the joint's CURRENT rotation
+// (mesh.localToWorld -> refGroup.worldToLocal) and re-derives a fresh
+// axis-aligned min/max per axis from them. That's exact for these parts
+// (all plain, untapered boxes) whatever angle the joint is currently bent
+// to — a straight leg reads exactly like one continuous column (same as
+// the torso), and a bent knee still keeps the dot right on the real surface
+// rather than assuming it's still perfectly straight.
+function pieceOutlineInFrame3D(piece, refGroup) {
+  const o = piece.outline;
+  if (piece.mesh.parent === refGroup) {
+    return {
+      minY: piece.mesh.position.y + o.minY, maxY: piece.mesh.position.y + o.maxY,
+      minZ: piece.mesh.position.z + o.minZ, maxZ: piece.mesh.position.z + o.maxZ,
+      bottom: { minX: piece.mesh.position.x + o.bottom.minX, maxX: piece.mesh.position.x + o.bottom.maxX },
+      top: { minX: piece.mesh.position.x + o.top.minX, maxX: piece.mesh.position.x + o.top.maxX },
+    };
+  }
+  const corners = [];
+  [[o.minY, o.bottom], [o.maxY, o.top]].forEach(([y, level]) => {
+    [level.minX, level.maxX].forEach(x => {
+      [o.minZ, o.maxZ].forEach(z => {
+        corners.push(refGroup.worldToLocal(piece.mesh.localToWorld(new THREE.Vector3(x, y, z))));
+      });
+    });
+  });
+  const xs = corners.map(c => c.x), ys = corners.map(c => c.y), zs = corners.map(c => c.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
   return {
-    minY: bottom.mesh.position.y + bottom.outline.minY,
-    maxY: top.mesh.position.y + top.outline.maxY,
-    minZ: Math.min(...pieces.map(p => p.outline.minZ)),
-    maxZ: Math.max(...pieces.map(p => p.outline.maxZ)),
-    bottom: bottom.outline.bottom,
-    top: top.outline.top,
-    segments,
+    minY: Math.min(...ys), maxY: Math.max(...ys),
+    minZ: Math.min(...zs), maxZ: Math.max(...zs),
+    bottom: { minX, maxX }, top: { minX, maxX },
   };
+}
+
+// Combines a bottom-to-top ordered stack (see buildFacesDotStacks3D — one or
+// more real pieces that together read as one continuous limb) into one
+// outline spanning the whole stack, expressed in the TOPMOST piece's own
+// parent frame (`refFrame` on the returned object — the frame every
+// consumer below converts a resolved point back out of). A stack of exactly
+// one piece just IS that piece's own outline in its own parent's frame.
+// Also carries `segments`: each individual piece's own Y range plus its OWN
+// bottom/top corners (not just the stack's outer two), all in that same
+// refFrame. facesDotLocalPosition3D walks these instead of treating the
+// whole stack as one straight-sided shape, so a stack that bends partway —
+// the hourglass waistline's own pinch, or a genuinely bent knee/elbow —
+// gets a dot path that bends at the real seam instead of cutting straight
+// through it.
+function combineFacesOutlineStack3D(pieces) {
+  if (typeof bodyGroup3D !== 'undefined' && bodyGroup3D) bodyGroup3D.updateMatrixWorld(true);
+  const refFrame = pieces[pieces.length - 1].mesh.parent;
+  const segments = pieces.map(p => ({ ...pieceOutlineInFrame3D(p, refFrame) }));
+  return {
+    minY: segments[0].minY,
+    maxY: segments[segments.length - 1].maxY,
+    minZ: Math.min(...segments.map(s => s.minZ)),
+    maxZ: Math.max(...segments.map(s => s.maxZ)),
+    bottom: segments[0].bottom,
+    top: segments[segments.length - 1].top,
+    segments,
+    refFrame,
+  };
+}
+
+// Converts a point expressed in a combined stack's own refFrame (see
+// combineFacesOutlineStack3D) into `ownerMesh`'s own local space, so it can
+// be parented directly onto that real mesh. A plain subtraction when
+// ownerMesh's parent already IS refFrame (the common, flat-split case);
+// otherwise a real world-space round trip through whatever joint rotation
+// sits between them.
+function frameLocalToMeshLocal3D(pt, refFrame, ownerMesh) {
+  if (ownerMesh.parent === refFrame) {
+    return new THREE.Vector3(pt.x - ownerMesh.position.x, pt.y - ownerMesh.position.y, pt.z - ownerMesh.position.z);
+  }
+  return ownerMesh.worldToLocal(refFrame.localToWorld(pt.clone()));
 }
 
 // Places exactly one dot for a stack: computes the dot's point across the
 // COMBINED surface (so Vertical 0-100% sweeps smoothly from the top of the
 // topmost piece through to the bottom of the bottommost piece, right across
-// the seam), then figures out which single physical piece that point
-// actually falls on and parents the dot there, converting the point back
-// into that piece's own local space (pieces in a stack only differ by a
-// plain Y translation — see buildFacesDotStacks3D — so no rotation to
-// account for).
+// every seam — including a real joint now, not just a flat split), then
+// figures out which single physical piece that point actually falls on and
+// parents the dot there, converting the point back into that piece's own
+// local space.
 function addFacesDotForStack3D(meshes, faceName) {
   const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
   const combined = combineFacesOutlineStack3D(pieces);
   const pt = facesDotLocalPosition3D(faceName, combined, facesDotH3D, facesDotV3D);
   if (!pt) return;
   let owner = pieces[0];
-  for (const p of pieces) {
-    const lo = p.mesh.position.y + p.outline.minY, hi = p.mesh.position.y + p.outline.maxY;
-    if (pt.y >= lo - 1e-4 && pt.y <= hi + 1e-4) { owner = p; break; }
+  for (let i = 0; i < pieces.length; i++) {
+    const seg = combined.segments[i];
+    if (pt.y >= seg.minY - 1e-4 && pt.y <= seg.maxY + 1e-4) { owner = pieces[i]; break; }
   }
-  const local = new THREE.Vector3(pt.x - owner.mesh.position.x, pt.y - owner.mesh.position.y, pt.z - owner.mesh.position.z);
+  const local = frameLocalToMeshLocal3D(pt, combined.refFrame, owner.mesh);
   addFacesDotOverlayAtPosition3D(owner.mesh, local, owner.outline);
 }
 
