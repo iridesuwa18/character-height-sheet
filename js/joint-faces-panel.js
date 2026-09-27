@@ -246,21 +246,49 @@ function addFacesFaceOverlay3D(mesh, faceName, outline) {
   mesh.add(overlay);
 }
 
+// Finds which segment of a bottom→top ordered stack a given absolute Y
+// falls into, so the dot's vertical travel can bend at each real seam
+// instead of drawing a straight line from the stack's outer bottom to its
+// outer top. Falls back to the last segment for a Y past the very top
+// (floating point overshoot at v=100%).
+function pickFacesDotSegment3D(segments, y) {
+  for (const seg of segments) {
+    if (y <= seg.maxY + 1e-4) return seg;
+  }
+  return segments[segments.length - 1];
+}
+// How far (0-1) a Y sits between one segment's OWN minY/maxY — i.e. the
+// local bottom/top-of-this-one-piece fraction, not the whole stack's.
+function facesDotSegmentFraction3D(seg, y) {
+  const span = seg.maxY - seg.minY;
+  return span <= 1e-6 ? 0 : Math.max(0, Math.min(1, (y - seg.minY) / span));
+}
+
 // Turns the dot's Horizontal/Vertical percentages into a real mesh-local
 // point on the currently highlighted face — reusing exactly the same real
-// corners (o.bottom/o.top/min/max) that addFacesFaceOverlay3D uses to draw
-// that face's tint, just bilinearly interpolated instead of drawn as a
-// full plane. That's what makes the dot follow a slanted/tapered face (the
-// waistline pinch, an angled torso front, etc.) correctly: it's walking the
-// same real quad the tint overlay traces, not a flat assumption of one.
+// corners (o.segments[].bottom/top, o.min/max) that addFacesFaceOverlay3D
+// uses to draw that face's tint, just bilinearly interpolated instead of
+// drawn as a full plane. That's what makes the dot follow a slanted/
+// tapered face (the waistline pinch, an angled torso front, etc.)
+// correctly: it's walking the same real quad the tint overlay traces, not
+// a flat assumption of one — and for a multi-piece stack (e.g. the
+// hourglass waistline's upper/lower trapezoids meeting at a pinch seam)
+// Vertical still sweeps the stack's overall bottom(0%)->top(100%) in one
+// smooth motion, but at each Y it slants toward whichever ONE piece's own
+// real bottom/top corners that Y currently falls between (via o.segments),
+// so the dot's path bends right at the seam along with the mesh — down
+// toward the seam through the upper piece, then down toward the outer
+// bottom edge through the lower piece — instead of cutting a single
+// straight line through both.
 //  - front/back: h runs left→right, v runs top(0%)→bottom(100%), across the
-//    mesh's real (possibly trapezoid) cap shape.
+//    mesh's real (possibly trapezoid, possibly multi-segment) cap shape.
 //  - top/bottom: h runs left→right across that level's real width, v runs
 //    back→front across the mesh's depth (this one has no true top/bottom of
 //    its own, so it keeps the plain 0%→100% direction, unflipped).
 //  - left/right: h runs across the depth (Z), v runs top(0%)→bottom(100%)
-//    along the side's own real slant (interpolating X together with Y so a
-//    tapered side's dot rides the slant instead of cutting through it).
+//    along the side's own real slant per segment (interpolating X together
+//    with Y so a tapered/bent side's dot rides the slant instead of cutting
+//    through it).
 function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
   const o = outline;
   const h = Math.max(0, Math.min(100, hPct)) / 100;
@@ -276,10 +304,12 @@ function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
   const eps = 0.004;
 
   if (faceName === 'front' || faceName === 'back') {
-    const xBottom = lerp(o.bottom.minX, o.bottom.maxX, h);
-    const xTop = lerp(o.top.minX, o.top.maxX, h);
-    const x = lerp(xBottom, xTop, v);
     const y = lerp(o.minY, o.maxY, v);
+    const seg = pickFacesDotSegment3D(o.segments, y);
+    const t = facesDotSegmentFraction3D(seg, y);
+    const xBottom = lerp(seg.bottom.minX, seg.bottom.maxX, h);
+    const xTop = lerp(seg.top.minX, seg.top.maxX, h);
+    const x = lerp(xBottom, xTop, t);
     const z = faceName === 'front' ? o.maxZ + eps : o.minZ - eps;
     return new THREE.Vector3(x, y, z);
   }
@@ -297,9 +327,16 @@ function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
   }
   if (faceName === 'left' || faceName === 'right') {
     const isLeft = faceName === 'left';
-    const bx = isLeft ? o.bottom.minX : o.bottom.maxX;
-    const tx = isLeft ? o.top.minX : o.top.maxX;
-    const dx = tx - bx, dy = o.maxY - o.minY;
+    const y = lerp(o.minY, o.maxY, v);
+    const seg = pickFacesDotSegment3D(o.segments, y);
+    const t = facesDotSegmentFraction3D(seg, y);
+    const bx = isLeft ? seg.bottom.minX : seg.bottom.maxX;
+    const tx = isLeft ? seg.top.minX : seg.top.maxX;
+    // Normal is derived from this one segment's own slant direction, not
+    // the whole stack's outer bottom-to-top line, so a bent stack (narrows
+    // then widens again) gets each half's own outward tilt right instead
+    // of one averaged tilt for the whole side.
+    const dx = tx - bx, dy = seg.maxY - seg.minY;
     const heightDir = new THREE.Vector3(dx, dy, 0).normalize();
     const widthDir = new THREE.Vector3(0, 0, 1);
     // Same left/right cross-product order swap as addFacesFaceOverlay3D, so
@@ -307,8 +344,7 @@ function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
     const normal = isLeft
       ? new THREE.Vector3().crossVectors(widthDir, heightDir).normalize()
       : new THREE.Vector3().crossVectors(heightDir, widthDir).normalize();
-    const x = lerp(bx, tx, v);
-    const y = lerp(o.minY, o.maxY, v);
+    const x = lerp(bx, tx, t);
     const z = lerp(o.minZ, o.maxZ, h);
     return new THREE.Vector3(x + normal.x * eps, y + normal.y * eps, z + normal.z * eps);
   }
@@ -369,8 +405,21 @@ function buildFacesDotStacks3D(meshes) {
 // bottommost/topmost piece (X/Z always line up across a stack — see
 // buildFacesDotStacks3D — only Y differs between pieces), so only Y needs
 // each piece's own position folded in.
+// Also carries `segments`: each individual piece's own absolute Y range
+// plus its OWN bottom/top corners (not just the stack's outer two), in the
+// same shared-parent frame. facesDotLocalPosition3D walks these instead of
+// treating the whole stack as one straight-sided shape, so a stack that
+// actually bends partway (e.g. the hourglass waistline's upper/lower
+// trapezoids narrowing to a pinch then widening back out) gets a dot path
+// that bends at the real seam instead of cutting straight through it.
 function combineFacesOutlineStack3D(pieces) {
-  if (pieces.length === 1) return pieces[0].outline; // lone piece IS the whole stack
+  const segments = pieces.map(p => ({
+    minY: p.mesh.position.y + p.outline.minY,
+    maxY: p.mesh.position.y + p.outline.maxY,
+    bottom: p.outline.bottom,
+    top: p.outline.top,
+  }));
+  if (pieces.length === 1) return { ...pieces[0].outline, segments }; // lone piece IS the whole stack
   const bottom = pieces[0], top = pieces[pieces.length - 1];
   return {
     minY: bottom.mesh.position.y + bottom.outline.minY,
@@ -379,6 +428,7 @@ function combineFacesOutlineStack3D(pieces) {
     maxZ: Math.max(...pieces.map(p => p.outline.maxZ)),
     bottom: bottom.outline.bottom,
     top: top.outline.top,
+    segments,
   };
 }
 
