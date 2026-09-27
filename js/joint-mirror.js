@@ -82,5 +82,28 @@ function mirrorArmAndAttachmentToOtherSide3D(side) {
     refreshFacesWristReadouts3D();
     applyFacesHighlight3D();
   }
+  // Mirror the wrist PIN too (position + Turn/Bend/Swing rotation) — if
+  // `side` is currently pinned, `other` becomes pinned to the reflected
+  // spot/rotation as well. Only acts when the source side actually has a
+  // pin, same as the attachment mirror just above: an unpinned source
+  // leaves whatever the other side already had alone rather than clearing it.
+  const pin = wristPinLocked3D[side];
+  if (pin) {
+    wristPinLocked3D[other] = mirrorWristPinSpec3D(pin);
+    syncWristPinReadout3D();
+  }
   return { other };
+}
+// X is the left/right axis in the spine-local frame (see buildArmSide in
+// body-build-pose.js — a side's arm boxes sit at +/-xCm off the spine), so
+// mirroring a pinned position across the body's centerline just negates X
+// and keeps Y/Z. Turn/Bend/Swing are copied unchanged, same reasoning as
+// mirrorArmToOtherSide3D above: each axis's own sign convention already
+// flips per side inside applyPose3D, so an equal number lands mirrored.
+function mirrorWristPinSpec3D(pin) {
+  if (!pin) return null;
+  return {
+    x: round2(-pin.x), y: pin.y, z: pin.z,
+    turn: pin.turn, bend: pin.bend, swing: pin.swing,
+  };
 }

@@ -151,18 +151,19 @@ function setFacesWristSelect3D(side) {
 // the wrist joint itself still moves completely freely regardless of what's
 // stored here.
 // While a side has no pin, its readout just live-tracks that wrist's own
-// current joint position every frame (see updateWristPinLiveTracking3D,
-// called from animate3D in body-scene.js). Pressing PIN APPLY freezes the
-// readout at wherever the wrist is right now — it stops updating even as
-// the wrist keeps moving — until either Clear (back to live tracking) or
-// another PIN APPLY (re-freezes at the new current position). Kept purely
-// in memory (this plain variable) rather than any Web Storage API — it
-// survives moving around the app for as long as this page stays loaded,
-// but a refresh/reload wipes it back to unpinned on both sides, same as
-// every other bit of in-memory editor state (manualJointEdits3D, the
-// current pose selection, etc). Not yet wired into the real ⬆ Save/GitHub
-// sync flow either way.
-let wristPinLocked3D = { left: null, right: null }; // each: {x,y,z} | null
+// current joint position AND rotation every frame (see
+// updateWristPinLiveTracking3D, called from animate3D in body-scene.js).
+// Pressing PIN APPLY freezes the readout at wherever the wrist is right
+// now — position AND rotation together — and it stops updating even as
+// the wrist keeps moving, until either PIN CLEAR (back to live tracking)
+// or another PIN APPLY (re-freezes at the new current position/rotation).
+// Kept purely in memory (this plain variable) rather than any Web Storage
+// API — it survives moving around the app for as long as this page stays
+// loaded, but a refresh/reload wipes it back to unpinned on both sides,
+// same as every other bit of in-memory editor state (manualJointEdits3D,
+// the current pose selection, etc). Not yet wired into the real ⬆ Save/
+// GitHub sync flow either way.
+let wristPinLocked3D = { left: null, right: null }; // each: {x,y,z,turn,bend,swing} | null
 
 // The wrist joint's current position, in the same spine-local cm frame as
 // jointWorldPosSpineLocal3D (hand-pins-github.js) already reads every other
@@ -173,27 +174,46 @@ function currentWristPinPosition3D(side) {
   if (!grp) return null;
   return jointWorldPosSpineLocal3D(grp); // {x,y,z}, rounded to 2dp, or null
 }
+// The wrist's current Turn/Bend/Swing, read off the same resolved-pose
+// record the Joint panel's own sliders and mirrorArmToOtherSide3D
+// (joint-mirror.js) already read (lastPoseResolved3D, set in
+// body-build-pose.js) — this is both what the live readout below shows
+// and what PIN APPLY freezes alongside the XYZ position above.
+function currentWristPinRotation3D(side) {
+  const wr = lastPoseResolved3D && lastPoseResolved3D[side];
+  if (!wr) return null;
+  return { turn: round1(wr.wristTurn), bend: round1(wr.wrist), swing: round1(wr.swing || 0) };
+}
 function applyWristPin3D() {
-  const pos = currentWristPinPosition3D(facesWristSelected3D);
+  const side = facesWristSelected3D;
+  const pos = currentWristPinPosition3D(side);
   if (!pos) return;
-  wristPinLocked3D[facesWristSelected3D] = pos;
+  const rot = currentWristPinRotation3D(side) || { turn: 0, bend: 0, swing: 0 };
+  wristPinLocked3D[side] = { ...pos, ...rot };
   syncWristPinReadout3D();
 }
 function clearWristPin3D() {
   wristPinLocked3D[facesWristSelected3D] = null;
   syncWristPinReadout3D();
 }
-// Refreshes the XYZ readout + Live/Pinned status for whichever wrist is
-// currently selected in the Left/Right toggle just above — a locked pin's
-// frozen numbers, or (while unlocked) that wrist's live current position.
+// Refreshes the XYZ + Turn/Bend/Swing readouts and Live/Pinned status for
+// whichever wrist is currently selected in the Left/Right toggle just
+// above — a locked pin's frozen numbers, or (while unlocked) that wrist's
+// live current position/rotation. Both position and rotation share the
+// same Pinned/Live status, since PIN APPLY/PIN CLEAR freeze or release
+// them together.
 function syncWristPinReadout3D() {
   const side = facesWristSelected3D;
   const locked = wristPinLocked3D[side];
   const pos = locked || currentWristPinPosition3D(side);
+  const rot = locked || currentWristPinRotation3D(side);
   const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = (v == null) ? '—' : v.toFixed(1); };
   setTxt('wristPinX', pos ? pos.x : null);
   setTxt('wristPinY', pos ? pos.y : null);
   setTxt('wristPinZ', pos ? pos.z : null);
+  setTxt('wristPinTu', rot ? rot.turn : null);
+  setTxt('wristPinBe', rot ? rot.bend : null);
+  setTxt('wristPinSw', rot ? rot.swing : null);
   const status = document.getElementById('wristPinStatus');
   if (status) status.textContent = locked ? 'Pinned' : 'Live';
 }
