@@ -213,6 +213,18 @@ const clampWristSwing = (deg) => Math.min(WRIST_SWING_RANGE[1], Math.max(WRIST_S
 // that's drifted out of the arm's reach. Reuses WRIST_BEND_RANGE's own span
 // as the budget rather than inventing a separate number.
 const WRIST_PIN_AIM_MAX_DEG = WRIST_BEND_RANGE[1];
+// Per-tick budget for the SAME corrective pass, used by every ordinary live
+// call (shoulder/waist-length drags, pose switches, Generate, etc. — see
+// enforceWristPinConstraints3D's default argument in joint-faces-panel.js).
+// A tight leash (small R — e.g. a hand pinned close against the hip/thigh)
+// makes even a small dot shift a large fraction of that leash's slack, so
+// letting a single tick jump the full WRIST_PIN_AIM_MAX_DEG (80°) reads as
+// the hand snapping/over-rotating while you drag. Capping ordinary ticks to
+// a much smaller budget lets the correction ease in over several ticks
+// instead — closer to how 15.19.2 felt — while enforceWristPinConstraintsConverge3D
+// (reload/mirror/quick-load) still reaches the exact same end target, just
+// over more, smaller passes instead of fewer, larger ones.
+const WRIST_PIN_LIVE_AIM_MAX_DEG = 10;
 // Overrides hold a preset word ('front'...) or a plain number of degrees.
 // The pose's own built-in facing for one side, ignoring anything saved on top.
 function literalFacing3D(poseName, side) {

@@ -293,7 +293,7 @@ function reachClampPoint3D(origin, target, maxLen) {
 // once the arm is already reach-clamped short.
 // Returns null if this side has no leash-pinned wrist (see applyWristPin3D)
 // or the rig/dot can't currently be resolved.
-function computeWristPinAdjustedChain3D(side) {
+function computeWristPinAdjustedChain3D(side, maxAimDeg) {
   const pin = wristPinsForPose3D(currentPose3D)[side];
   if (!pin || pin.r == null) return null;
   const shoulderGrp = rig3D[side + 'Shoulder'], elbowGrp = rig3D[side + 'Elbow'], wristGrp = rig3D[side + 'Wrist'];
@@ -357,7 +357,7 @@ function computeWristPinAdjustedChain3D(side) {
     const qCurrent = wristGrp.quaternion.clone();
     const d = Math.min(1, Math.max(-1, qCurrent.dot(qAimFull)));
     const angleRad = 2 * Math.acos(Math.abs(d));
-    const maxRad = deg2rad(WRIST_PIN_AIM_MAX_DEG);
+    const maxRad = deg2rad(maxAimDeg != null ? maxAimDeg : WRIST_PIN_LIVE_AIM_MAX_DEG);
     const t = angleRad > 1e-6 ? Math.min(1, maxRad / angleRad) : 1;
     qWristAim = qCurrent.clone().slerp(qAimFull, t);
   }
@@ -370,12 +370,12 @@ function computeWristPinAdjustedChain3D(side) {
 // nothing into manualJointEdits3D — it's purely a live re-derivation, so
 // PIN CLEAR needs nothing to undo (see clearWristPin3D) and a side with no
 // leash (or no pin at all) is completely untouched.
-function enforceWristPinConstraints3D(side) {
+function enforceWristPinConstraints3D(side, maxAimDeg) {
   const pin = wristPinsForPose3D(currentPose3D)[side];
   if (!pin || pin.r == null) return;
   const shoulderGrp = rig3D[side + 'Shoulder'], elbowGrp = rig3D[side + 'Elbow'], wristGrp = rig3D[side + 'Wrist'];
   if (!shoulderGrp || !elbowGrp || !wristGrp) return;
-  const chain = computeWristPinAdjustedChain3D(side);
+  const chain = computeWristPinAdjustedChain3D(side, maxAimDeg);
   if (!chain) return;
   shoulderGrp.quaternion.copy(chain.qShoulder);
   elbowGrp.quaternion.copy(chain.qElbow);
@@ -396,9 +396,13 @@ function enforceWristPinConstraints3D(side) {
 // just been loaded or mirrored in, so it's already converged before the
 // user (or the next render) ever looks at it.
 function enforceWristPinConstraintsConverge3D() {
+  // Explicitly uses the full WRIST_PIN_AIM_MAX_DEG (not the smaller
+  // WRIST_PIN_LIVE_AIM_MAX_DEG ordinary ticks default to — see
+  // enforceWristPinConstraints3D above) so a reload/mirror/quick-load still
+  // fully resolves in one go rather than easing in like a live drag would.
   for (let i = 0; i < 4; i++) {
-    enforceWristPinConstraints3D('left');
-    enforceWristPinConstraints3D('right');
+    enforceWristPinConstraints3D('left', WRIST_PIN_AIM_MAX_DEG);
+    enforceWristPinConstraints3D('right', WRIST_PIN_AIM_MAX_DEG);
   }
 }
 // ---- Snap Back ------------------------------------------------------------
