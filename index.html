@@ -1007,8 +1007,8 @@
              indicator: it never moves the actual wrist joint (see
              joint-faces-panel.js's wrist-attachment comment block). -->
         <div class="je-section-label">Attached Wrists</div>
-        <div class="je-xyz-row" style="grid-template-columns: 46px 1fr;"><span>L Wrist</span><span class="je-readout" id="facesWristAttachL">—</span></div>
-        <div class="je-xyz-row" style="grid-template-columns: 46px 1fr;"><span>R Wrist</span><span class="je-readout" id="facesWristAttachR">—</span></div>
+        <div class="je-xyz-row" style="grid-template-columns: 46px 1fr; cursor:pointer;" onclick="loadFacesWristAttachmentForEdit3D('left')"><span>L Wrist</span><span class="je-readout" id="facesWristAttachL">—</span></div>
+        <div class="je-xyz-row" style="grid-template-columns: 46px 1fr; cursor:pointer;" onclick="loadFacesWristAttachmentForEdit3D('right')"><span>R Wrist</span><span class="je-readout" id="facesWristAttachR">—</span></div>
 
         <div class="je-section-label">Mesh</div>
         <select class="je-select" id="facesMeshSelect" onchange="onFacesMeshChange3D(this.value)">
