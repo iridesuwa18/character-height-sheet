@@ -115,10 +115,15 @@ function applyFacesWristAttachment3D() {
   facesWristAttachment3D[facesWristSelected3D] = {
     group: facesSelectedMeshGroup3D, face: facesSelectedFace3D, h: facesDotH3D, v: facesDotV3D,
   };
-  facesDotLocked3D = true;
-  syncFacesDotInputs3D();
   refreshFacesWristReadouts3D();
-  applyFacesHighlight3D();
+  // Apply is the end of this dot's editing session — drop the Mesh/Face
+  // selection back to none (same as picking the blank option by hand) so
+  // the mesh tint / outline / face tint / editing dot all disappear from
+  // the 3D view immediately, rather than lingering locked-and-uneditable
+  // now that this exact spot has just been committed to a wrist. The
+  // attachment itself (just stored above) isn't touched by this — only the
+  // currently-being-edited-dot state that resetFacesSelection3D clears.
+  resetFacesSelection3D();
 }
 function removeFacesWristAttachment3D() {
   const side = facesWristSelected3D;
