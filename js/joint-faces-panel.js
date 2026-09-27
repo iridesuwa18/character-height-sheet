@@ -50,7 +50,7 @@ let facesSelectedFace3D = null;      // e.g. 'front' | null
 // changes shape. See facesDotLocalPosition3D for how percent -> position.
 let facesDotEnabled3D = false;
 let facesDotH3D = 50; // 0-100, left -> right across the face
-let facesDotV3D = 50; // 0-100, bottom -> top across the face
+let facesDotV3D = 50; // 0-100, top -> bottom across the face
 let facesDotFloatingEl3D = null;
 let facesDotFloatingDragging3D = false;
 
@@ -253,17 +253,22 @@ function addFacesFaceOverlay3D(mesh, faceName, outline) {
 // full plane. That's what makes the dot follow a slanted/tapered face (the
 // waistline pinch, an angled torso front, etc.) correctly: it's walking the
 // same real quad the tint overlay traces, not a flat assumption of one.
-//  - front/back: h runs left→right, v runs bottom→top, across the mesh's
-//    real (possibly trapezoid) cap shape.
+//  - front/back: h runs left→right, v runs top(0%)→bottom(100%), across the
+//    mesh's real (possibly trapezoid) cap shape.
 //  - top/bottom: h runs left→right across that level's real width, v runs
-//    back→front across the mesh's depth.
-//  - left/right: h runs across the depth (Z), v runs bottom→top along the
-//    side's own real slant (interpolating X together with Y so a tapered
-//    side's dot rides the slant instead of cutting through it).
+//    back→front across the mesh's depth (this one has no true top/bottom of
+//    its own, so it keeps the plain 0%→100% direction, unflipped).
+//  - left/right: h runs across the depth (Z), v runs top(0%)→bottom(100%)
+//    along the side's own real slant (interpolating X together with Y so a
+//    tapered side's dot rides the slant instead of cutting through it).
 function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
   const o = outline;
   const h = Math.max(0, Math.min(100, hPct)) / 100;
-  const v = Math.max(0, Math.min(100, vPct)) / 100;
+  // Vertical is authored top(0%) -> bottom(100%), matching how people read
+  // a face on screen, but every height lerp below is naturally bottom(0)->
+  // top(1) (it walks o.minY up to o.maxY / o.bottom up to o.top), so flip
+  // it once here rather than re-deriving each face's math around it.
+  const v = 1 - Math.max(0, Math.min(100, vPct)) / 100;
   const lerp = (a, b, t) => a + (b - a) * t;
   // Same tiny hairline reasoning as the mesh/face tint overlays above — the
   // dot's material also has depthTest off, so this only needs to be just
@@ -279,10 +284,14 @@ function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
     return new THREE.Vector3(x, y, z);
   }
   if (faceName === 'top' || faceName === 'bottom') {
+    // Vertical here runs across the mesh's depth (Z), not its height — a
+    // horizontal plane has no real top/bottom of its own to flip toward —
+    // so this one intentionally keeps the un-flipped percentage.
+    const vDepth = Math.max(0, Math.min(100, vPct)) / 100;
     const atTop = faceName === 'top';
     const level = atTop ? o.top : o.bottom;
     const x = lerp(level.minX, level.maxX, h);
-    const z = lerp(o.minZ, o.maxZ, v);
+    const z = lerp(o.minZ, o.maxZ, vDepth);
     const y = (atTop ? o.maxY : o.minY) + (atTop ? eps : -eps);
     return new THREE.Vector3(x, y, z);
   }
