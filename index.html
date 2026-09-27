@@ -292,6 +292,14 @@
     border-radius: 5px; color: var(--muted); font-family: 'Space Mono', monospace; font-size: 12px;
     font-weight: 700; cursor: pointer; padding: 0; line-height: 1;
   }
+  /* Plain live-updating readout (Dot World XYZ) — same footprint as the
+     numeric inputs beside it, but not editable. */
+  .je-readout {
+    display: block; width: 100%; box-sizing: border-box; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 5px; color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 11px; padding: 7px 6px;
+    min-height: 32px; text-align: right;
+  }
   .je-select {
     width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
     color: var(--text); font-family: 'Space Mono', monospace; font-size: 10px; padding: 7px 6px;
@@ -1013,6 +1021,32 @@
           <option value="front">Front</option>
           <option value="back">Back</option>
         </select>
+
+        <!-- Dot system: only relevant (and only shown) once a Face above is
+             picked. Off/On mirrors the Move/Rotate gizmo-mode buttons below;
+             the H/V number fields let you type exact values, while a
+             floating slider card next to the highlighted face (see
+             updateFacesDotOverlayFrame3D in joint-faces-panel.js) lets you
+             drag while watching the dot move once this popup is closed. -->
+        <div id="facesDotSection" style="display:none;">
+          <div class="je-section-label">Dot</div>
+          <div class="je-mode-row">
+            <button type="button" class="je-mode-btn active" id="facesDotOffBtn" onclick="setFacesDotMode3D(false)">Off</button>
+            <button type="button" class="je-mode-btn" id="facesDotOnBtn" onclick="setFacesDotMode3D(true)">On</button>
+          </div>
+          <div id="facesDotControls" style="display:none;">
+            <div class="je-xyz-row" style="grid-template-columns: 16px 1fr;">
+              <span>H</span><input type="number" id="facesDotHNum" min="0" max="100" step="1" value="50" oninput="onFacesDotAxisInput3D('h', this.value)">
+            </div>
+            <div class="je-xyz-row" style="grid-template-columns: 16px 1fr;">
+              <span>V</span><input type="number" id="facesDotVNum" min="0" max="100" step="1" value="50" oninput="onFacesDotAxisInput3D('v', this.value)">
+            </div>
+            <div class="je-section-label">Dot World XYZ (cm)</div>
+            <div class="je-xyz-row"><span>X</span><span class="je-readout" id="facesDotWorldX">—</span></div>
+            <div class="je-xyz-row"><span>Y</span><span class="je-readout" id="facesDotWorldY">—</span></div>
+            <div class="je-xyz-row"><span>Z</span><span class="je-readout" id="facesDotWorldZ">—</span></div>
+          </div>
+        </div>
       </div>
     </div>
 
