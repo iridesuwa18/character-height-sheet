@@ -300,6 +300,27 @@
     font-family: 'Space Mono', monospace; font-size: 11px; padding: 7px 6px;
     min-height: 32px; text-align: right;
   }
+  .je-pin-status-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+  .je-readout-inline {
+    display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 6px; color: var(--text); font-family: 'Space Mono', monospace; font-size: 10px;
+  }
+  .je-snap-btn {
+    padding: 4px 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--accent-gold); font-family: 'Space Mono', monospace; font-size: 9px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; white-space: nowrap;
+  }
+  .je-info-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; margin-left: 2px; padding: 0; vertical-align: middle;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 50%;
+    color: var(--muted); font-family: 'Space Mono', monospace; font-size: 9px; font-weight: 700;
+    font-style: italic; cursor: pointer; line-height: 1;
+  }
+  .je-info-btn.active { color: var(--accent-gold); border-color: var(--accent-gold); }
+  .je-info-panel {
+    border: 1px dashed var(--border); border-radius: 6px; padding: 6px 8px 2px; margin: 0 0 8px;
+  }
   .je-select {
     width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
     color: var(--text); font-family: 'Space Mono', monospace; font-size: 10px; padding: 7px 6px;
@@ -1086,7 +1107,26 @@
                  kept purely in memory for this page load, not persisted —
                  a refresh clears it, and it's not yet part of the ⬆ Save/
                  GitHub flow. -->
-            <div class="je-section-label">Wrist Pin (cm) — <span class="je-readout" id="wristPinStatus">Live</span></div>
+            <div class="je-section-label je-pin-status-row">
+              <span>Wrist Pin (cm) — <span class="je-readout-inline" id="wristPinStatus">Live</span> <button type="button" class="je-info-btn" id="wristPinInfoBtn" onclick="toggleWristPinInfo3D()" title="Debug: shoulder &amp; elbow XYZ">i</button></span>
+              <button type="button" class="je-snap-btn" onclick="snapWristPin3D()" title="Move this wrist back to its pinned position/rotation">⇤ Snap Back</button>
+            </div>
+            <!-- Debug-only aid for Snap Back's shoulder->elbow->wrist chain
+                 (see snapWristToPin3D in joint-faces-panel.js): the LIVE
+                 current spine-local XYZ of the shoulder and elbow for
+                 whichever wrist is selected above — not part of the pin
+                 itself, just a window into the rig. Hidden until the (i)
+                 button above is tapped. -->
+            <div id="wristPinInfoPanel" class="je-info-panel" style="display:none;">
+              <div class="je-section-label" style="margin-top:0;">Shoulder XYZ (cm)</div>
+              <div class="je-xyz-row"><span>X</span><span class="je-readout" id="wristPinInfoShoulderX">—</span></div>
+              <div class="je-xyz-row"><span>Y</span><span class="je-readout" id="wristPinInfoShoulderY">—</span></div>
+              <div class="je-xyz-row"><span>Z</span><span class="je-readout" id="wristPinInfoShoulderZ">—</span></div>
+              <div class="je-section-label">Elbow XYZ (cm)</div>
+              <div class="je-xyz-row"><span>X</span><span class="je-readout" id="wristPinInfoElbowX">—</span></div>
+              <div class="je-xyz-row"><span>Y</span><span class="je-readout" id="wristPinInfoElbowY">—</span></div>
+              <div class="je-xyz-row"><span>Z</span><span class="je-readout" id="wristPinInfoElbowZ">—</span></div>
+            </div>
             <div class="je-xyz-row"><span>X</span><span class="je-readout" id="wristPinX">—</span></div>
             <div class="je-xyz-row"><span>Y</span><span class="je-readout" id="wristPinY">—</span></div>
             <div class="je-xyz-row"><span>Z</span><span class="je-readout" id="wristPinZ">—</span></div>
