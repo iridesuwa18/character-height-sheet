@@ -564,17 +564,14 @@ function renderPosePanel3D() {
 // the floor, and re-frames the camera to the new silhouette.
 function setPose3D(poseName) {
   if (!sceneInited3D || !meshRecords3D.length) return;
-  // Facing overrides belong to one pose — unsaved ones don't carry to the next.
-  handRotationOverride = { left: null, right: null };
-  wristRotationOverride = { left: null, right: null };
-  wristSwingOverride = { left: null, right: null };
-  // Also clear elbow bend/lift overrides — transient preview nudges that
-  // were never meant to persist onto a different pose. Manual joint-editor
-  // drags (shoulder/elbow/wrist) don't need clearing any more: they're keyed
-  // by pose (see manualJointEdits3D/jointEditsForPose3D above), so the new
-  // pose automatically gets its own bucket instead of inheriting this one's.
-  elbowBendOverride = { left: null, right: null };
-  elbowLiftOverride = { left: null, right: null };
+  // Hand/Wrist Facing overrides (handRotationOverride/wristRotationOverride/
+  // wristSwingOverride/elbow*Override) are pose-independent "sticky" state —
+  // see the header comment in hand-wrist-panel.js — saved/restored across
+  // reloads specifically so they survive picking a pose. They used to be
+  // wiped here on every pose click, which also fired when re-clicking the
+  // ALREADY-active pose, silently discarding whatever had just been loaded
+  // from a save. Use clearHandWristOverrides() (hand-wrist-panel.js) if you
+  // want an explicit "back to this pose's own numbers" reset instead.
   applyPose3D(poseName, { reframe: true });
   document.querySelectorAll('.pose-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.pose === currentPose3D);
