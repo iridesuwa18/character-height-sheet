@@ -1077,6 +1077,24 @@
               <button type="button" class="je-mode-btn active" id="facesWristSelL" onclick="setFacesWristSelect3D('left')">Left</button>
               <button type="button" class="je-mode-btn" id="facesWristSelR" onclick="setFacesWristSelect3D('right')">Right</button>
             </div>
+
+            <!-- Wrist Pin: a literal locked XYZ for whichever wrist is
+                 selected above — same spine-local cm frame as the Dot World
+                 XYZ readout further up. Live-tracks that wrist's current
+                 joint position until PIN APPLY freezes it (see
+                 applyWristPin3D/clearWristPin3D in joint-faces-panel.js);
+                 kept purely in memory for this page load, not persisted —
+                 a refresh clears it, and it's not yet part of the ⬆ Save/
+                 GitHub flow. -->
+            <div class="je-section-label">Wrist Pin (cm) — <span class="je-readout" id="wristPinStatus">Live</span></div>
+            <div class="je-xyz-row"><span>X</span><span class="je-readout" id="wristPinX">—</span></div>
+            <div class="je-xyz-row"><span>Y</span><span class="je-readout" id="wristPinY">—</span></div>
+            <div class="je-xyz-row"><span>Z</span><span class="je-readout" id="wristPinZ">—</span></div>
+            <div class="jec-actions" style="margin-bottom:6px;">
+              <button type="button" onclick="applyWristPin3D()">PIN APPLY</button>
+              <button type="button" onclick="clearWristPin3D()">Clear</button>
+            </div>
+
             <div class="jec-actions" style="margin-bottom:6px;">
               <button type="button" onclick="applyFacesWristAttachment3D()">Apply</button>
               <button type="button" onclick="removeFacesWristAttachment3D()">Remove</button>
