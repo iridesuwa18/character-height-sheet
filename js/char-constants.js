@@ -39,6 +39,12 @@ let headDepthMult = 1.1, bodyDepthMult = 0.6;
 // hourglass waistline split is drawn (100% = no pinch, a straight box).
 let waistlinePct = 100;
 let headWidthCm3D = 0;
+// Torso box half-width (cm from the spine centerline), refreshed by
+// buildBody3D on every rebuild — read by applyWristPin3D (frozen snapshot)
+// and computeWristPinAdjustedChain3D (live value) so a growing torso can
+// nudge a leash-pinned elbow outward with it (see the elbow/torso-tracking
+// comment above computeWristPinAdjustedChain3D in joint-faces-panel.js).
+let torsoHalfWidthCm3D = 0;
 const groupColor3D = {
   head:0xf0c040, neck:0xf0c040, torso:0xffff99, waistbox:0xff9db9,
   arms:0x9fc4ff, hands:0x9fc4ff, legs:0xc9c9d4, feet:0xc9c9d4, joint:0xf2f2f2

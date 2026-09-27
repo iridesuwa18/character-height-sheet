@@ -116,5 +116,6 @@ function mirrorWristPinSpec3D(pin) {
     // instead of carrying the source side's value.
     dox: pin.dox == null ? null : round2(-pin.dox), doy: pin.doy, doz: pin.doz,
     r: pin.r, upperLen: pin.upperLen, foreLen: pin.foreLen,
+    torsoHalfWidth: pin.torsoHalfWidth,
   };
 }

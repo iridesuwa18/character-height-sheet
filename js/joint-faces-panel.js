@@ -189,17 +189,12 @@ function applyWristPin3D() {
   const pos = currentWristPinPosition3D(side);
   if (!pos) return;
   const rot = currentWristPinRotation3D(side) || { turn: 0, bend: 0, swing: 0 };
-  // Also snapshot the SHOULDER's and ELBOW's own current spine-local XYZ.
-  // The elbow one is load-bearing — Snap Back needs it: re-aiming the elbow
-  // can always put the WRIST exactly back on (x,y,z) below, but if the
-  // shoulder has since moved (a different pose, another manual drag, Copy
-  // poses…) that alone can reach the same wrist spot with a
-  // different-looking elbow bend than the one you actually pinned. Storing
-  // the elbow's spot too lets Snap Back restore the whole arm shape, not
-  // just the wrist's endpoint — see snapWristToPin3D. The shoulder one is
-  // debug-only (see syncWristPinInfoReadout3D below) — Snap Back never
-  // reads it, it's just a frozen snapshot to compare the shoulder's CURRENT
-  // live spot against, in case the shoulder itself has drifted since pin.
+  // Also snapshot the SHOULDER's and ELBOW's own current spine-local XYZ
+  // (the shoulder one is debug-readout only — see syncWristPinInfoReadout3D
+  // — the chain itself measures the live shoulder fresh every time) plus
+  // the torso's current half-width, so a LATER torso-width change can be
+  // measured as a delta against this frozen baseline — see the elbow/torso
+  // tracking note above computeWristPinAdjustedChain3D.
   const shoulderGrp = rig3D && rig3D[side + 'Shoulder'];
   const elbowGrp = rig3D && rig3D[side + 'Elbow'];
   const shoulderPos = shoulderGrp ? jointWorldPosSpineLocal3D(shoulderGrp) : null;
@@ -226,6 +221,7 @@ function applyWristPin3D() {
     r: dotOrigin ? dist3(dotOrigin, pos) : null,
     upperLen: (shoulderPos && elbowPos) ? dist3(shoulderPos, elbowPos) : null,
     foreLen: (elbowPos && pos) ? dist3(elbowPos, pos) : null,
+    torsoHalfWidth: torsoHalfWidthCm3D,
   };
   syncWristPinReadout3D();
 }
@@ -248,11 +244,13 @@ function spineLocalToWorld3D(v) {
   return rig3D.spine.localToWorld(new THREE.Vector3(v.x, v.y, v.z));
 }
 // Clamps `target` so it's never farther than `maxLen` from `origin` — the
-// rigid-bone "reach" a shoulder/elbow can't stretch past. If target is
-// already within reach it's returned completely untouched (position AND
-// identity), which is what lets an elbow that's still reachable "stay put
-// exactly where it was pinned" per the spec, rather than always sliding
-// onto the sphere's surface. All in spine-local cm.
+// rigid-bone "reach" a shoulder/elbow can't stretch past. Used for BOTH
+// links in the chain: the shoulder reaching for its (torso-nudged) elbow
+// target, and the elbow reaching for its dot-tracked wrist target. If
+// target is already within reach it's returned completely untouched
+// (position AND identity), which is what lets a still-reachable target
+// land exactly there rather than always sliding onto the sphere's surface.
+// All in spine-local cm.
 function reachClampPoint3D(origin, target, maxLen) {
   const dx = target.x - origin.x, dy = target.y - origin.y, dz = target.z - origin.z;
   const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -260,18 +258,30 @@ function reachClampPoint3D(origin, target, maxLen) {
   const k = maxLen / d;
   return { x: origin.x + dx * k, y: origin.y + dy * k, z: origin.z + dz * k };
 }
-// Recomputes, from the CURRENT live shoulder position, where the elbow and
-// wrist should sit right now so neither bone stretches past its own PIN
-// APPLY-time length (upperLen/foreLen) trying to reach its own pinned spot
-// (ex/ey/ez, x/y/z) — then a best-effort final wrist bend/swing pass that
-// leans the hand toward the CURRENT live dot as far as the wrist's normal
-// range allows (see WRIST_PIN_AIM_MAX_DEG), only when the reach-clamp above
-// actually had to move something. This is the one place both
-// enforceWristPinConstraints3D (run continuously, every applyPose3D — see
-// the hook there) and Snap Back (snapWristToPin3D) get their target from,
-// so what Snap Back restores always matches what the live constraint is
-// already holding, just re-applied explicitly (useful after a manual gizmo
-// drag, which doesn't itself run this).
+// Recomputes, from the CURRENT live shoulder position, torso width, and dot
+// position, where the elbow and wrist should sit right now:
+//   - ELBOW: stays on its own PIN APPLY-time spot (ex/ey/ez), nudged
+//     outward by however much the TORSO itself has grown since then
+//     (torsoHalfWidthCm3D vs the frozen torsoHalfWidth — see applyWristPin3D),
+//     independent of whether the old spot was still technically in reach.
+//     That's what stops a widening torso from swallowing a stationary
+//     elbow (visible clipping) without making the elbow chase every small
+//     shoulder-pivot move the way rigidly tracking the shoulder itself
+//     would. Reach-clamped against the shoulder using the frozen upper-arm
+//     length (upperLen) same as always — the torso nudge only shifts WHERE
+//     it's reaching for, it doesn't bypass the bone-length cap.
+//   - WRIST: tracks however far the DOT has moved (see the dot-tracking
+//     note below), reach-clamped so the forearm never stretches past its
+//     own PIN APPLY-time length (foreLen).
+// Then a best-effort final wrist bend/swing pass leans the hand toward the
+// CURRENT live dot as far as the wrist's normal range allows (see
+// WRIST_PIN_AIM_MAX_DEG), only when that reach-clamp actually fell short.
+// This is the one place both enforceWristPinConstraints3D (run
+// continuously, every applyPose3D — see the hook there) and Snap Back
+// (snapWristToPin3D) get their target from, so what Snap Back restores
+// always matches what the live constraint is already holding, just
+// re-applied explicitly (useful after a manual gizmo drag, which doesn't
+// itself run this).
 // NOTE on the final hand-aim: it aims the wrist->handTurn offset straight
 // at the dot (the closest a pure wrist rotation CAN bring that fixed-length
 // point to the dot), capped by how far the wrist is allowed to rotate away
@@ -287,10 +297,37 @@ function computeWristPinAdjustedChain3D(side) {
   const handTurnGrp = rig3D[side + 'HandTurn'];
   if (!shoulderGrp || !elbowGrp || !wristGrp || !rig3D.spine) return null;
 
+  // The wrist's target TRACKS the dot, rather than staying on the raw
+  // frozen wrist spot: shift the pinned wrist XYZ by exactly however far
+  // the dot has drifted from its own frozen origin (dox/doy/doz) since PIN
+  // APPLY. A rigid parallel shift keeps the FULL wrist<->dot offset intact
+  // (not just the scalar distance R), which is what actually makes a
+  // widening leg push the hand outward with it — earlier this only fed the
+  // dot into the final hand-rotation pass, so a moved dot never affected
+  // where the wrist itself was aiming at all. A missing dot (removed since
+  // PIN APPLY, or no dox on this pin) falls back to zero shift — the raw
+  // frozen wrist spot, same as before.
+  const att = facesWristAttachment3D[side];
+  const liveDot = att ? resolveWristAttachmentPoint3D(att) : null;
+  const dotDelta = (liveDot && pin.dox != null)
+    ? { x: liveDot.x - pin.dox, y: liveDot.y - pin.doy, z: liveDot.z - pin.doz }
+    : { x: 0, y: 0, z: 0 };
+  const wristTarget = { x: pin.x + dotDelta.x, y: pin.y + dotDelta.y, z: pin.z + dotDelta.z };
+
   const liveShoulder = jointWorldPosSpineLocal3D(shoulderGrp);
   if (!liveShoulder) return null;
-  const elbowPin = { x: pin.ex, y: pin.ey, z: pin.ez };
-  const wristPin = { x: pin.x, y: pin.y, z: pin.z };
+  // Elbow: starts from its own PIN APPLY-time spot (ex/ey/ez), nudged
+  // outward (spine-local X, signed by side — left is -X, right is +X, same
+  // convention buildBody3D/mirrorWristPinSpec3D already use) by however
+  // much the TORSO has grown since PIN APPLY. This is what keeps the elbow
+  // from getting swallowed by a widening torso — it moves with the mesh's
+  // own growth regardless of whether the old spot was still "in reach" —
+  // while anything that ISN'T torso growth (e.g. the shoulder pivot moving
+  // for some other reason) still only budges the elbow if the reach-clamp
+  // right below actually can't stretch the upper-arm bone that far.
+  const sideSign = side === 'left' ? -1 : 1;
+  const torsoDelta = (pin.torsoHalfWidth != null) ? (torsoHalfWidthCm3D - pin.torsoHalfWidth) : 0;
+  const elbowPin = { x: pin.ex + sideSign * torsoDelta, y: pin.ey, z: pin.ez };
   const adjustedElbow = (pin.upperLen != null) ? reachClampPoint3D(liveShoulder, elbowPin, pin.upperLen) : elbowPin;
 
   const shoulderTargetWorld = spineLocalToWorld3D(adjustedElbow);
@@ -299,18 +336,19 @@ function computeWristPinAdjustedChain3D(side) {
   // same apply-then-re-read pattern the original Snap Back used.
   shoulderGrp.quaternion.copy(qShoulder);
   const liveElbow = jointWorldPosSpineLocal3D(elbowGrp);
-  const adjustedWrist = (pin.foreLen != null) ? reachClampPoint3D(liveElbow, wristPin, pin.foreLen) : wristPin;
+  const adjustedWrist = (pin.foreLen != null) ? reachClampPoint3D(liveElbow, wristTarget, pin.foreLen) : wristTarget;
 
   const elbowTargetWorld = spineLocalToWorld3D(adjustedWrist);
   const qElbow = aimBoneToWorldPoint3D(elbowGrp, wristGrp.position, elbowTargetWorld);
   elbowGrp.quaternion.copy(qElbow);
 
-  const elbowMoved = dist3(adjustedElbow, elbowPin) > 1e-4;
-  const wristMoved = dist3(adjustedWrist, wristPin) > 1e-4;
+  // Final hand-aim only kicks in when the forearm's own rigid length
+  // couldn't quite stretch to wristTarget (the dot moved farther than the
+  // arm can follow) — same "only when compensating" rule as before, just
+  // checked against the now-moving target instead of a static one.
+  const wristFellShort = dist3(adjustedWrist, wristTarget) > 1e-4;
   let qWristAim = null;
-  const att = facesWristAttachment3D[side];
-  const liveDot = att ? resolveWristAttachmentPoint3D(att) : null;
-  if ((elbowMoved || wristMoved) && liveDot && handTurnGrp) {
+  if (wristFellShort && liveDot && handTurnGrp) {
     const dotWorld = spineLocalToWorld3D(liveDot);
     const qAimFull = aimBoneToWorldPoint3D(wristGrp, handTurnGrp.position, dotWorld);
     const qCurrent = wristGrp.quaternion.clone();

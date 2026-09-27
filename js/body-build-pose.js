@@ -29,6 +29,7 @@ function buildBody3D() {
   headWidthCm3D = headBox ? headBox.wCm : (boxes[0] ? boxes[0].wCm : 1);
 
   const torsoBox = boxes.find(b => b.group === 'torso');
+  torsoHalfWidthCm3D = torsoBox ? torsoBox.wCm / 2 : 0;
   const waistBox = boxes.find(b => b.group === 'waistbox');
   const neckBox = boxes.find(b => b.group === 'neck');
   // Legs/feet have no explicit side field of their own (see
