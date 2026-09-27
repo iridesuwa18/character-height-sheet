@@ -317,16 +317,14 @@ function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
 
 // The dot itself: a crisp core sphere plus a bigger, additively-blended,
 // more-transparent halo sphere behind it — the same glow trick the purple
-// outline uses — parented onto the mesh so it tracks it like every other
-// overlay here. Only drawn when Dot mode is on AND a face is selected.
-function addFacesDotOverlay3D(mesh, faceName, outline) {
+// outline uses — parented onto whichever physical mesh piece currently owns
+// it (see addFacesDotForStack3D) so it tracks that piece like every other
+// overlay here.
+function addFacesDotOverlayAtPosition3D(mesh, localPos, outline) {
   removeFacesDotOverlay3D(mesh);
-  if (!faceName || !facesDotEnabled3D) return;
-  const pos = facesDotLocalPosition3D(faceName, outline, facesDotH3D, facesDotV3D);
-  if (!pos) return;
-  // Radius scales gently with the part's own size so it reads sensibly on
-  // both a finger-sized hand piece and a torso, but never shrinks below a
-  // floor that would make it hard to see/grab on a small part.
+  // Radius scales gently with the owning piece's own size so it reads
+  // sensibly on both a finger-sized hand piece and a torso, but never
+  // shrinks below a floor that would make it hard to see on a small part.
   const scale = Math.max(outline.maxY - outline.minY, outline.maxZ - outline.minZ,
     outline.top.maxX - outline.top.minX, outline.bottom.maxX - outline.bottom.minX);
   const r = Math.max(scale * 0.02, 0.03);
@@ -339,21 +337,91 @@ function addFacesDotOverlay3D(mesh, faceName, outline) {
   const halo = new THREE.Mesh(new THREE.SphereGeometry(r * 2.4, 14, 10), haloMat);
   halo.renderOrder = 4;
   group.add(halo, core);
-  group.position.copy(pos);
+  group.position.copy(localPos);
   mesh.add(group);
 }
 
-// Rebuilds only the dot (not the mesh tint / outline / face tint) on every
-// mesh currently showing the highlighted face — used while dragging the
-// Horizontal/Vertical sliders so the dot moves smoothly without the other
-// overlays flickering as they'd have to if applyFacesHighlight3D() (which
-// tears down and rebuilds everything) ran on every slider tick.
+// Clusters the group's mesh pieces into "stacks": a stack is one or more
+// pieces that share the same parent AND the same (x, z) position — which is
+// exactly how a body part gets physically split into vertically-stacked
+// halves (e.g. the male torso's pinched upper/lower trapezoids, both
+// children of the same spine group at the same x/z, only offset in y).
+// Two pieces connected by an actual rotating joint instead (an upper arm
+// and its forearm, say) do NOT share a parent, so they correctly land in
+// separate stacks and each keeps its own dot — only a true flat split
+// collapses into one.
+function buildFacesDotStacks3D(meshes) {
+  const stacks = [];
+  meshes.forEach(mesh => {
+    const s = stacks.find(s => s.parent === mesh.parent
+      && Math.abs(s.x - mesh.position.x) < 1e-4
+      && Math.abs(s.z - mesh.position.z) < 1e-4);
+    if (s) s.meshes.push(mesh);
+    else stacks.push({ parent: mesh.parent, x: mesh.position.x, z: mesh.position.z, meshes: [mesh] });
+  });
+  stacks.forEach(s => s.meshes.sort((a, b) => a.position.y - b.position.y));
+  return stacks.map(s => s.meshes);
+}
+
+// Combines a bottom-to-top ordered stack of same-parent, same-(x,z) piece
+// outlines into one outline spanning the whole stack, expressed in their
+// shared parent's local frame. X/Z corners come straight from the
+// bottommost/topmost piece (X/Z always line up across a stack — see
+// buildFacesDotStacks3D — only Y differs between pieces), so only Y needs
+// each piece's own position folded in.
+function combineFacesOutlineStack3D(pieces) {
+  if (pieces.length === 1) return pieces[0].outline; // lone piece IS the whole stack
+  const bottom = pieces[0], top = pieces[pieces.length - 1];
+  return {
+    minY: bottom.mesh.position.y + bottom.outline.minY,
+    maxY: top.mesh.position.y + top.outline.maxY,
+    minZ: Math.min(...pieces.map(p => p.outline.minZ)),
+    maxZ: Math.max(...pieces.map(p => p.outline.maxZ)),
+    bottom: bottom.outline.bottom,
+    top: top.outline.top,
+  };
+}
+
+// Places exactly one dot for a stack: computes the dot's point across the
+// COMBINED surface (so Vertical 0-100% sweeps smoothly from the top of the
+// topmost piece through to the bottom of the bottommost piece, right across
+// the seam), then figures out which single physical piece that point
+// actually falls on and parents the dot there, converting the point back
+// into that piece's own local space (pieces in a stack only differ by a
+// plain Y translation — see buildFacesDotStacks3D — so no rotation to
+// account for).
+function addFacesDotForStack3D(meshes, faceName) {
+  const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
+  const combined = combineFacesOutlineStack3D(pieces);
+  const pt = facesDotLocalPosition3D(faceName, combined, facesDotH3D, facesDotV3D);
+  if (!pt) return;
+  let owner = pieces[0];
+  for (const p of pieces) {
+    const lo = p.mesh.position.y + p.outline.minY, hi = p.mesh.position.y + p.outline.maxY;
+    if (pt.y >= lo - 1e-4 && pt.y <= hi + 1e-4) { owner = p; break; }
+  }
+  const local = new THREE.Vector3(pt.x - owner.mesh.position.x, pt.y - owner.mesh.position.y, pt.z - owner.mesh.position.z);
+  addFacesDotOverlayAtPosition3D(owner.mesh, local, owner.outline);
+}
+
+// Entry point used by both applyFacesHighlight3D and updateFacesDotOnly3D:
+// clears any dot left over on every candidate mesh (a stack only ever
+// carries one now, but it may have been on a different piece last time),
+// then places one fresh dot per stack.
+function applyFacesDotToGroup3D(records) {
+  records.forEach(r => removeFacesDotOverlay3D(r.mesh));
+  if (!facesDotEnabled3D || !facesSelectedFace3D || !records.length) return;
+  buildFacesDotStacks3D(records.map(r => r.mesh)).forEach(meshes => addFacesDotForStack3D(meshes, facesSelectedFace3D));
+}
+
+// Rebuilds only the dot (not the mesh tint / outline / face tint) — used
+// while dragging the Horizontal/Vertical sliders so the dot moves smoothly
+// without the other overlays flickering as they'd have to if
+// applyFacesHighlight3D() (which tears down and rebuilds everything) ran on
+// every slider tick.
 function updateFacesDotOnly3D() {
   if (!facesSelectedMeshGroup3D || !meshRecords3D.length) return;
-  meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D).forEach(r => {
-    const outline = facesMeshOutline3D(r.mesh.geometry);
-    addFacesDotOverlay3D(r.mesh, facesSelectedFace3D, outline);
-  });
+  applyFacesDotToGroup3D(meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D));
 }
 
 function clearFacesHighlight3D() {
@@ -368,13 +436,14 @@ function clearFacesHighlight3D() {
 function applyFacesHighlight3D() {
   clearFacesHighlight3D();
   if (!facesSelectedMeshGroup3D || !meshRecords3D.length) return;
-  meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D).forEach(r => {
+  const records = meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D);
+  records.forEach(r => {
     const outline = facesMeshOutline3D(r.mesh.geometry);
     addFacesMeshOverlay3D(r.mesh, outline);
     addFacesOutlineOverlay3D(r.mesh);
     addFacesFaceOverlay3D(r.mesh, facesSelectedFace3D, outline);
-    addFacesDotOverlay3D(r.mesh, facesSelectedFace3D, outline);
   });
+  applyFacesDotToGroup3D(records);
 }
 
 // Resets the dot back to its default Off/50/50 state and shows or hides the
@@ -506,9 +575,18 @@ function updateFacesDotOverlayFrame3D() {
     if (facesDotFloatingEl3D && facesDotFloatingEl3D.style.display !== 'none') facesDotFloatingEl3D.style.display = 'none';
     return;
   }
-  const rec = meshRecords3D.find(r => r.group === facesSelectedMeshGroup3D);
-  if (!rec) return;
-  const dotObj = rec.mesh.children.find(c => c.name === FACES_DOT_NAME);
+  // A stack now carries exactly one dot, but it can be parented on any one
+  // of the group's matching meshes depending on where Vertical currently
+  // lands (see addFacesDotForStack3D) — so scan all of them rather than
+  // assuming it's on the first. If the group has more than one independent
+  // stack (e.g. left/right sides), this only reads the first dot found.
+  const records = meshRecords3D.filter(r => r.group === facesSelectedMeshGroup3D);
+  if (!records.length) return;
+  let dotObj = null;
+  for (const r of records) {
+    const d = r.mesh.children.find(c => c.name === FACES_DOT_NAME);
+    if (d) { dotObj = d; break; }
+  }
   if (!dotObj) return;
   const world = new THREE.Vector3();
   dotObj.getWorldPosition(world);
