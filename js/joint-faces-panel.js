@@ -761,12 +761,16 @@ function addFacesFaceOverlay3D(mesh, faceName, outline) {
     const dx = tx - bx, dy = o.maxY - o.minY;
     const slantLen = Math.max(Math.sqrt(dx * dx + dy * dy), 0.01);
     const heightDir = new THREE.Vector3(dx, dy, 0).normalize();
-    const widthDir = new THREE.Vector3(0, 0, 1);
-    // Order swapped between left/right so the cross product's outward
-    // direction comes out correct for each side without a separate flip step.
-    const normal = isLeft
-      ? new THREE.Vector3().crossVectors(widthDir, heightDir).normalize()
-      : new THREE.Vector3().crossVectors(heightDir, widthDir).normalize();
+    // widthDir's sign flips per side (rather than swapping the cross-product
+    // argument order) so X×Y=normal stays a PROPER right-handed basis on
+    // BOTH sides — the outward normal comes out identical either way, but
+    // swapping the cross order instead (the old approach) secretly flips
+    // the basis's handedness into a mirror/reflection for the right side,
+    // which quaternion.setFromRotationMatrix() can't represent correctly
+    // (it assumes a proper rotation) — that's what was rotating the right
+    // side's face overlay ~90° off.
+    const widthDir = new THREE.Vector3(0, 0, isLeft ? 1 : -1);
+    const normal = new THREE.Vector3().crossVectors(widthDir, heightDir).normalize();
     const basis = new THREE.Matrix4().makeBasis(widthDir, heightDir, normal);
     overlay = new THREE.Mesh(new THREE.PlaneGeometry(Math.max(o.maxZ - o.minZ, 0.01), slantLen), mat());
     overlay.quaternion.setFromRotationMatrix(basis);
@@ -875,12 +879,11 @@ function facesDotLocalPosition3D(faceName, outline, hPct, vPct) {
     // of one averaged tilt for the whole side.
     const dx = tx - bx, dy = seg.maxY - seg.minY;
     const heightDir = new THREE.Vector3(dx, dy, 0).normalize();
-    const widthDir = new THREE.Vector3(0, 0, 1);
-    // Same left/right cross-product order swap as addFacesFaceOverlay3D, so
-    // the dot pops off the same outward side that face's tint does.
-    const normal = isLeft
-      ? new THREE.Vector3().crossVectors(widthDir, heightDir).normalize()
-      : new THREE.Vector3().crossVectors(heightDir, widthDir).normalize();
+    // Same widthDir-sign-flip-per-side approach as addFacesFaceOverlay3D
+    // (not a cross-product order swap — see that function's comment for
+    // why), so the dot pops off the same outward side that face's tint does.
+    const widthDir = new THREE.Vector3(0, 0, isLeft ? 1 : -1);
+    const normal = new THREE.Vector3().crossVectors(widthDir, heightDir).normalize();
     const x = lerp(bx, tx, t);
     const z = lerp(o.minZ, o.maxZ, h);
     return new THREE.Vector3(x + normal.x * eps, y + normal.y * eps, z + normal.z * eps);
