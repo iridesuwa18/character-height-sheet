@@ -999,6 +999,17 @@
           <span class="jec-title">Faces</span>
           <button type="button" class="je-close-btn" onclick="closeFacesPopup3D()" aria-label="Close">✕</button>
         </div>
+        <!-- Read-only summary of wherever each wrist is currently attached
+             (see the Wrist Attachments controls further down, inside the
+             Dot section) — always visible here regardless of which mesh/
+             face is currently picked above, so both attachments are visible
+             at a glance without hunting through every face. Purely an
+             indicator: it never moves the actual wrist joint (see
+             joint-faces-panel.js's wrist-attachment comment block). -->
+        <div class="je-section-label">Attached Wrists</div>
+        <div class="je-xyz-row" style="grid-template-columns: 46px 1fr;"><span>L Wrist</span><span class="je-readout" id="facesWristAttachL">—</span></div>
+        <div class="je-xyz-row" style="grid-template-columns: 46px 1fr;"><span>R Wrist</span><span class="je-readout" id="facesWristAttachR">—</span></div>
+
         <div class="je-section-label">Mesh</div>
         <select class="je-select" id="facesMeshSelect" onchange="onFacesMeshChange3D(this.value)">
           <option value="">None</option>
@@ -1006,10 +1017,14 @@
           <option value="neck">Neck</option>
           <option value="torso">Torso</option>
           <option value="waistbox">Waist</option>
-          <option value="arms">Arms</option>
-          <option value="hands">Hands</option>
-          <option value="legs">Legs</option>
-          <option value="feet">Feet</option>
+          <option value="leftArm">L Arm</option>
+          <option value="rightArm">R Arm</option>
+          <option value="leftHand">L Hand</option>
+          <option value="rightHand">R Hand</option>
+          <option value="leftLeg">L Leg</option>
+          <option value="rightLeg">R Leg</option>
+          <option value="leftFoot">L Foot</option>
+          <option value="rightFoot">R Foot</option>
         </select>
         <div class="je-section-label">Face</div>
         <select class="je-select" id="facesFaceSelect" onchange="onFacesFaceChange3D(this.value)" disabled>
@@ -1045,6 +1060,27 @@
             <div class="je-xyz-row"><span>X</span><span class="je-readout" id="facesDotWorldX">—</span></div>
             <div class="je-xyz-row"><span>Y</span><span class="je-readout" id="facesDotWorldY">—</span></div>
             <div class="je-xyz-row"><span>Z</span><span class="je-readout" id="facesDotWorldZ">—</span></div>
+
+            <!-- Links a wrist (Left/Right) to this exact dot — a visual
+                 indicator only, never actual IK (see the wrist-attachment
+                 comment block in joint-faces-panel.js). Apply locks this
+                 dot's H/V so it can't drift once a wrist depends on it;
+                 Remove un-attaches the selected wrist here (and re-opens
+                 editing if nothing else still depends on this exact spot).
+                 Mirror copies the Left wrist's current attachment onto the
+                 Right wrist, reflected to the opposite side. -->
+            <div class="je-section-label">Wrist Attachments</div>
+            <div class="je-mode-row">
+              <button type="button" class="je-mode-btn active" id="facesWristSelL" onclick="setFacesWristSelect3D('left')">Left</button>
+              <button type="button" class="je-mode-btn" id="facesWristSelR" onclick="setFacesWristSelect3D('right')">Right</button>
+            </div>
+            <div class="jec-actions" style="margin-bottom:6px;">
+              <button type="button" onclick="applyFacesWristAttachment3D()">Apply</button>
+              <button type="button" onclick="removeFacesWristAttachment3D()">Remove</button>
+            </div>
+            <div class="jec-actions">
+              <button type="button" onclick="mirrorFacesWristAttachment3D()">⇄ Mirror L→R</button>
+            </div>
           </div>
         </div>
       </div>
