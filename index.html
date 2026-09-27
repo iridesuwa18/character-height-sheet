@@ -1111,6 +1111,14 @@
               <span>Wrist Pin (cm) — <span class="je-readout-inline" id="wristPinStatus">Live</span> <button type="button" class="je-info-btn" id="wristPinInfoBtn" onclick="toggleWristPinInfo3D()" title="Debug: shoulder &amp; elbow XYZ">i</button></span>
               <button type="button" class="je-snap-btn" onclick="snapWristPin3D()" title="Move this wrist back to its pinned position/rotation">⇤ Snap Back</button>
             </div>
+            <!-- Distance leash to this wrist's attached dot, frozen at PIN
+                 APPLY time (see applyWristPin3D/enforceWristPinConstraints3D
+                 in joint-faces-panel.js) — "leashed" means shoulder-length/
+                 waist-length changes will reach-clamp this arm and lean the
+                 hand toward the dot to hold this distance; "no dot attached"
+                 means this pin behaves exactly as before (a plain frozen
+                 Snap Back target, nothing auto-adjusts it). -->
+            <div class="je-xyz-row"><span>R</span><span class="je-readout" id="wristPinLeashR">—</span></div>
             <!-- Debug-only aid for Snap Back's shoulder->elbow->wrist chain
                  (see snapWristToPin3D in joint-faces-panel.js): the LIVE
                  current spine-local XYZ of the shoulder and elbow for
