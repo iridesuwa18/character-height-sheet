@@ -139,6 +139,71 @@ function setFacesWristSelect3D(side) {
   const lBtn = document.getElementById('facesWristSelL'), rBtn = document.getElementById('facesWristSelR');
   if (lBtn) lBtn.classList.toggle('active', side === 'left');
   if (rBtn) rBtn.classList.toggle('active', side === 'right');
+  syncWristPinReadout3D();
+}
+
+// ---- Wrist position pin -------------------------------------------------
+// A literal, lockable XYZ for a wrist — separate from (but usually set
+// alongside) its face attachment above. This is the first step toward
+// actually pinning a wrist in place: for now it's purely a recorded target
+// position, same spine-local cm frame as the Dot World XYZ readout and the
+// Joint XYZ snapshot in hand-pins-github.js (jointWorldPosSpineLocal3D) —
+// the wrist joint itself still moves completely freely regardless of what's
+// stored here.
+// While a side has no pin, its readout just live-tracks that wrist's own
+// current joint position every frame (see updateWristPinLiveTracking3D,
+// called from animate3D in body-scene.js). Pressing PIN APPLY freezes the
+// readout at wherever the wrist is right now — it stops updating even as
+// the wrist keeps moving — until either Clear (back to live tracking) or
+// another PIN APPLY (re-freezes at the new current position). Kept purely
+// in memory (this plain variable) rather than any Web Storage API — it
+// survives moving around the app for as long as this page stays loaded,
+// but a refresh/reload wipes it back to unpinned on both sides, same as
+// every other bit of in-memory editor state (manualJointEdits3D, the
+// current pose selection, etc). Not yet wired into the real ⬆ Save/GitHub
+// sync flow either way.
+let wristPinLocked3D = { left: null, right: null }; // each: {x,y,z} | null
+
+// The wrist joint's current position, in the same spine-local cm frame as
+// jointWorldPosSpineLocal3D (hand-pins-github.js) already reads every other
+// joint in — this is both what the live readout shows and what PIN APPLY
+// actually freezes.
+function currentWristPinPosition3D(side) {
+  const grp = rig3D && rig3D[side + 'Wrist'];
+  if (!grp) return null;
+  return jointWorldPosSpineLocal3D(grp); // {x,y,z}, rounded to 2dp, or null
+}
+function applyWristPin3D() {
+  const pos = currentWristPinPosition3D(facesWristSelected3D);
+  if (!pos) return;
+  wristPinLocked3D[facesWristSelected3D] = pos;
+  syncWristPinReadout3D();
+}
+function clearWristPin3D() {
+  wristPinLocked3D[facesWristSelected3D] = null;
+  syncWristPinReadout3D();
+}
+// Refreshes the XYZ readout + Live/Pinned status for whichever wrist is
+// currently selected in the Left/Right toggle just above — a locked pin's
+// frozen numbers, or (while unlocked) that wrist's live current position.
+function syncWristPinReadout3D() {
+  const side = facesWristSelected3D;
+  const locked = wristPinLocked3D[side];
+  const pos = locked || currentWristPinPosition3D(side);
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = (v == null) ? '—' : v.toFixed(1); };
+  setTxt('wristPinX', pos ? pos.x : null);
+  setTxt('wristPinY', pos ? pos.y : null);
+  setTxt('wristPinZ', pos ? pos.z : null);
+  const status = document.getElementById('wristPinStatus');
+  if (status) status.textContent = locked ? 'Pinned' : 'Live';
+}
+// Runs every frame from animate3D (see body-scene.js), but only bothers
+// touching the DOM while the Faces popup is actually open — no point
+// re-reading/writing this readout every frame while it's not on screen.
+function updateWristPinLiveTracking3D() {
+  const popup = document.getElementById('jeFacesPopup');
+  if (!popup || !popup.classList.contains('open')) return;
+  syncWristPinReadout3D();
 }
 // Whether `side`'s stored attachment is exactly the dot currently being
 // edited (same group/face/h/v) — the basis for both the H/V lock and for
@@ -1079,6 +1144,7 @@ function openFacesPopup3D() {
   const el = document.getElementById('jeFacesPopup');
   if (el) el.classList.add('open');
   refreshFacesWristReadouts3D();
+  syncWristPinReadout3D();
 }
 function closeFacesPopup3D() {
   const el = document.getElementById('jeFacesPopup');
