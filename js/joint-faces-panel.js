@@ -143,13 +143,10 @@ function setFacesWristSelect3D(side) {
 }
 
 // ---- Wrist position pin -------------------------------------------------
-// A literal, lockable XYZ for a wrist — separate from (but usually set
-// alongside) its face attachment above. This is the first step toward
-// actually pinning a wrist in place: for now it's purely a recorded target
-// position, same spine-local cm frame as the Dot World XYZ readout and the
-// Joint XYZ snapshot in hand-pins-github.js (jointWorldPosSpineLocal3D) —
-// the wrist joint itself still moves completely freely regardless of what's
-// stored here.
+// A lockable XYZ + rotation for a wrist, plus (when a dot is attached) the
+// distance-leash data described in applyWristPin3D below. Same spine-local
+// cm frame as the Dot World XYZ readout and the Joint XYZ snapshot in
+// hand-pins-github.js (jointWorldPosSpineLocal3D).
 // While a side has no pin, its readout just live-tracks that wrist's own
 // current joint position AND rotation every frame (see
 // updateWristPinLiveTracking3D, called from animate3D in body-scene.js).
@@ -157,13 +154,19 @@ function setFacesWristSelect3D(side) {
 // now — position AND rotation together — and it stops updating even as
 // the wrist keeps moving, until either PIN CLEAR (back to live tracking)
 // or another PIN APPLY (re-freezes at the new current position/rotation).
-// Kept purely in memory (this plain variable) rather than any Web Storage
-// API — it survives moving around the app for as long as this page stays
-// loaded, but a refresh/reload wipes it back to unpinned on both sides,
-// same as every other bit of in-memory editor state (manualJointEdits3D,
-// the current pose selection, etc). Not yet wired into the real ⬆ Save/
-// GitHub sync flow either way.
-let wristPinLocked3D = { left: null, right: null }; // each: {x,y,z,turn,bend,swing} | null
+// Wrist pins, keyed PER POSE (poseName -> {left,right}) so a pin set up
+// while posing "wave" doesn't leak into "stand-relaxed" — each pose gets
+// its own independent leash. See wristPinsForPose3D below for the
+// lazy-init accessor everything reads/writes through, and
+// collectWristPinsState3D / applyWristPinsState3D in joint-github-sync.js
+// for how the whole thing round-trips to pose-overrides.json alongside
+// manualJointEdits3D (which uses the exact same per-pose-keying pattern —
+// see jointEditsForPose3D).
+let wristPinLocked3D = {}; // { [poseName]: { left: {...}|null, right: {...}|null } }
+function wristPinsForPose3D(poseName) {
+  if (!wristPinLocked3D[poseName]) wristPinLocked3D[poseName] = { left: null, right: null };
+  return wristPinLocked3D[poseName];
+}
 
 // The wrist joint's current position, in the same spine-local cm frame as
 // jointWorldPosSpineLocal3D (hand-pins-github.js) already reads every other
@@ -213,7 +216,7 @@ function applyWristPin3D() {
   // "pin is just a frozen Snap Back target" behavior).
   const att = facesWristAttachment3D[side];
   const dotOrigin = att ? resolveWristAttachmentPoint3D(att) : null;
-  wristPinLocked3D[side] = {
+  wristPinsForPose3D(currentPose3D)[side] = {
     ...pos, ...rot,
     sx: shoulderPos ? shoulderPos.x : null, sy: shoulderPos ? shoulderPos.y : null, sz: shoulderPos ? shoulderPos.z : null,
     ex: elbowPos ? elbowPos.x : null, ey: elbowPos ? elbowPos.y : null, ez: elbowPos ? elbowPos.z : null,
@@ -231,7 +234,7 @@ function clearWristPin3D() {
   // this pose's new resting rotation (already true for free, since nothing
   // here touches manualJointEdits3D — see enforceWristPinConstraints3D)
   // rather than being reset back to the original pinned spot.
-  wristPinLocked3D[facesWristSelected3D] = null;
+  wristPinsForPose3D(currentPose3D)[facesWristSelected3D] = null;
   syncWristPinReadout3D();
 }
 // ---- Distance-leash math (shared by the live enforcer and Snap Back) ----
@@ -291,7 +294,7 @@ function reachClampPoint3D(origin, target, maxLen) {
 // Returns null if this side has no leash-pinned wrist (see applyWristPin3D)
 // or the rig/dot can't currently be resolved.
 function computeWristPinAdjustedChain3D(side) {
-  const pin = wristPinLocked3D[side];
+  const pin = wristPinsForPose3D(currentPose3D)[side];
   if (!pin || pin.r == null) return null;
   const shoulderGrp = rig3D[side + 'Shoulder'], elbowGrp = rig3D[side + 'Elbow'], wristGrp = rig3D[side + 'Wrist'];
   const handTurnGrp = rig3D[side + 'HandTurn'];
@@ -368,7 +371,7 @@ function computeWristPinAdjustedChain3D(side) {
 // PIN CLEAR needs nothing to undo (see clearWristPin3D) and a side with no
 // leash (or no pin at all) is completely untouched.
 function enforceWristPinConstraints3D(side) {
-  const pin = wristPinLocked3D[side];
+  const pin = wristPinsForPose3D(currentPose3D)[side];
   if (!pin || pin.r == null) return;
   const shoulderGrp = rig3D[side + 'Shoulder'], elbowGrp = rig3D[side + 'Elbow'], wristGrp = rig3D[side + 'Wrist'];
   if (!shoulderGrp || !elbowGrp || !wristGrp) return;
@@ -405,19 +408,19 @@ function enforceWristPinConstraints3D(side) {
 // wristQuat/handTurnQuat override so those overrides are the one source
 // of truth for the snapped-back wrist, same reasoning as there.
 function pinnedWristWorldPos3D(side) {
-  const pin = wristPinLocked3D[side];
+  const pin = wristPinsForPose3D(currentPose3D)[side];
   if (!pin || !rig3D.spine) return null;
   rig3D.spine.updateMatrixWorld(true);
   return rig3D.spine.localToWorld(new THREE.Vector3(pin.x, pin.y, pin.z));
 }
 function pinnedElbowWorldPos3D(side) {
-  const pin = wristPinLocked3D[side];
+  const pin = wristPinsForPose3D(currentPose3D)[side];
   if (!pin || pin.ex == null || !rig3D.spine) return null;
   rig3D.spine.updateMatrixWorld(true);
   return rig3D.spine.localToWorld(new THREE.Vector3(pin.ex, pin.ey, pin.ez));
 }
 function snapWristToPin3D(side) {
-  const pin = wristPinLocked3D[side];
+  const pin = wristPinsForPose3D(currentPose3D)[side];
   if (!pin) return;
   const shoulderGrp = rig3D[side + 'Shoulder'];
   const elbowGrp = rig3D[side + 'Elbow'];
@@ -496,7 +499,7 @@ function snapWristPin3D() {
 // them together.
 function syncWristPinReadout3D() {
   const side = facesWristSelected3D;
-  const locked = wristPinLocked3D[side];
+  const locked = wristPinsForPose3D(currentPose3D)[side];
   const pos = locked || currentWristPinPosition3D(side);
   const rot = locked || currentWristPinRotation3D(side);
   const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = (v == null) ? '—' : v.toFixed(1); };
@@ -541,7 +544,7 @@ function toggleWristPinInfo3D() {
 function syncWristPinInfoReadout3D() {
   if (!wristPinInfoOpen3D) return;
   const side = facesWristSelected3D;
-  const locked = wristPinLocked3D[side];
+  const locked = wristPinsForPose3D(currentPose3D)[side];
   // Same Pinned/Live split as the XYZ and Turn/Bend/Swing readouts above:
   // while Pinned, show the FROZEN shoulder/elbow spot from PIN APPLY time
   // (what Snap Back will actually aim for/restore) — not wherever they

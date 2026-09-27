@@ -1,18 +1,48 @@
 // ── joint-github-sync.js ──────────────────────────────────────────────────
 // Part of the 3d_character.js split. Saves/loads the Joint Editor's own
 // manual drags (manualJointEdits3D) to the same GitHub pose-overrides.json
-// file, under the reserved "_jointEdits" key. The ⬆ Save button
-// (quickSaveJointsToGitHub3D, below) does two things on press: snapshot
+// file, under the reserved "_jointEdits" key, plus per-pose distance-leash
+// wrist pins (wristPinLocked3D — see joint-faces-panel.js) under
+// "_wristPins", same per-pose-keyed pattern. The ⬆ Save button
+// (quickSaveJointsToGitHub3D, below) does three things on press: snapshot
 // every joint's current XYZ position (captureAllJointXYZ3D, in
 // hand-pins-github.js — a read-only baseline for a future pin system, not
-// yet consumed on load) AND persist the current manualJointEdits3D rotation
-// quaternions under "_jointEdits" — that second part is what actually
-// reproduces the on-screen pose after a refresh, via applySavedJointEdits3D.
+// yet consumed on load), persist the current manualJointEdits3D rotation
+// quaternions under "_jointEdits" (what actually reproduces the on-screen
+// pose after a refresh, via applySavedJointEdits3D), and persist
+// wristPinLocked3D under "_wristPins" (what lets a pinned/leashed wrist
+// come back pinned after a refresh, via applyWristPinsState3D).
 // Shares one global scope with the other files below (plain <script> tags,
 // no modules) — load order matters, see index.html.
 
 const JOINT_EDITS_KEY = '_jointEdits';
 const HAND_WRIST_OVERRIDES_KEY = '_handWristOverrides';
+const WRIST_PINS_KEY = '_wristPins';
+
+// wristPinLocked3D (joint-faces-panel.js) is already keyed the same way
+// manualJointEdits3D is — { [poseName]: { left, right } } — and every value
+// inside a pin (x/y/z/turn/bend/swing/sx.../ex.../dox.../r/upperLen/
+// foreLen/torsoHalfWidth) is a plain number or null, so unlike
+// collectJointEditsState3D there's no quaternion encoding to do — just a
+// shallow copy per side so the saved snapshot never aliases the live
+// object a later PIN APPLY/CLEAR would go on to mutate.
+function collectWristPinsState3D() {
+  const byPose = {};
+  Object.keys(wristPinLocked3D).forEach(poseName => {
+    const p = wristPinLocked3D[poseName];
+    byPose[poseName] = { left: p.left ? { ...p.left } : null, right: p.right ? { ...p.right } : null };
+  });
+  return byPose;
+}
+function applyWristPinsState3D(state) {
+  if (!state) return;
+  Object.keys(state).forEach(poseName => {
+    const src = state[poseName] || {};
+    wristPinsForPose3D(poseName).left = src.left ? { ...src.left } : null;
+    wristPinsForPose3D(poseName).right = src.right ? { ...src.right } : null;
+  });
+  syncWristPinReadout3D();
+}
 
 function collectJointEditsState3D() {
   const r4 = (n) => Math.round(n * 10000) / 10000;
@@ -91,6 +121,7 @@ async function quickSaveJointsToGitHub3D() {
   const jointXYZ = captureAllJointXYZ3D();
   const jointEditsState = collectJointEditsState3D();
   const handWristState = collectHandWristOverridesState3D();
+  const wristPinsState = collectWristPinsState3D();
   try {
     await githubUpdatePoseOverrides3D('Save joint XYZ + edits: ' + poseKey, all => {
       all[poseKey] = all[poseKey] || {};
@@ -105,6 +136,11 @@ async function quickSaveJointsToGitHub3D() {
       // onWristSlider3D — so they need their own save/load, separate from
       // the block above. This is what was missing for "Turn" specifically.
       all[HAND_WRIST_OVERRIDES_KEY] = handWristState;
+      // Distance-leash wrist pins (pinned XYZ, dot origin XYZ, R, and the
+      // shoulder/elbow/torso snapshot the leash chain is built from — see
+      // applyWristPin3D in joint-faces-panel.js), one set per pose, same
+      // as JOINT_EDITS_KEY above.
+      all[WRIST_PINS_KEY] = wristPinsState;
     });
     setBtn('✓ Saved', false);
     setTimeout(() => setBtn('⬆ Save', false), 1600);
@@ -125,13 +161,26 @@ async function quickLoadJointsFromGitHub3D() {
     const { all } = await fetchPoseOverridesFile(s);
     const hasJointEdits = !!all[JOINT_EDITS_KEY];
     const hasHandWrist = !!all[HAND_WRIST_OVERRIDES_KEY];
-    if (!hasJointEdits && !hasHandWrist) throw new Error('No saved joint edits found yet.');
+    const hasWristPins = !!all[WRIST_PINS_KEY];
+    if (!hasJointEdits && !hasHandWrist && !hasWristPins) throw new Error('No saved joint edits found yet.');
     if (hasJointEdits) {
       jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
       applyJointEditsState3D(all[JOINT_EDITS_KEY]);
       reapplyManualJointEdits3D(); groundBody3D(false);
     }
     if (hasHandWrist) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
+    if (hasWristPins) {
+      applyWristPinsState3D(all[WRIST_PINS_KEY]);
+      // Re-enforce for the pose now on screen — same reasoning as the
+      // applySavedJointEdits3D hook: a freshly-loaded pin needs its leash
+      // applied immediately, not just sitting in wristPinLocked3D waiting
+      // for the next unrelated applyPose3D call.
+      if (typeof enforceWristPinConstraints3D === 'function') {
+        enforceWristPinConstraints3D('left');
+        enforceWristPinConstraints3D('right');
+      }
+      groundBody3D(false);
+    }
     if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
     setBtn('✓ Loaded', false);
     setTimeout(() => setBtn('⬇ Load', false), 1600);
@@ -181,6 +230,14 @@ async function autoLoadJointsFromGitHub3D() {
     const { all } = await fetchPoseOverridesFile(s);
     if (all[JOINT_EDITS_KEY]) { jointEditsSaved3D = all[JOINT_EDITS_KEY]; applySavedJointEdits3D(); }
     if (all[HAND_WRIST_OVERRIDES_KEY]) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
+    if (all[WRIST_PINS_KEY]) {
+      applyWristPinsState3D(all[WRIST_PINS_KEY]);
+      if (typeof enforceWristPinConstraints3D === 'function') {
+        enforceWristPinConstraints3D('left');
+        enforceWristPinConstraints3D('right');
+      }
+      groundBody3D(false);
+    }
   } catch (e) { console.warn('Could not auto-load joint edits from GitHub:', e); }
   finally { jointEditsFetching3D = false; }
 }

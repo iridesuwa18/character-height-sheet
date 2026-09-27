@@ -103,7 +103,7 @@ async function githubUpdatePoseOverrides3D(message, mutate) {
 async function clearAllSavedPoseEdits() {
   const s = ghGetSettings();
   if (!s.token || !s.owner || !s.repo) { alert('Set your GitHub token in the GitHub Presets panel first (needed to clear saved edits).'); return; }
-  if (!confirm('Delete the pose-edits file from GitHub (hand-facing edits, joint XYZ snapshots AND saved 3D joint edits) and reload the page?')) return;
+  if (!confirm('Delete the pose-edits file from GitHub (hand-facing edits, joint XYZ snapshots, wrist pins AND saved 3D joint edits) and reload the page?')) return;
   try {
     const apiUrl = poseOverridesApiUrl(s);
     const getResp = await fetch(`${apiUrl}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
@@ -171,6 +171,14 @@ async function pullPoseOverridesFromGitHub() {
     // (no Load button needed).
     if (all._jointEdits) { jointEditsSaved3D = all._jointEdits; applySavedJointEdits3D(); }
     if (all._handWristOverrides) applyHandWristOverridesState3D(all._handWristOverrides);
+    if (all._wristPins && typeof applyWristPinsState3D === 'function') {
+      applyWristPinsState3D(all._wristPins);
+      if (typeof enforceWristPinConstraints3D === 'function' && sceneInited3D) {
+        enforceWristPinConstraints3D('left');
+        enforceWristPinConstraints3D('right');
+        groundBody3D(false);
+      }
+    }
   } catch (e) { console.warn('Could not load pose edits from GitHub:', e); }
 }
 

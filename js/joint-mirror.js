@@ -87,9 +87,9 @@ function mirrorArmAndAttachmentToOtherSide3D(side) {
   // spot/rotation as well. Only acts when the source side actually has a
   // pin, same as the attachment mirror just above: an unpinned source
   // leaves whatever the other side already had alone rather than clearing it.
-  const pin = wristPinLocked3D[side];
+  const pin = wristPinsForPose3D(currentPose3D)[side];
   if (pin) {
-    wristPinLocked3D[other] = mirrorWristPinSpec3D(pin);
+    wristPinsForPose3D(currentPose3D)[other] = mirrorWristPinSpec3D(pin);
     syncWristPinReadout3D();
   }
   return { other };
