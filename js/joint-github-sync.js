@@ -18,6 +18,30 @@
 const JOINT_EDITS_KEY = '_jointEdits';
 const HAND_WRIST_OVERRIDES_KEY = '_handWristOverrides';
 const WRIST_PINS_KEY = '_wristPins';
+const WRIST_ATTACHMENTS_KEY = '_wristAttachments';
+
+// facesWristAttachment3D (joint-faces-panel.js) is a flat { left, right }
+// object — not per-pose, same as handRotationOverride/etc — so it's
+// captured/restored as one shallow snapshot, same shape as
+// collectWristPinsState3D just below. This is the "Attached Wrists"
+// mesh-group/face/H%/V% dot data; it used to be entirely un-persisted, which
+// is also why a reloaded leash-pinned wrist (see computeWristPinAdjustedChain3D
+// in joint-faces-panel.js) could come back bent oddly — that function
+// resolves its live dot straight from facesWristAttachment3D every frame, so
+// a null attachment after reload silently dropped both the dot-tracking
+// delta and the corrective final wrist-aim pass.
+function collectWristAttachmentsState3D() {
+  return {
+    left: facesWristAttachment3D.left ? { ...facesWristAttachment3D.left } : null,
+    right: facesWristAttachment3D.right ? { ...facesWristAttachment3D.right } : null,
+  };
+}
+function applyWristAttachmentsState3D(state) {
+  if (!state) return;
+  facesWristAttachment3D.left = state.left ? { ...state.left } : null;
+  facesWristAttachment3D.right = state.right ? { ...state.right } : null;
+  if (typeof refreshFacesWristReadouts3D === 'function') refreshFacesWristReadouts3D();
+}
 
 // wristPinLocked3D (joint-faces-panel.js) is already keyed the same way
 // manualJointEdits3D is — { [poseName]: { left, right } } — and every value
@@ -122,6 +146,7 @@ async function quickSaveJointsToGitHub3D() {
   const jointEditsState = collectJointEditsState3D();
   const handWristState = collectHandWristOverridesState3D();
   const wristPinsState = collectWristPinsState3D();
+  const wristAttachmentsState = collectWristAttachmentsState3D();
   try {
     await githubUpdatePoseOverrides3D('Save joint XYZ + edits: ' + poseKey, all => {
       all[poseKey] = all[poseKey] || {};
@@ -141,6 +166,10 @@ async function quickSaveJointsToGitHub3D() {
       // applyWristPin3D in joint-faces-panel.js), one set per pose, same
       // as JOINT_EDITS_KEY above.
       all[WRIST_PINS_KEY] = wristPinsState;
+      // The Attached Wrists dot (mesh group + face + H/V%) itself — see the
+      // comment above collectWristAttachmentsState3D for why this needs to
+      // land BEFORE the wrist-pin leash math can trust its dot again.
+      all[WRIST_ATTACHMENTS_KEY] = wristAttachmentsState;
     });
     setBtn('✓ Saved', false);
     setTimeout(() => setBtn('⬆ Save', false), 1600);
@@ -162,13 +191,19 @@ async function quickLoadJointsFromGitHub3D() {
     const hasJointEdits = !!all[JOINT_EDITS_KEY];
     const hasHandWrist = !!all[HAND_WRIST_OVERRIDES_KEY];
     const hasWristPins = !!all[WRIST_PINS_KEY];
-    if (!hasJointEdits && !hasHandWrist && !hasWristPins) throw new Error('No saved joint edits found yet.');
+    const hasWristAttachments = !!all[WRIST_ATTACHMENTS_KEY];
+    if (!hasJointEdits && !hasHandWrist && !hasWristPins && !hasWristAttachments) throw new Error('No saved joint edits found yet.');
     if (hasJointEdits) {
       jointEditsSaved3D = all[JOINT_EDITS_KEY]; jointEditsInitialApplied3D = true;
       applyJointEditsState3D(all[JOINT_EDITS_KEY]);
       reapplyManualJointEdits3D(); groundBody3D(false);
     }
     if (hasHandWrist) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
+    // Restore the Attached Wrists dot BEFORE the wrist-pin leash below runs
+    // enforceWristPinConstraints3D — that function resolves its live dot
+    // straight off facesWristAttachment3D, so loading it after would leave
+    // the very first enforce pass computing against a null dot.
+    if (hasWristAttachments) applyWristAttachmentsState3D(all[WRIST_ATTACHMENTS_KEY]);
     if (hasWristPins) {
       applyWristPinsState3D(all[WRIST_PINS_KEY]);
       // Re-enforce for the pose now on screen — same reasoning as the
@@ -230,6 +265,10 @@ async function autoLoadJointsFromGitHub3D() {
     const { all } = await fetchPoseOverridesFile(s);
     if (all[JOINT_EDITS_KEY]) { jointEditsSaved3D = all[JOINT_EDITS_KEY]; applySavedJointEdits3D(); }
     if (all[HAND_WRIST_OVERRIDES_KEY]) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
+    // Same ordering requirement as quickLoadJointsFromGitHub3D above: the
+    // attachment needs to exist before the wrist-pin block's
+    // enforceWristPinConstraints3D call below resolves its live dot.
+    if (all[WRIST_ATTACHMENTS_KEY]) applyWristAttachmentsState3D(all[WRIST_ATTACHMENTS_KEY]);
     if (all[WRIST_PINS_KEY]) {
       applyWristPinsState3D(all[WRIST_PINS_KEY]);
       if (typeof enforceWristPinConstraints3D === 'function') {
