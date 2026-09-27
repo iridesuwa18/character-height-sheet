@@ -189,12 +189,109 @@ function applyWristPin3D() {
   const pos = currentWristPinPosition3D(side);
   if (!pos) return;
   const rot = currentWristPinRotation3D(side) || { turn: 0, bend: 0, swing: 0 };
-  wristPinLocked3D[side] = { ...pos, ...rot };
+  // Also snapshot the SHOULDER's and ELBOW's own current spine-local XYZ.
+  // The elbow one is load-bearing — Snap Back needs it: re-aiming the elbow
+  // can always put the WRIST exactly back on (x,y,z) below, but if the
+  // shoulder has since moved (a different pose, another manual drag, Copy
+  // poses…) that alone can reach the same wrist spot with a
+  // different-looking elbow bend than the one you actually pinned. Storing
+  // the elbow's spot too lets Snap Back restore the whole arm shape, not
+  // just the wrist's endpoint — see snapWristToPin3D. The shoulder one is
+  // debug-only (see syncWristPinInfoReadout3D below) — Snap Back never
+  // reads it, it's just a frozen snapshot to compare the shoulder's CURRENT
+  // live spot against, in case the shoulder itself has drifted since pin.
+  const shoulderGrp = rig3D && rig3D[side + 'Shoulder'];
+  const elbowGrp = rig3D && rig3D[side + 'Elbow'];
+  const shoulderPos = shoulderGrp ? jointWorldPosSpineLocal3D(shoulderGrp) : null;
+  const elbowPos = elbowGrp ? jointWorldPosSpineLocal3D(elbowGrp) : null;
+  wristPinLocked3D[side] = {
+    ...pos, ...rot,
+    sx: shoulderPos ? shoulderPos.x : null, sy: shoulderPos ? shoulderPos.y : null, sz: shoulderPos ? shoulderPos.z : null,
+    ex: elbowPos ? elbowPos.x : null, ey: elbowPos ? elbowPos.y : null, ez: elbowPos ? elbowPos.z : null,
+  };
   syncWristPinReadout3D();
 }
 function clearWristPin3D() {
   wristPinLocked3D[facesWristSelected3D] = null;
   syncWristPinReadout3D();
+}
+// ---- Snap Back ------------------------------------------------------------
+// Moves a wrist that has since drifted away from its pin (walked via the
+// gizmo, a different pose, Copy poses, etc.) back to exactly where PIN
+// APPLY froze it — position AND rotation together. Does NOT clear the pin:
+// it stays Pinned afterward, same numbers, so Snap Back can be pressed
+// again any time the wrist wanders off.
+//
+// Position: neither the elbow nor the wrist has a free-standing position of
+// its own — same as dragging either one's gizmo in translate mode (see
+// attachGizmoToSelection3D / onJointGizmoChange3D): reaching a target world
+// point means re-aiming the PARENT joint so the child (a fixed bone-length
+// away) lands there. That's a two-step chain here: first re-aim the
+// SHOULDER so the elbow lands back on its own pinned spot (restoring the
+// arm's actual shape, not just the hand's endpoint), THEN re-aim the ELBOW
+// (now sitting where it should be) so the wrist lands on ITS pinned spot.
+// Skipping the shoulder step would still put the wrist back exactly on
+// target — a pure rotation can't stretch a bone — but the elbow could end
+// up bent differently than when it was pinned, if the shoulder moved in
+// the meantime. Both results are stored as this pose's manual
+// shoulderQuat/elbowQuat overrides, exactly like real gizmo drags leave
+// behind.
+// Rotation: Turn/Bend/Swing are just re-applied as the same sticky
+// hand/wrist-facing overrides mirroring already writes in
+// mirrorArmToOtherSide3D (joint-mirror.js) — clearing any stale
+// wristQuat/handTurnQuat override so those overrides are the one source
+// of truth for the snapped-back wrist, same reasoning as there.
+function pinnedWristWorldPos3D(side) {
+  const pin = wristPinLocked3D[side];
+  if (!pin || !rig3D.spine) return null;
+  rig3D.spine.updateMatrixWorld(true);
+  return rig3D.spine.localToWorld(new THREE.Vector3(pin.x, pin.y, pin.z));
+}
+function pinnedElbowWorldPos3D(side) {
+  const pin = wristPinLocked3D[side];
+  if (!pin || pin.ex == null || !rig3D.spine) return null;
+  rig3D.spine.updateMatrixWorld(true);
+  return rig3D.spine.localToWorld(new THREE.Vector3(pin.ex, pin.ey, pin.ez));
+}
+function snapWristToPin3D(side) {
+  const pin = wristPinLocked3D[side];
+  if (!pin) return;
+  const shoulderGrp = rig3D[side + 'Shoulder'];
+  const elbowGrp = rig3D[side + 'Elbow'];
+  const wristGrp = rig3D[side + 'Wrist'];
+  if (!elbowGrp || !wristGrp) return;
+  // Step 1: put the elbow back where IT was pinned, by re-aiming the
+  // shoulder — same move as dragging the Elbow joint itself. Applied to
+  // the live group immediately (not just stored) so the elbow-aim call
+  // below sees the corrected parent transform, not the stale one.
+  const elbowTargetWorld = pinnedElbowWorldPos3D(side);
+  if (shoulderGrp && elbowTargetWorld) {
+    const qShoulder = aimBoneToWorldPoint3D(shoulderGrp, elbowGrp.position, elbowTargetWorld);
+    jointEditsForPose3D(currentPose3D)[side].shoulderQuat = qShoulder;
+    shoulderGrp.quaternion.copy(qShoulder);
+  }
+  // Step 2: with the elbow now back on its own pinned spot, re-aim the
+  // elbow itself so the wrist (fixed bone-length away) lands on ITS
+  // pinned spot.
+  const wristTargetWorld = pinnedWristWorldPos3D(side);
+  if (!wristTargetWorld) return;
+  const qElbow = aimBoneToWorldPoint3D(elbowGrp, wristGrp.position, wristTargetWorld);
+  jointEditsForPose3D(currentPose3D)[side].elbowQuat = qElbow;
+  wristRotationOverride[side] = clampWristBend(pin.bend);
+  handRotationOverride[side] = clampTurnFree(pin.turn);
+  wristSwingOverride[side] = clampWristSwing(pin.swing);
+  jointEditsForPose3D(currentPose3D)[side].wristQuat = null;
+  jointEditsForPose3D(currentPose3D)[side].handTurnQuat = null;
+  applyPose3D(currentPose3D, { reframe: false });
+  reapplyManualJointEdits3D();
+  groundBody3D(false);
+  if (selectedJoint3D && selectedJoint3D.side === side) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  syncWristPinReadout3D();
+}
+// Button handler — acts on whichever wrist is currently picked in the
+// Left/Right toggle above, same as PIN APPLY/PIN CLEAR.
+function snapWristPin3D() {
+  snapWristToPin3D(facesWristSelected3D);
 }
 // Refreshes the XYZ + Turn/Bend/Swing readouts and Live/Pinned status for
 // whichever wrist is currently selected in the Left/Right toggle just
@@ -216,6 +313,51 @@ function syncWristPinReadout3D() {
   setTxt('wristPinSw', rot ? rot.swing : null);
   const status = document.getElementById('wristPinStatus');
   if (status) status.textContent = locked ? 'Pinned' : 'Live';
+  syncWristPinInfoReadout3D();
+}
+// ---- Debug info popover -----------------------------------------------
+// The (i) button next to the Wrist Pin status: shows the LIVE current
+// spine-local XYZ of the shoulder and elbow for whichever wrist is
+// selected above — nothing to do with the pin data itself, just a window
+// into the rig for checking why Snap Back's shoulder->elbow->wrist chain
+// (see snapWristToPin3D) landed somewhere unexpected. Hidden by default;
+// toggled open/closed by the button, and kept in sync for free by
+// syncWristPinReadout3D above, which every existing pin action (side
+// switch, PIN APPLY/CLEAR, Snap Back, per-frame live tracking, mirroring)
+// already calls.
+let wristPinInfoOpen3D = false;
+function toggleWristPinInfo3D() {
+  wristPinInfoOpen3D = !wristPinInfoOpen3D;
+  const panel = document.getElementById('wristPinInfoPanel');
+  if (panel) panel.style.display = wristPinInfoOpen3D ? '' : 'none';
+  const btn = document.getElementById('wristPinInfoBtn');
+  if (btn) btn.classList.toggle('active', wristPinInfoOpen3D);
+  syncWristPinInfoReadout3D();
+}
+function syncWristPinInfoReadout3D() {
+  if (!wristPinInfoOpen3D) return;
+  const side = facesWristSelected3D;
+  const locked = wristPinLocked3D[side];
+  // Same Pinned/Live split as the XYZ and Turn/Bend/Swing readouts above:
+  // while Pinned, show the FROZEN shoulder/elbow spot from PIN APPLY time
+  // (what Snap Back will actually aim for/restore) — not wherever they
+  // happen to be sitting right now, which is the whole point of checking
+  // this while debugging a Snap Back that landed somewhere unexpected.
+  // While Live (unpinned), track the rig's current position every frame,
+  // same as everything else does unpinned.
+  const shoulderPos = locked
+    ? { x: locked.sx, y: locked.sy, z: locked.sz }
+    : (rig3D && jointWorldPosSpineLocal3D(rig3D[side + 'Shoulder']));
+  const elbowPos = locked
+    ? { x: locked.ex, y: locked.ey, z: locked.ez }
+    : (rig3D && jointWorldPosSpineLocal3D(rig3D[side + 'Elbow']));
+  const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = (v == null) ? '—' : v.toFixed(1); };
+  setTxt('wristPinInfoShoulderX', shoulderPos ? shoulderPos.x : null);
+  setTxt('wristPinInfoShoulderY', shoulderPos ? shoulderPos.y : null);
+  setTxt('wristPinInfoShoulderZ', shoulderPos ? shoulderPos.z : null);
+  setTxt('wristPinInfoElbowX', elbowPos ? elbowPos.x : null);
+  setTxt('wristPinInfoElbowY', elbowPos ? elbowPos.y : null);
+  setTxt('wristPinInfoElbowZ', elbowPos ? elbowPos.z : null);
 }
 // Runs every frame from animate3D (see body-scene.js), but only bothers
 // touching the DOM while the Faces popup is actually open — no point

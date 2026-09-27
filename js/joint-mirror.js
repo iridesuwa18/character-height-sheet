@@ -97,7 +97,8 @@ function mirrorArmAndAttachmentToOtherSide3D(side) {
 // X is the left/right axis in the spine-local frame (see buildArmSide in
 // body-build-pose.js — a side's arm boxes sit at +/-xCm off the spine), so
 // mirroring a pinned position across the body's centerline just negates X
-// and keeps Y/Z. Turn/Bend/Swing are copied unchanged, same reasoning as
+// and keeps Y/Z — for the wrist spot and its shoulder/elbow anchors alike.
+// Turn/Bend/Swing are copied unchanged, same reasoning as
 // mirrorArmToOtherSide3D above: each axis's own sign convention already
 // flips per side inside applyPose3D, so an equal number lands mirrored.
 function mirrorWristPinSpec3D(pin) {
@@ -105,5 +106,7 @@ function mirrorWristPinSpec3D(pin) {
   return {
     x: round2(-pin.x), y: pin.y, z: pin.z,
     turn: pin.turn, bend: pin.bend, swing: pin.swing,
+    sx: pin.sx == null ? null : round2(-pin.sx), sy: pin.sy, sz: pin.sz,
+    ex: pin.ex == null ? null : round2(-pin.ex), ey: pin.ey, ez: pin.ez,
   };
 }
