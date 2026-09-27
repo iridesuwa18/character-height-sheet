@@ -124,6 +124,7 @@ function animate3D() {
   renderer3D.render(scene3D, camera3D);
   updateWristSliderOverlay3D();
   updateFacesDotOverlayFrame3D();
+  updatePuppetLines3D();
 }
 
 // Recursively frees GPU resources for a mesh/group tree before it's discarded.

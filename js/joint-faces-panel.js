@@ -168,7 +168,11 @@ function mirrorFacesWristAttachment3D() {
 // resolves into exactly one stack (see buildFacesDotStacks3D's joint-bridge
 // merge — a hand's thumb is the one exception, its own separate appendage,
 // but an attachment is never placed on it), so the first stack found is used.
-function resolveWristAttachmentPoint3D(att) {
+// The raw world-space point, with no spine-local conversion — split out of
+// resolveWristAttachmentPoint3D below so the puppet-line code (which needs
+// a world point to draw between two world objects, not a spine-local one)
+// can share this same resolution logic instead of duplicating it.
+function resolveWristAttachmentWorldPoint3D(att) {
   if (!att || !meshRecords3D.length) return null;
   const records = meshRecords3D.filter(r => r.group === att.group);
   if (!records.length) return null;
@@ -178,11 +182,15 @@ function resolveWristAttachmentPoint3D(att) {
     const combined = combineFacesOutlineStack3D(pieces);
     const pt = facesDotLocalPosition3D(att.face, combined, att.h, att.v);
     if (!pt || !combined.refFrame) continue;
-    const world = combined.refFrame.localToWorld(pt.clone());
-    if (rig3D.spine) { rig3D.spine.updateMatrixWorld(true); return rig3D.spine.worldToLocal(world.clone()); }
-    return world;
+    return combined.refFrame.localToWorld(pt.clone());
   }
   return null;
+}
+function resolveWristAttachmentPoint3D(att) {
+  const world = resolveWristAttachmentWorldPoint3D(att);
+  if (!world) return null;
+  if (rig3D.spine) { rig3D.spine.updateMatrixWorld(true); return rig3D.spine.worldToLocal(world.clone()); }
+  return world;
 }
 // Updates the "Attached Wrists" summary above the Mesh dropdown — call
 // whenever an attachment changes (Apply/Remove/Mirror) or the popup opens,
@@ -200,6 +208,62 @@ function refreshFacesWristReadouts3D() {
     el.textContent = `${groupLabel} · ${faceLabel} · ${xyz}`;
   });
 }
+// ---- Puppet lines -------------------------------------------------------
+// A persistent neon-blue "string" from a wrist's current joint position to
+// whatever point it's attached to (facesWristAttachment3D above) — unlike
+// the small colored wrist-marker spheres below (only shown while that
+// exact mesh/face happens to be selected in the Faces popup), this is
+// meant to be visible constantly, on both wrists at once, independent of
+// whatever's currently picked in the dropdowns. Lives directly in scene3D
+// (not parented under bodyGroup3D or any rig joint), since it needs to
+// stretch between two different moving things every frame — the wrist
+// joint's own world position and the attachment point's world position —
+// so it's simplest to just recompute both endpoints in world space each
+// frame rather than trying to parent it under either one. Being outside
+// bodyGroup3D also means a pose rebuild's mesh disposal (buildBody3D)
+// never touches it, matching how facesWristAttachment3D itself survives
+// a rebuild.
+const PUPPET_LINE_NAME_PREFIX = '__puppetLine:';
+let puppetLineObjs3D = { left: null, right: null };
+function ensurePuppetLine3D(side) {
+  if (puppetLineObjs3D[side]) return puppetLineObjs3D[side];
+  const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+  const mat = new THREE.LineBasicMaterial({ color: FACES_DOT_COLOR, transparent: true, opacity: 0.9, depthWrite: false, depthTest: false });
+  const line = new THREE.Line(geo, mat);
+  line.name = PUPPET_LINE_NAME_PREFIX + side;
+  line.renderOrder = 5;
+  line.frustumCulled = false;
+  line.visible = false;
+  scene3D.add(line);
+  puppetLineObjs3D[side] = line;
+  return line;
+}
+// Runs every frame from animate3D (see body-scene.js): for each wrist that
+// currently has an attachment, re-resolves both the wrist joint's and the
+// attachment point's current world positions and re-stretches that wrist's
+// line between them; a wrist with no attachment (or if the rig/meshes
+// aren't around to resolve against) just gets its line hidden.
+function updatePuppetLines3D() {
+  ['left', 'right'].forEach(side => {
+    const att = facesWristAttachment3D[side];
+    const wristGroup = rig3D && rig3D[side + 'Wrist'];
+    const targetWorld = att ? resolveWristAttachmentWorldPoint3D(att) : null;
+    if (!att || !wristGroup || !targetWorld) {
+      if (puppetLineObjs3D[side]) puppetLineObjs3D[side].visible = false;
+      return;
+    }
+    const wristWorld = new THREE.Vector3();
+    wristGroup.getWorldPosition(wristWorld);
+    const line = ensurePuppetLine3D(side);
+    const pos = line.geometry.attributes.position;
+    pos.setXYZ(0, wristWorld.x, wristWorld.y, wristWorld.z);
+    pos.setXYZ(1, targetWorld.x, targetWorld.y, targetWorld.z);
+    pos.needsUpdate = true;
+    line.geometry.computeBoundingSphere();
+    line.visible = true;
+  });
+}
+
 // Small colored marker (one color per wrist, distinct from the neon-blue
 // editing dot) at an attached wrist's stored point — same owner-piece and
 // local-space logic as the editing dot's own addFacesDotOverlayAtPosition3D,
