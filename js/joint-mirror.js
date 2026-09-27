@@ -51,7 +51,7 @@ function mirrorArmToOtherSide3D(side) {
 function mirrorSelectedJoint3D() {
   if (!selectedJoint3D) return;
   const { side } = selectedJoint3D;
-  const { other } = mirrorArmToOtherSide3D(side);
+  const { other } = mirrorArmAndAttachmentToOtherSide3D(side);
   if (selectedJoint3D && (selectedJoint3D.side === other)) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
   const status = document.getElementById('jeMirrorStatus');
   if (status) {
@@ -60,4 +60,27 @@ function mirrorSelectedJoint3D() {
     clearTimeout(mirrorSelectedJoint3D._t);
     mirrorSelectedJoint3D._t = setTimeout(() => { status.style.opacity = '0'; }, 1600);
   }
+}
+// Mirrors BOTH an arm's live pose (mirrorArmToOtherSide3D, above) AND —
+// if that side currently has one — its stored wrist face-attachment (see
+// facesWristAttachment3D in joint-faces-panel.js), reflected onto the
+// opposite side, in one call. This is what both the 3D editor's own ⇄
+// Mirror button (mirrorSelectedJoint3D above) and the Faces popup's own
+// "⇄ Mirror L→R" button (mirrorFacesWristAttachment3D) call now, so either
+// one mirrors the pose AND the attachment together instead of each only
+// doing its own half and leaving the other side's arm/attachment stale.
+function mirrorArmAndAttachmentToOtherSide3D(side) {
+  const { other } = mirrorArmToOtherSide3D(side);
+  const src = facesWristAttachment3D[side];
+  if (src) {
+    facesWristAttachment3D[other] = mirrorWristAttachmentSpec3D(src);
+    // Re-lock (or unlock) the currently-edited dot exactly like Apply/Mirror
+    // already do elsewhere — true if the dot on screen right now happens to
+    // be sitting at either wrist's (possibly just-changed) attachment spot.
+    facesDotLocked3D = facesWristMatchesCurrentDot3D('left') || facesWristMatchesCurrentDot3D('right');
+    syncFacesDotInputs3D();
+    refreshFacesWristReadouts3D();
+    applyFacesHighlight3D();
+  }
+  return { other };
 }

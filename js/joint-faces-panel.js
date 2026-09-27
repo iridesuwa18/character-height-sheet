@@ -96,6 +96,44 @@ const FACES_GROUP_LABELS_3D = {
 };
 const FACES_FACE_LABELS_3D = { top: 'Top', bottom: 'Bottom', left: 'Left', right: 'Right', front: 'Front', back: 'Back' };
 
+// Clicking a wrist's row in the "Attached Wrists" summary (see the index.html
+// markup right above the Mesh dropdown) loads that exact stored attachment
+// back into the Mesh/Face dropdowns and the Dot controls below — the
+// reverse of Apply — so its spot lights up on the model again (mesh tint,
+// face tint, editing dot, AND that wrist's own colored marker sphere, via
+// applyFacesHighlight3D below) without having to remember and re-pick the
+// mesh/face/H/V by hand. Also switches the Wrist Attachments Left/Right
+// selector to match, since that's the wrist whose point this now is. Since
+// this is exactly an already-stored attachment's own spot, it comes up
+// locked (facesDotLocked3D), same as right after Apply — Remove is the way
+// back to an editable dot, same as everywhere else.
+function loadFacesWristAttachmentForEdit3D(side) {
+  const att = facesWristAttachment3D[side];
+  if (!att) return;
+  facesWristSelected3D = side;
+  setFacesWristSelect3D(side);
+  facesSelectedMeshGroup3D = att.group;
+  facesSelectedFace3D = att.face;
+  facesDotEnabled3D = true;
+  facesDotH3D = att.h;
+  facesDotV3D = att.v;
+  facesDotLocked3D = true;
+  const meshSel = document.getElementById('facesMeshSelect');
+  if (meshSel) meshSel.value = att.group;
+  const faceSel = document.getElementById('facesFaceSelect');
+  if (faceSel) { faceSel.value = att.face; faceSel.disabled = false; }
+  const section = document.getElementById('facesDotSection');
+  if (section) section.style.display = '';
+  const offBtn = document.getElementById('facesDotOffBtn'), onBtn = document.getElementById('facesDotOnBtn');
+  if (offBtn) offBtn.classList.remove('active');
+  if (onBtn) onBtn.classList.add('active');
+  const controls = document.getElementById('facesDotControls');
+  if (controls) controls.style.display = '';
+  syncFacesDotInputs3D();
+  refreshFacesWristReadouts3D();
+  applyFacesHighlight3D();
+}
+
 function setFacesWristSelect3D(side) {
   facesWristSelected3D = side;
   const lBtn = document.getElementById('facesWristSelL'), rBtn = document.getElementById('facesWristSelR');
@@ -158,11 +196,10 @@ function mirrorWristAttachmentSpec3D(att) {
 function mirrorFacesWristAttachment3D() {
   const src = facesWristAttachment3D.left;
   if (!src) return;
-  facesWristAttachment3D.right = mirrorWristAttachmentSpec3D(src);
-  facesDotLocked3D = facesWristMatchesCurrentDot3D('left') || facesWristMatchesCurrentDot3D('right');
-  syncFacesDotInputs3D();
-  refreshFacesWristReadouts3D();
-  applyFacesHighlight3D();
+  // Mirrors the Left arm's live pose to Right AND the attachment itself,
+  // in one step — see mirrorArmAndAttachmentToOtherSide3D in
+  // joint-mirror.js for why both now happen together.
+  mirrorArmAndAttachmentToOtherSide3D('left');
 }
 
 // Resolves one attachment's stored (group,face,h,v) into a real spine-local
