@@ -32,7 +32,7 @@
         "z": 0
       },
       "rightElbow": {
-        "x": 18.71,
+        "x": 18.72,
         "y": 13.19,
         "z": 0
       },
@@ -43,7 +43,7 @@
       },
       "rightHandTurn": {
         "x": 7.78,
-        "y": -19.34,
+        "y": -19.33,
         "z": 0
       },
       "leftHip": {
@@ -102,16 +102,21 @@
           "shoulderQuat": [
             0,
             0,
-            0.0688,
+            0.0689,
             0.9976
           ],
           "elbowQuat": [
             0,
             0,
-            -0.0849,
+            -0.0851,
             0.9964
           ],
-          "wristQuat": null,
+          "wristQuat": [
+            0,
+            0,
+            -0.6033,
+            0.7975
+          ],
           "handTurnQuat": null
         }
       }
@@ -124,11 +129,11 @@
     },
     "wristRotationOverride": {
       "left": null,
-      "right": 0
+      "right": null
     },
     "wristSwingOverride": {
       "left": null,
-      "right": 0
+      "right": null
     },
     "elbowBendOverride": {
       "left": null,
@@ -191,6 +196,20 @@
     "stand-hands-hips": {
       "left": null,
       "right": null
+    }
+  },
+  "_wristAttachments": {
+    "left": {
+      "group": "leftLeg",
+      "face": "left",
+      "h": 50,
+      "v": 14
+    },
+    "right": {
+      "group": "rightLeg",
+      "face": "right",
+      "h": 50,
+      "v": 14
     }
   }
 }
