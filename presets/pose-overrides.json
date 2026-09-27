@@ -8,27 +8,27 @@
       },
       "leftShoulder": {
         "x": -10.7,
-        "y": 52.8,
+        "y": 52.79,
         "z": 0
       },
       "leftElbow": {
-        "x": -18.71,
+        "x": -18.72,
         "y": 13.19,
         "z": 0
       },
       "leftWrist": {
-        "x": -17.74,
+        "x": -17.75,
         "y": -16.86,
         "z": 0
       },
       "leftHandTurn": {
-        "x": -17.41,
-        "y": -27.11,
+        "x": -17.42,
+        "y": -27.12,
         "z": 0
       },
       "rightShoulder": {
         "x": 10.7,
-        "y": 52.8,
+        "y": 52.79,
         "z": 0
       },
       "rightElbow": {
@@ -42,8 +42,8 @@
         "z": 0
       },
       "rightHandTurn": {
-        "x": 17.41,
-        "y": -27.11,
+        "x": 7.78,
+        "y": -19.34,
         "z": 0
       },
       "leftHip": {
@@ -135,6 +135,60 @@
       "right": null
     },
     "elbowLiftOverride": {
+      "left": null,
+      "right": null
+    }
+  },
+  "_wristPins": {
+    "stand-relaxed": {
+      "left": {
+        "x": -17.75,
+        "y": -16.86,
+        "z": 0,
+        "turn": -86,
+        "bend": 0,
+        "swing": 0,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -18.72,
+        "ey": 13.19,
+        "ez": 0,
+        "dox": -15.707323081135751,
+        "doy": -17.3670043328476,
+        "doz": 0,
+        "r": 2.104657309014221,
+        "upperLen": 40.403965151950125,
+        "foreLen": 30.065651498013473,
+        "torsoHalfWidth": 10.699814289689066
+      },
+      "right": {
+        "x": 17.75,
+        "y": -16.86,
+        "z": 0,
+        "turn": -86,
+        "bend": 0,
+        "swing": 0,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 18.72,
+        "ey": 13.19,
+        "ez": 0,
+        "dox": 15.71,
+        "doy": -17.3670043328476,
+        "doz": 0,
+        "r": 2.104657309014221,
+        "upperLen": 40.403965151950125,
+        "foreLen": 30.065651498013473,
+        "torsoHalfWidth": 10.699814289689066
+      }
+    },
+    "stand-arms-out": {
+      "left": null,
+      "right": null
+    },
+    "stand-hands-hips": {
       "left": null,
       "right": null
     }
