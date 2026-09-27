@@ -87,8 +87,13 @@ function facesMeshOutline3D(geo) {
 function addFacesMeshOverlay3D(mesh, outline) {
   removeFacesOverlay3D(mesh, FACES_MESH_TINT_NAME);
   const o = outline;
-  const marginXY = Math.max(o.maxY - o.minY, o.top.maxX - o.top.minX, o.bottom.maxX - o.bottom.minX) * 0.015 + 0.03;
-  const marginZ = (o.maxZ - o.minZ) * 0.06 + 0.03;
+  // Depth-testing is off on this material (see below), so there's no more
+  // z-fighting reason to puff the overlay out past the real surface — the
+  // margin here is now just a hairline (a fixed, tiny constant) rather than
+  // a size-scaled clearance, so it hugs the mesh instead of visibly floating
+  // outside it.
+  const marginXY = 0.002;
+  const marginZ = 0.002;
   const shape = new THREE.Shape();
   shape.moveTo(o.bottom.minX - marginXY, o.minY - marginXY);
   shape.lineTo(o.bottom.maxX + marginXY, o.minY - marginXY);
@@ -98,9 +103,13 @@ function addFacesMeshOverlay3D(mesh, outline) {
   const depth = (o.maxZ - o.minZ) + marginZ * 2;
   const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 1 });
   geo.translate(0, 0, o.minZ - marginZ); // shape's X/Y are already mesh-local; only Z needs placing
-  const mat = new THREE.MeshBasicMaterial({ color: FACES_MESH_COLOR, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.DoubleSide });
+  // depthTest: false means this always draws on top of the real mesh
+  // underneath it, so it no longer needs a real-world offset to stay
+  // visible — that's what let the margin above shrink to a hairline.
+  const mat = new THREE.MeshBasicMaterial({ color: FACES_MESH_COLOR, transparent: true, opacity: 0.55, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   const overlay = new THREE.Mesh(geo, mat);
   overlay.name = FACES_MESH_TINT_NAME;
+  overlay.renderOrder = 1;
   mesh.add(overlay);
 }
 
@@ -117,16 +126,18 @@ function addFacesOutlineOverlay3D(mesh) {
   removeFacesOverlay3D(mesh, FACES_OUTLINE_CORE_NAME);
   removeFacesOverlay3D(mesh, FACES_OUTLINE_HALO_NAME);
   const coreGeo = new THREE.EdgesGeometry(mesh.geometry);
-  const coreMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.95, depthWrite: false });
+  const coreMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false });
   const core = new THREE.LineSegments(coreGeo, coreMat);
   core.name = FACES_OUTLINE_CORE_NAME;
+  core.renderOrder = 2;
   mesh.add(core);
 
   const haloGeo = new THREE.EdgesGeometry(mesh.geometry);
-  const haloMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending });
+  const haloMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.35, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
   const halo = new THREE.LineSegments(haloGeo, haloMat);
   halo.name = FACES_OUTLINE_HALO_NAME;
   halo.scale.multiplyScalar(1.03);
+  halo.renderOrder = 2;
   mesh.add(halo);
 }
 
@@ -150,8 +161,13 @@ function addFacesFaceOverlay3D(mesh, faceName, outline) {
   removeFacesOverlay3D(mesh, FACES_FACE_TINT_NAME);
   if (!faceName) return;
   const o = outline;
-  const eps = Math.max(o.maxY - o.minY, o.maxZ - o.minZ, o.bottom.maxX - o.bottom.minX, o.top.maxX - o.top.minX) * 0.02 + 0.05;
-  const mat = () => new THREE.MeshBasicMaterial({ color: FACES_FACE_COLOR, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+  // Same reasoning as the mesh-tint overlay above: depthTest is off on this
+  // material, so it no longer needs a size-scaled clearance to avoid
+  // z-fighting with the real face underneath it — a fixed hairline is
+  // enough, which is what keeps this sitting flush on the actual surface
+  // instead of visibly floating off it.
+  const eps = 0.002;
+  const mat = () => new THREE.MeshBasicMaterial({ color: FACES_FACE_COLOR, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
   let overlay;
 
   if (faceName === 'front' || faceName === 'back') {
@@ -197,6 +213,7 @@ function addFacesFaceOverlay3D(mesh, faceName, outline) {
     return;
   }
   overlay.name = FACES_FACE_TINT_NAME;
+  overlay.renderOrder = 3;
   mesh.add(overlay);
 }
 
