@@ -381,6 +381,26 @@ function enforceWristPinConstraints3D(side) {
   elbowGrp.quaternion.copy(chain.qElbow);
   if (chain.qWristAim) wristGrp.quaternion.copy(chain.qWristAim);
 }
+// Runs enforceWristPinConstraints3D for both sides several times back-to-
+// back. A single pass fully solves the shoulder/elbow re-aim (that part is
+// derived fresh from frozen positions every time — no dependency on where
+// the arm currently is), but the FINAL wrist-to-dot aim inside
+// computeWristPinAdjustedChain3D is a capped slerp toward that target
+// (WRIST_PIN_AIM_MAX_DEG per call) starting from wherever the wrist
+// currently sits — so a wrist starting far from its true target (a freshly
+// mirrored pin, a reload stamping in a stale/incorrect saved wristQuat
+// before the pin even exists yet, etc.) can fall well short after just one
+// pass, which is exactly what an inward-twisted wrist after Snap Back or a
+// reload turned out to be. Call this instead of a single
+// enforceWristPinConstraints3D('left')/('right') pair anywhere a pin has
+// just been loaded or mirrored in, so it's already converged before the
+// user (or the next render) ever looks at it.
+function enforceWristPinConstraintsConverge3D() {
+  for (let i = 0; i < 4; i++) {
+    enforceWristPinConstraints3D('left');
+    enforceWristPinConstraints3D('right');
+  }
+}
 // ---- Snap Back ------------------------------------------------------------
 // Moves a wrist that has since drifted away from its pin (walked via the
 // gizmo, a different pose, Copy poses, etc.) back to exactly where PIN
@@ -602,6 +622,21 @@ function removeFacesWristAttachment3D() {
   facesWristAttachment3D[side] = null;
   // The point stays locked if the OTHER wrist still depends on this exact spot.
   facesDotLocked3D = facesWristMatchesCurrentDot3D(side === 'left' ? 'right' : 'left');
+  // If this side is currently pinned AND leashed to the attachment just
+  // removed, degrade that pin back to a plain position+rotation pin (r/dox/
+  // doy/doz/upperLen/foreLen = null) instead of leaving it a "phantom
+  // leash" — otherwise computeWristPinAdjustedChain3D still sees pin.r !=
+  // null and tries to track a dot that facesWristAttachment3D can no longer
+  // resolve, silently freezing dotDelta at {0,0,0} (no tracking) AND
+  // skipping the final wrist-aim correction (it requires a live dot) —
+  // exactly the same half-broken state a reload used to leave an attached
+  // pin in before _wristAttachments was persisted (see hand-pins-github.js).
+  const pin = wristPinsForPose3D(currentPose3D)[side];
+  if (pin && pin.r != null) {
+    pin.r = null; pin.dox = null; pin.doy = null; pin.doz = null;
+    pin.upperLen = null; pin.foreLen = null;
+    syncWristPinReadout3D();
+  }
   syncFacesDotInputs3D();
   refreshFacesWristReadouts3D();
   applyFacesHighlight3D();

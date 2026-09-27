@@ -180,9 +180,8 @@ async function pullPoseOverridesFromGitHub() {
     }
     if (all._wristPins && typeof applyWristPinsState3D === 'function') {
       applyWristPinsState3D(all._wristPins);
-      if (typeof enforceWristPinConstraints3D === 'function' && sceneInited3D) {
-        enforceWristPinConstraints3D('left');
-        enforceWristPinConstraints3D('right');
+      if (typeof enforceWristPinConstraintsConverge3D === 'function' && sceneInited3D) {
+        enforceWristPinConstraintsConverge3D();
         groundBody3D(false);
       }
     }

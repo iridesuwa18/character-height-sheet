@@ -91,6 +91,22 @@ function mirrorArmAndAttachmentToOtherSide3D(side) {
   if (pin) {
     wristPinsForPose3D(currentPose3D)[other] = mirrorWristPinSpec3D(pin);
     syncWristPinReadout3D();
+    // Settle `other` into its new leash immediately, the same way a page
+    // reload does (see applyWristPinsState3D's callers in
+    // joint-github-sync.js / hand-pins-github.js, which always follow a
+    // pin restore with the same converge helper). Without this, `other`'s
+    // rig is still sitting wherever mirrorArmToOtherSide3D's naive Bend/
+    // Turn/Swing copy left it — which, for a dot off at a leg or the far
+    // side of the body, can be many tens of degrees from the real
+    // reach-clamped target, and Snap Back's own capped wrist-aim slerp
+    // (see enforceWristPinConstraintsConverge3D in joint-faces-panel.js)
+    // can fall well short starting that far off — exactly what made a
+    // freshly-mirrored wrist rotate to a wrong (e.g. inward-twisted) spot
+    // the first time Snap Back was pressed.
+    if (typeof enforceWristPinConstraintsConverge3D === 'function') {
+      enforceWristPinConstraintsConverge3D();
+      groundBody3D(false);
+    }
   }
   return { other };
 }

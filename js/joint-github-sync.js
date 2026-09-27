@@ -209,10 +209,14 @@ async function quickLoadJointsFromGitHub3D() {
       // Re-enforce for the pose now on screen — same reasoning as the
       // applySavedJointEdits3D hook: a freshly-loaded pin needs its leash
       // applied immediately, not just sitting in wristPinLocked3D waiting
-      // for the next unrelated applyPose3D call.
-      if (typeof enforceWristPinConstraints3D === 'function') {
-        enforceWristPinConstraints3D('left');
-        enforceWristPinConstraints3D('right');
+      // for the next unrelated applyPose3D call. Converge (not a single
+      // pass): _jointEdits gets stamped onto the rig before this pin even
+      // exists (see the ordering note above), so the wrist can start this
+      // enforcement from a stale/incorrect quaternion — same capped-slerp
+      // shortfall risk as the mirror path, see
+      // enforceWristPinConstraintsConverge3D in joint-faces-panel.js.
+      if (typeof enforceWristPinConstraintsConverge3D === 'function') {
+        enforceWristPinConstraintsConverge3D();
       }
       groundBody3D(false);
     }
@@ -245,9 +249,8 @@ function applySavedJointEdits3D() {
   // the fresh reach-clamp applyPose3D just computed, snapping a leashed
   // wrist back out of place on every rebuild (e.g. right after a
   // shoulder/waist-width Generate).
-  if (typeof enforceWristPinConstraints3D === 'function') {
-    enforceWristPinConstraints3D('left');
-    enforceWristPinConstraints3D('right');
+  if (typeof enforceWristPinConstraintsConverge3D === 'function') {
+    enforceWristPinConstraintsConverge3D();
   }
   groundBody3D(false);
   if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
@@ -271,9 +274,8 @@ async function autoLoadJointsFromGitHub3D() {
     if (all[WRIST_ATTACHMENTS_KEY]) applyWristAttachmentsState3D(all[WRIST_ATTACHMENTS_KEY]);
     if (all[WRIST_PINS_KEY]) {
       applyWristPinsState3D(all[WRIST_PINS_KEY]);
-      if (typeof enforceWristPinConstraints3D === 'function') {
-        enforceWristPinConstraints3D('left');
-        enforceWristPinConstraints3D('right');
+      if (typeof enforceWristPinConstraintsConverge3D === 'function') {
+        enforceWristPinConstraintsConverge3D();
       }
       groundBody3D(false);
     }
