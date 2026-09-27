@@ -278,16 +278,24 @@ function cancelJointEditorMode3D() {
   }
   closeJointEditorModeUI3D();
 }
-// ---- Copy elbow + wrist from another pose ----
-// Lets you pick any other pose from a dropdown and pull ONLY its elbow and
-// wrist joints (bend/twist and wrist hinge/turn) onto the current pose —
-// legs, spine and shoulders are never touched. It works by briefly rendering
-// the source pose with no manual edits/overrides, reading the elbow and wrist
-// groups' resulting local rotations (so IK-driven poses copy correctly too),
-// then restoring the current pose and stamping those rotations in as manual
-// joint edits. Shoulders are only copied if "Match elbow position" is
-// ticked. That makes it behave like any other editor drag: Cancel
-// reverts it, Apply keeps it, and ⬆ Save persists it.
+// ---- Copy wrists (shoulder+elbow+wrist+hand-turn, and any wrist pin) from
+// another pose ----
+// Lets you pick any other pose from a dropdown and clone one or both arms
+// from it onto the current pose — legs and spine are never touched. It
+// works by briefly rendering the source pose with no manual edits/overrides,
+// reading the shoulder/elbow/wrist/hand-turn groups' resulting local
+// rotations (so IK-driven poses copy correctly too), then restoring the
+// current pose and stamping those rotations in as manual joint edits.
+// Shoulder is always included now — no "match elbow position" toggle — since
+// a pinned side's shoulder/elbow position comes right back for free the
+// moment its wrist pin (see below) is cloned too, and an unpinned side just
+// needs the shoulder quat to actually land in the source's arm position.
+// The source pose's wrist-pin state (pinned+leashed, pinned+no-leash, or
+// unpinned) is cloned right alongside the quats, so a pinned arm actually
+// reproduces on-screen instead of getting immediately overridden by
+// whatever pin the CURRENT pose happened to have on that side. That makes
+// it behave like any other editor drag: Cancel reverts it, Apply keeps it,
+// and ⬆ Save persists it — it never saves anything by itself.
 function populateCopyPoseSelect3D() {
   const sel = document.getElementById('jeCopyPoseSelect');
   if (!sel || typeof POSES3D === 'undefined') return;
@@ -354,31 +362,62 @@ function copyElbowWristFromPose3D() {
   const sides = (sideSel && sideSel.value === 'left') ? ['left']
               : (sideSel && sideSel.value === 'right') ? ['right'] : ['left', 'right'];
   const src = readPoseElbowWristQuats3D(sel.value);
-  const matchElbowPos = !!(document.getElementById('jeCopyShoulderChk') || {}).checked;
+  // Read-only peek at the source pose's wrist pins (create=false — a pose
+  // that's never had a pin touched shouldn't get a spurious empty entry
+  // created in wristPinLocked3D just from being browsed in this dropdown).
+  const srcPins = (typeof wristPinsForPose3D === 'function') ? wristPinsForPose3D(sel.value, false) : { left: null, right: null };
+  let anyPinned = false;
   sides.forEach(side => {
-    // Optional: also copy the shoulder's aim so the elbow lands in the same
-    // place as in the source pose (elbow position comes from the shoulder).
+    // Exact clone of that side's whole "wrist" — shoulder/elbow/wrist/
+    // hand-turn rotation AND whatever wrist-pin state the source pose has
+    // (leashed, plain position+rotation, or unpinned), always together. No
+    // separate "match elbow position" step needed anymore: a pinned side's
+    // on-screen shoulder/elbow is really driven by the pin's own frozen
+    // sx/sy/sz/ex/ey/ez (see enforceWristPinConstraints3D), which rides
+    // along for free the moment the pin itself is cloned below; for an
+    // unpinned side the copied shoulderQuat/elbowQuat here is what actually
+    // reproduces the source's arm position.
     const je = jointEditsForPose3D(currentPose3D);
-    if (matchElbowPos && src[side].shoulderQuat) je[side].shoulderQuat = src[side].shoulderQuat;
+    if (src[side].shoulderQuat) je[side].shoulderQuat = src[side].shoulderQuat;
     if (src[side].elbowQuat) je[side].elbowQuat = src[side].elbowQuat;
     if (src[side].wristQuat) je[side].wristQuat = src[side].wristQuat;
     if (src[side].handTurnQuat) je[side].handTurnQuat = src[side].handTurnQuat;
+
+    // Clone (not alias) the pin itself onto the current pose — including
+    // clearing it to null when the source side has no pin, so "Copy"
+    // always leaves this side in exactly the pinned/unpinned state the
+    // source pose was in, rather than only ever adding a pin and never
+    // removing one.
+    if (typeof wristPinsForPose3D === 'function') {
+      const srcPin = srcPins[side];
+      wristPinsForPose3D(currentPose3D)[side] = srcPin ? { ...srcPin } : null;
+      if (srcPin && srcPin.r != null) anyPinned = true;
+    }
   });
   reapplyManualJointEdits3D();
+  // A freshly-copied leash needs its shoulder/elbow/wrist re-derived from
+  // its own frozen numbers right away — same reasoning as a reload or a
+  // mirror (see enforceWristPinConstraintsConverge3D in
+  // joint-faces-panel.js) — rather than waiting for some unrelated event.
+  if (anyPinned && typeof enforceWristPinConstraintsConverge3D === 'function') {
+    enforceWristPinConstraintsConverge3D();
+  }
   groundBody3D(false);
+  if (typeof syncWristPinReadout3D === 'function') syncWristPinReadout3D();
   if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
   // Feedback: log it (drives the chip under the top bars), close the pop-up
-  // so the result is visible, and flash a short confirmation.
+  // so the result is visible, and flash a short confirmation. This never
+  // saves anything on its own — same as before, it just stamps the copy in
+  // as manual edits (+ pin state) that Cancel reverts and ⬆ Save persists.
   const srcLabel = POSES3D[sel.value].label || sel.value;
   const sideWord = sides.length === 2 ? 'both arms' : (sides[0] === 'left' ? 'left arm' : 'right arm');
-  const parts = ['elbow', 'wrist'];
-  if (matchElbowPos) parts.push('shoulder');
-  jointEditorCopyLog3D.push({ label: srcLabel, side: sideWord, parts: parts.join(', ') });
+  const partsLabel = 'shoulder, elbow, wrist' + (anyPinned ? ' + pin' : '');
+  jointEditorCopyLog3D.push({ label: srcLabel, side: sideWord, parts: partsLabel });
   updateCopyBadge3D();
   closeCopyPopup3D();
   const status = document.getElementById('jeMirrorStatus');
   if (status) {
-    status.textContent = `Copied ${parts.join(' + ')} from "${srcLabel}" (${sideWord})`;
+    status.textContent = `Copied ${sideWord} from "${srcLabel}"` + (anyPinned ? ' (incl. wrist pin)' : '');
     status.style.opacity = '1';
     clearTimeout(mirrorSelectedJoint3D._t);
     clearTimeout(copyElbowWristFromPose3D._t);

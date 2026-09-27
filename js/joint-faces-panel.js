@@ -163,8 +163,11 @@ function setFacesWristSelect3D(side) {
 // manualJointEdits3D (which uses the exact same per-pose-keying pattern —
 // see jointEditsForPose3D).
 let wristPinLocked3D = {}; // { [poseName]: { left: {...}|null, right: {...}|null } }
-function wristPinsForPose3D(poseName) {
-  if (!wristPinLocked3D[poseName]) wristPinLocked3D[poseName] = { left: null, right: null };
+function wristPinsForPose3D(poseName, create = true) {
+  if (!wristPinLocked3D[poseName]) {
+    if (!create) return { left: null, right: null }; // read-only peek, e.g. Copy Poses reading a source pose it shouldn't create an entry for
+    wristPinLocked3D[poseName] = { left: null, right: null };
+  }
   return wristPinLocked3D[poseName];
 }
 
