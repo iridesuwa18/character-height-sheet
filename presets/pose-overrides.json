@@ -7,43 +7,43 @@
         "z": 0
       },
       "leftShoulder": {
-        "x": -15.7,
+        "x": -10.7,
         "y": 52.79,
         "z": 0
       },
       "leftElbow": {
-        "x": -23.45,
+        "x": -18.45,
         "y": 13.13,
         "z": 0
       },
       "leftWrist": {
-        "x": -18.58,
-        "y": -16.53,
+        "x": -18.51,
+        "y": -16.93,
         "z": 0
       },
       "leftHandTurn": {
-        "x": -17.61,
-        "y": -26.75,
+        "x": -18.53,
+        "y": -27.2,
         "z": 0
       },
       "rightShoulder": {
-        "x": 15.7,
+        "x": 10.7,
         "y": 52.79,
         "z": 0
       },
       "rightElbow": {
-        "x": 23.45,
+        "x": 18.45,
         "y": 13.13,
         "z": 0
       },
       "rightWrist": {
-        "x": 18.57,
-        "y": -16.53,
+        "x": 18.5,
+        "y": -16.93,
         "z": 0
       },
       "rightHandTurn": {
-        "x": 17.6,
-        "y": -26.75,
+        "x": 18.52,
+        "y": -27.2,
         "z": 0
       },
       "leftHip": {
@@ -186,17 +186,19 @@
     }
   },
   "_wristAttachments": {
-    "left": {
-      "group": "leftLeg",
-      "face": "left",
-      "h": 50,
-      "v": 50
-    },
-    "right": {
-      "group": "rightLeg",
-      "face": "right",
-      "h": 50,
-      "v": 50
+    "stand-relaxed": {
+      "left": {
+        "group": "leftLeg",
+        "face": "left",
+        "h": 50,
+        "v": 50
+      },
+      "right": {
+        "group": "rightLeg",
+        "face": "right",
+        "h": 50,
+        "v": 50
+      }
     }
   }
 }
