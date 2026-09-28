@@ -323,24 +323,23 @@ function populateCopyPoseSelect3D() {
   else sel.value = '';
 }
 function readPoseElbowWristQuats3D(poseKey) {
-  // Render the source pose "clean" — no manual edits, no hand/wrist-facing or
-  // elbow overrides — read the joint rotations, then put everything back.
+  // Render the source pose exactly the way it looks when you click it — its
+  // own saved/dragged joint edits AND the Hand/Wrist Facing overrides
+  // (Bend/Turn/Swing, elbow) that are showing — read the joint rotations,
+  // then put everything back. The overrides used to be wiped for this read,
+  // which is why a wrist whose rotation came from the Hand/Wrist panel (or
+  // from a Mirror, which writes those same overrides) copied over as the
+  // pose's plain un-rotated preset wrist.
   const savedPose = currentPose3D;
   const savedManual = cloneManualJointEdits3D(manualJointEdits3D);
-  const savedOv = [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride, wristSwingOverride];
   const out = { left: {}, right: {} };
   try {
-    // Keep the SOURCE pose's own saved/dragged joint edits (its wrist
-    // rotations live there) — wiping them made Copy pull only the pose's
-    // raw preset numbers and drop every wrist rotation edited on it.
+    // Only the SOURCE pose's own joint edits should apply to this read.
     manualJointEdits3D = savedManual[poseKey] ? { [poseKey]: cloneManualJointEdits3D({ [poseKey]: savedManual[poseKey] })[poseKey] } : {};
-    handRotationOverride = { left: null, right: null };
-    wristRotationOverride = { left: null, right: null };
-    wristSwingOverride = { left: null, right: null };
-    elbowBendOverride = { left: null, right: null };
-    elbowLiftOverride = { left: null, right: null };
-    wristSwingOverride = { left: null, right: null };
     applyPose3D(poseKey, { reframe: false });
+    // Fully settle any leash-pinned wrist on the source (its hand-aim is a
+    // capped step per pass) so we copy where it really ends up.
+    if (typeof enforceWristPinConstraintsConverge3D === 'function') enforceWristPinConstraintsConverge3D();
     ['left', 'right'].forEach(side => {
       const sh = rig3D[side + 'Shoulder'], e = rig3D[side + 'Elbow'], w = rig3D[side + 'Wrist'], t = rig3D[side + 'HandTurn'];
       out[side].shoulderQuat = sh ? sh.quaternion.clone() : null;
@@ -350,7 +349,6 @@ function readPoseElbowWristQuats3D(poseKey) {
     });
   } finally {
     manualJointEdits3D = savedManual;
-    [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride, wristSwingOverride] = savedOv;
     applyPose3D(savedPose, { reframe: false });
   }
   return out;
