@@ -76,7 +76,37 @@ let facesDotLocked3D = false;
 // second. Both wrists CAN share the exact same point, though (Apply for
 // Left, then switch the selector to Right and Apply again at the same
 // still-locked spot).
-let facesWristAttachment3D = { left: null, right: null }; // each: {group, face, h, v} | null
+// Stored PER POSE (poseName -> {left,right}), same keying as wristPinLocked3D
+// / manualJointEdits3D, so an attachment made while posing "wave" never
+// leaks into any other pose. facesWristAttachment3D below is a thin
+// accessor over that store for whatever pose is currently showing, so every
+// existing facesWristAttachment3D.left / [side] read or write elsewhere
+// keeps working unchanged but now lands on the current pose only.
+let facesWristAttachmentByPose3D = {}; // { [poseName]: { left: {group,face,h,v}|null, right: ... } }
+function wristAttachmentsForPose3D(poseName, create = true) {
+  if (!facesWristAttachmentByPose3D[poseName]) {
+    if (!create) return { left: null, right: null }; // read-only peek (Copy Poses reading a source pose, saving, etc.)
+    facesWristAttachmentByPose3D[poseName] = { left: null, right: null };
+  }
+  return facesWristAttachmentByPose3D[poseName];
+}
+const facesWristAttachment3D = {
+  get left()  { return wristAttachmentsForPose3D(currentPose3D, false).left; },
+  set left(v) { wristAttachmentsForPose3D(currentPose3D).left = v; },
+  get right()  { return wristAttachmentsForPose3D(currentPose3D, false).right; },
+  set right(v) { wristAttachmentsForPose3D(currentPose3D).right = v; },
+};
+// Call after the showing pose changes: the Attached Wrists readout, markers,
+// puppet lines and the Dot lock all depend on the CURRENT pose's attachments.
+function refreshWristAttachmentsForPoseChange3D() {
+  if (typeof facesWristMatchesCurrentDot3D === 'function') {
+    facesDotLocked3D = facesWristMatchesCurrentDot3D('left') || facesWristMatchesCurrentDot3D('right');
+  }
+  if (typeof syncFacesDotInputs3D === 'function') syncFacesDotInputs3D();
+  refreshFacesWristReadouts3D();
+  if (typeof applyFacesHighlight3D === 'function') applyFacesHighlight3D();
+  if (typeof syncWristPinReadout3D === 'function') syncWristPinReadout3D();
+}
 let facesWristSelected3D = 'left'; // which wrist Apply/Remove/Mirror act on
 const FACES_WRIST_DOT_PREFIX = FACES_OVERLAY_PREFIX + 'wristDot:';
 const FACES_WRIST_COLOR = { left: 0xffa63d, right: 0x8dff5c }; // warm orange (L) / lime green (R) — distinct from the neon-blue editing dot and pink face tint

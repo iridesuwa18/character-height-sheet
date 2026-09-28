@@ -585,6 +585,8 @@ function setPose3D(poseName) {
   // from a save. Use clearHandWristOverrides() (hand-wrist-panel.js) if you
   // want an explicit "back to this pose's own numbers" reset instead.
   applyPose3D(poseName, { reframe: true });
+  // Attached wrists are per-pose — refresh their readout/markers for this pose.
+  if (typeof refreshWristAttachmentsForPoseChange3D === 'function') refreshWristAttachmentsForPoseChange3D();
   document.querySelectorAll('.pose-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.pose === currentPose3D);
   });

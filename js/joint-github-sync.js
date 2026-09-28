@@ -20,9 +20,8 @@ const HAND_WRIST_OVERRIDES_KEY = '_handWristOverrides';
 const WRIST_PINS_KEY = '_wristPins';
 const WRIST_ATTACHMENTS_KEY = '_wristAttachments';
 
-// facesWristAttachment3D (joint-faces-panel.js) is a flat { left, right }
-// object — not per-pose, same as handRotationOverride/etc — so it's
-// captured/restored as one shallow snapshot, same shape as
+// Wrist attachments are stored per pose (facesWristAttachmentByPose3D in
+// joint-faces-panel.js, { [poseName]: {left,right} }), same keying as
 // collectWristPinsState3D just below. This is the "Attached Wrists"
 // mesh-group/face/H%/V% dot data; it used to be entirely un-persisted, which
 // is also why a reloaded leash-pinned wrist (see computeWristPinAdjustedChain3D
@@ -31,16 +30,32 @@ const WRIST_ATTACHMENTS_KEY = '_wristAttachments';
 // a null attachment after reload silently dropped both the dot-tracking
 // delta and the corrective final wrist-aim pass.
 function collectWristAttachmentsState3D() {
-  return {
-    left: facesWristAttachment3D.left ? { ...facesWristAttachment3D.left } : null,
-    right: facesWristAttachment3D.right ? { ...facesWristAttachment3D.right } : null,
-  };
+  const byPose = {};
+  Object.keys(facesWristAttachmentByPose3D).forEach(poseName => {
+    const a = facesWristAttachmentByPose3D[poseName];
+    if (!a.left && !a.right) return;
+    byPose[poseName] = { left: a.left ? { ...a.left } : null, right: a.right ? { ...a.right } : null };
+  });
+  return byPose;
 }
 function applyWristAttachmentsState3D(state) {
   if (!state) return;
-  facesWristAttachment3D.left = state.left ? { ...state.left } : null;
-  facesWristAttachment3D.right = state.right ? { ...state.right } : null;
-  if (typeof refreshFacesWristReadouts3D === 'function') refreshFacesWristReadouts3D();
+  // Per-pose format: { [poseName]: {left,right} }. Older saves were ONE flat
+  // { left, right } shared by every pose — that has no pose name to go on, so
+  // it's put on the pose showing now (the others start empty).
+  const isLegacyFlat = ('left' in state || 'right' in state) && !Object.values(state).some(v => v && typeof v === 'object' && ('left' in v || 'right' in v));
+  const next = {};
+  if (isLegacyFlat) {
+    next[currentPose3D] = { left: state.left ? { ...state.left } : null, right: state.right ? { ...state.right } : null };
+  } else {
+    Object.keys(state).forEach(poseName => {
+      const a = state[poseName] || {};
+      next[poseName] = { left: a.left ? { ...a.left } : null, right: a.right ? { ...a.right } : null };
+    });
+  }
+  facesWristAttachmentByPose3D = next;
+  if (typeof refreshWristAttachmentsForPoseChange3D === 'function') refreshWristAttachmentsForPoseChange3D();
+  else if (typeof refreshFacesWristReadouts3D === 'function') refreshFacesWristReadouts3D();
 }
 
 // wristPinLocked3D (joint-faces-panel.js) is already keyed the same way

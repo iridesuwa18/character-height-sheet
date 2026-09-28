@@ -330,7 +330,10 @@ function readPoseElbowWristQuats3D(poseKey) {
   const savedOv = [handRotationOverride, wristRotationOverride, elbowBendOverride, elbowLiftOverride, wristSwingOverride];
   const out = { left: {}, right: {} };
   try {
-    manualJointEdits3D = {};
+    // Keep the SOURCE pose's own saved/dragged joint edits (its wrist
+    // rotations live there) — wiping them made Copy pull only the pose's
+    // raw preset numbers and drop every wrist rotation edited on it.
+    manualJointEdits3D = savedManual[poseKey] ? { [poseKey]: cloneManualJointEdits3D({ [poseKey]: savedManual[poseKey] })[poseKey] } : {};
     handRotationOverride = { left: null, right: null };
     wristRotationOverride = { left: null, right: null };
     wristSwingOverride = { left: null, right: null };
@@ -366,6 +369,7 @@ function copyElbowWristFromPose3D() {
   // that's never had a pin touched shouldn't get a spurious empty entry
   // created in wristPinLocked3D just from being browsed in this dropdown).
   const srcPins = (typeof wristPinsForPose3D === 'function') ? wristPinsForPose3D(sel.value, false) : { left: null, right: null };
+  const srcAtts = (typeof wristAttachmentsForPose3D === 'function') ? wristAttachmentsForPose3D(sel.value, false) : { left: null, right: null };
   let anyPinned = false;
   sides.forEach(side => {
     // Exact clone of that side's whole "wrist" — shoulder/elbow/wrist/
@@ -388,6 +392,9 @@ function copyElbowWristFromPose3D() {
     // always leaves this side in exactly the pinned/unpinned state the
     // source pose was in, rather than only ever adding a pin and never
     // removing one.
+    // Attached wrist dot is per-pose too — clone the source's (or clear).
+    const srcAtt = srcAtts[side];
+    wristAttachmentsForPose3D(currentPose3D)[side] = srcAtt ? { ...srcAtt } : null;
     if (typeof wristPinsForPose3D === 'function') {
       const srcPin = srcPins[side];
       wristPinsForPose3D(currentPose3D)[side] = srcPin ? { ...srcPin } : null;
@@ -403,6 +410,7 @@ function copyElbowWristFromPose3D() {
     enforceWristPinConstraintsConverge3D();
   }
   groundBody3D(false);
+  if (typeof refreshWristAttachmentsForPoseChange3D === 'function') refreshWristAttachmentsForPoseChange3D();
   if (typeof syncWristPinReadout3D === 'function') syncWristPinReadout3D();
   if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
   // Feedback: log it (drives the chip under the top bars), close the pop-up
