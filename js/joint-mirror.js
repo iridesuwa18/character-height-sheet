@@ -133,5 +133,9 @@ function mirrorWristPinSpec3D(pin) {
     dox: pin.dox == null ? null : round2(-pin.dox), doy: pin.doy, doz: pin.doz,
     r: pin.r, upperLen: pin.upperLen, foreLen: pin.foreLen,
     torsoHalfWidth: pin.torsoHalfWidth,
+    // Frozen shoulder/elbow rotations, mirrored the same way the joint
+    // mirror reflects a quaternion (negate y,z).
+    sq: (Array.isArray(pin.sq) && pin.sq.length === 4) ? [pin.sq[0], -pin.sq[1], -pin.sq[2], pin.sq[3]] : null,
+    eq: (Array.isArray(pin.eq) && pin.eq.length === 4) ? [pin.eq[0], -pin.eq[1], -pin.eq[2], pin.eq[3]] : null,
   };
 }

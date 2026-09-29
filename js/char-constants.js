@@ -225,6 +225,15 @@ const WRIST_PIN_AIM_MAX_DEG = WRIST_BEND_RANGE[1];
 // (reload/mirror/quick-load) still reaches the exact same end target, just
 // over more, smaller passes instead of fewer, larger ones.
 const WRIST_PIN_LIVE_AIM_MAX_DEG = 10;
+// A pinned arm HOLDS its frozen shoulder/elbow rotations (saved at PIN APPLY /
+// on every elbow edit) and is only re-aimed when the leash actually needs it:
+//  - WRIST_PIN_HOLD_FAR_CM: the wrist (with the frozen rotations) has drifted
+//    this many cm PAST the pinned wrist<->dot distance R. Raise it to make the
+//    arm stiffer, lower it to make the leash kick in sooner.
+//  - WRIST_PIN_HOLD_TORSO_CM: the torso has widened/narrowed by more than this
+//    since pinning, so the elbow needs nudging off the body.
+const WRIST_PIN_HOLD_FAR_CM = 6;
+const WRIST_PIN_HOLD_TORSO_CM = 0.5;
 // Overrides hold a preset word ('front'...) or a plain number of degrees.
 // The pose's own built-in facing for one side, ignoring anything saved on top.
 function literalFacing3D(poseName, side) {

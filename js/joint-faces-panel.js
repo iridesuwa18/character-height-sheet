@@ -220,6 +220,40 @@ function currentWristPinRotation3D(side) {
   if (!wr) return null;
   return { turn: round1(wr.wristTurn), bend: round1(wr.wrist), swing: round1(wr.swing || 0) };
 }
+// ---- Frozen arm rotations (shoulder + elbow local quaternions) ----------
+// A pin stores the shoulder/elbow ROTATIONS as they were (sq/eq, [x,y,z,w]) in
+// addition to the elbow/wrist positions. Re-deriving both joints purely from
+// positions (aimBoneToWorldPoint3D) can only recover the bone DIRECTION, not
+// its twist — so after a reload the elbow came back turned outward even though
+// its position was right. Holding the real quaternions keeps the rotation
+// exactly as set; positions only ever nudge them (see the chain below).
+function pinQuatFromArr3D(a) { return (Array.isArray(a) && a.length === 4) ? new THREE.Quaternion(a[0], a[1], a[2], a[3]) : null; }
+function pinQuatToArr3D(q) { const r = n => Math.round(n * 10000) / 10000; return [r(q.x), r(q.y), r(q.z), r(q.w)]; }
+// Returns {qs, qe} or null. Pins saved before this existed have no sq/eq —
+// backfill them from that pose's saved shoulder/elbow edits when there are any.
+function pinFrozenArmQuats3D(pin, side) {
+  let qs = pinQuatFromArr3D(pin.sq), qe = pinQuatFromArr3D(pin.eq);
+  if (!qs || !qe) {
+    const je = jointEditsForPose3D(currentPose3D, false)[side];
+    if (je && je.shoulderQuat && je.elbowQuat) {
+      qs = je.shoulderQuat.clone(); qe = je.elbowQuat.clone();
+      pin.sq = pinQuatToArr3D(qs); pin.eq = pinQuatToArr3D(qe);
+    }
+  }
+  return (qs && qe) ? { qs, qe } : null;
+}
+// Smallest extra rotation that swings a bone (whose rest vector to its child is
+// restVec) from where quaternion q0 points it toward targetWorldPos — applied
+// on top of q0, so q0's twist is kept (unlike aimBoneToWorldPoint3D, which
+// rebuilds the rotation from scratch).
+function nudgeBoneQuatToward3D(grp, restVec, q0, targetWorldPos) {
+  const parent = grp.parent; parent.updateMatrixWorld(true);
+  const tgt = parent.worldToLocal(targetWorldPos.clone()).sub(grp.position);
+  const cur = restVec.clone().applyQuaternion(q0);
+  if (tgt.lengthSq() < 1e-8 || cur.lengthSq() < 1e-8) return q0.clone();
+  const d = new THREE.Quaternion().setFromUnitVectors(cur.normalize(), tgt.normalize());
+  return d.multiply(q0);
+}
 function applyWristPin3D() {
   const side = facesWristSelected3D;
   const pos = currentWristPinPosition3D(side);
@@ -258,6 +292,9 @@ function applyWristPin3D() {
     upperLen: (shoulderPos && elbowPos) ? dist3(shoulderPos, elbowPos) : null,
     foreLen: (elbowPos && pos) ? dist3(elbowPos, pos) : null,
     torsoHalfWidth: torsoHalfWidthCm3D,
+    // Frozen shoulder/elbow rotations — see pinFrozenArmQuats3D.
+    sq: shoulderGrp ? pinQuatToArr3D(shoulderGrp.quaternion) : null,
+    eq: elbowGrp ? pinQuatToArr3D(elbowGrp.quaternion) : null,
   };
   syncWristPinReadout3D();
 }
@@ -282,6 +319,9 @@ function refreshWristPinElbow3D(side) {
   const s = shoulderGrp ? jointWorldPosSpineLocal3D(shoulderGrp) : null;
   if (s) { pin.sx = s.x; pin.sy = s.y; pin.sz = s.z; }
   pin.torsoHalfWidth = torsoHalfWidthCm3D;
+  // ...and the actual shoulder/elbow rotations, so the edit holds exactly.
+  if (shoulderGrp) pin.sq = pinQuatToArr3D(shoulderGrp.quaternion);
+  if (elbowGrp) pin.eq = pinQuatToArr3D(elbowGrp.quaternion);
 }
 function clearWristPin3D() {
   // Once cleared, R no longer exists (per spec) — wherever the leash's
@@ -374,6 +414,24 @@ function computeWristPinAdjustedChain3D(side, maxAimDeg) {
 
   const liveShoulder = jointWorldPosSpineLocal3D(shoulderGrp);
   if (!liveShoulder) return null;
+  // ---- HOLD: keep the frozen shoulder/elbow rotations untouched unless the
+  // leash really needs to move the arm (wrist/dot distance far past R, or the
+  // torso width changed). Position only nudges rotation when it has to — the
+  // rotations themselves are never re-derived from scratch.
+  const frozen = pinFrozenArmQuats3D(pin, side);
+  if (frozen) {
+    shoulderGrp.quaternion.copy(frozen.qs);
+    elbowGrp.quaternion.copy(frozen.qe);
+    const w0 = jointWorldPosSpineLocal3D(wristGrp);
+    const tooFar = !!(w0 && liveDot && pin.r != null && dist3(w0, liveDot) > pin.r + WRIST_PIN_HOLD_FAR_CM);
+    const tDelta = (pin.torsoHalfWidth != null) ? (torsoHalfWidthCm3D - pin.torsoHalfWidth) : 0;
+    if (!tooFar && Math.abs(tDelta) <= WRIST_PIN_HOLD_TORSO_CM) {
+      return {
+        adjustedElbow: jointWorldPosSpineLocal3D(elbowGrp), adjustedWrist: w0,
+        qShoulder: frozen.qs.clone(), qElbow: frozen.qe.clone(), qWristAim: null,
+      };
+    }
+  }
   // Elbow: starts from its own PIN APPLY-time spot (ex/ey/ez), nudged
   // outward (spine-local X, signed by side — left is -X, right is +X, same
   // convention buildBody3D/mirrorWristPinSpec3D already use) by however
@@ -389,7 +447,9 @@ function computeWristPinAdjustedChain3D(side, maxAimDeg) {
   const adjustedElbow = (pin.upperLen != null) ? reachClampPoint3D(liveShoulder, elbowPin, pin.upperLen) : elbowPin;
 
   const shoulderTargetWorld = spineLocalToWorld3D(adjustedElbow);
-  const qShoulder = aimBoneToWorldPoint3D(shoulderGrp, elbowGrp.position, shoulderTargetWorld);
+  const qShoulder = frozen
+    ? nudgeBoneQuatToward3D(shoulderGrp, elbowGrp.position, frozen.qs, shoulderTargetWorld)
+    : aimBoneToWorldPoint3D(shoulderGrp, elbowGrp.position, shoulderTargetWorld);
   // Apply immediately so the elbow's world position below reflects it —
   // same apply-then-re-read pattern the original Snap Back used.
   shoulderGrp.quaternion.copy(qShoulder);
@@ -397,7 +457,9 @@ function computeWristPinAdjustedChain3D(side, maxAimDeg) {
   const adjustedWrist = (pin.foreLen != null) ? reachClampPoint3D(liveElbow, wristTarget, pin.foreLen) : wristTarget;
 
   const elbowTargetWorld = spineLocalToWorld3D(adjustedWrist);
-  const qElbow = aimBoneToWorldPoint3D(elbowGrp, wristGrp.position, elbowTargetWorld);
+  const qElbow = frozen
+    ? nudgeBoneQuatToward3D(elbowGrp, wristGrp.position, frozen.qe, elbowTargetWorld)
+    : aimBoneToWorldPoint3D(elbowGrp, wristGrp.position, elbowTargetWorld);
   elbowGrp.quaternion.copy(qElbow);
 
   // Final hand-aim only kicks in when the forearm's own rigid length
@@ -541,8 +603,15 @@ function snapWristToPin3D(side) {
   // shoulder — same move as dragging the Elbow joint itself. Applied to
   // the live group immediately (not just stored) so the elbow-aim call
   // below sees the corrected parent transform, not the stale one.
+  const frozenQ = pinFrozenArmQuats3D(pin, side);
   const elbowTargetWorld = pinnedElbowWorldPos3D(side);
-  if (shoulderGrp && elbowTargetWorld) {
+  if (frozenQ) {
+    // Real saved rotations — restores the arm exactly, twist included.
+    jointEditsForPose3D(currentPose3D)[side].shoulderQuat = frozenQ.qs.clone();
+    jointEditsForPose3D(currentPose3D)[side].elbowQuat = frozenQ.qe.clone();
+    if (shoulderGrp) shoulderGrp.quaternion.copy(frozenQ.qs);
+    elbowGrp.quaternion.copy(frozenQ.qe);
+  } else if (shoulderGrp && elbowTargetWorld) {
     const qShoulder = aimBoneToWorldPoint3D(shoulderGrp, elbowGrp.position, elbowTargetWorld);
     jointEditsForPose3D(currentPose3D)[side].shoulderQuat = qShoulder;
     shoulderGrp.quaternion.copy(qShoulder);
@@ -552,8 +621,10 @@ function snapWristToPin3D(side) {
   // pinned spot.
   const wristTargetWorld = pinnedWristWorldPos3D(side);
   if (!wristTargetWorld) return;
-  const qElbow = aimBoneToWorldPoint3D(elbowGrp, wristGrp.position, wristTargetWorld);
-  jointEditsForPose3D(currentPose3D)[side].elbowQuat = qElbow;
+  if (!frozenQ) {
+    const qElbow = aimBoneToWorldPoint3D(elbowGrp, wristGrp.position, wristTargetWorld);
+    jointEditsForPose3D(currentPose3D)[side].elbowQuat = qElbow;
+  }
   wristRotationOverride[side] = clampWristBend(pin.bend);
   handRotationOverride[side] = clampTurnFree(pin.turn);
   wristSwingOverride[side] = clampWristSwing(pin.swing);
