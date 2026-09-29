@@ -186,25 +186,29 @@
     }
   },
   "_handWristOverrides": {
-    "handRotationOverride": {
-      "left": -86,
-      "right": -86
-    },
-    "wristRotationOverride": {
-      "left": 31,
-      "right": 31
-    },
-    "wristSwingOverride": {
-      "left": 13,
-      "right": 13
-    },
-    "elbowBendOverride": {
-      "left": null,
-      "right": null
-    },
-    "elbowLiftOverride": {
-      "left": null,
-      "right": null
+    "byPose": {
+      "stand-hands-hips": {
+        "hand": {
+          "left": -86,
+          "right": -86
+        },
+        "wrist": {
+          "left": 31,
+          "right": 31
+        },
+        "swing": {
+          "left": 13,
+          "right": 13
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      }
     }
   },
   "_wristPins": {
