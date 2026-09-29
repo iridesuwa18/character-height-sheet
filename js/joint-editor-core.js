@@ -209,7 +209,7 @@ function openJointEditorMode3D() {
   if (!sceneInited3D) return;
   if (!jointEditorInited3D) initJointEditor3D();
   jointEditorModeSnapshot3D = cloneManualJointEdits3D(manualJointEdits3D);
-  jointEditorFacingSnapshot3D = { hand: Object.assign({}, handRotationOverride), wrist: Object.assign({}, wristRotationOverride), swing: Object.assign({}, wristSwingOverride) };
+  jointEditorFacingSnapshot3D = snapshotHandWristAll3D();
   jointEditorModeActive3D = true;
   const preview = document.getElementById('preview3D');
   if (preview) preview.classList.add('je-fullscreen');
@@ -258,9 +258,7 @@ function closeJointEditorMode3D() {
 // discarding anything changed (or mirrored) since — then closes the UI.
 function cancelJointEditorMode3D() {
   if (jointEditorFacingSnapshot3D) {
-    handRotationOverride = jointEditorFacingSnapshot3D.hand;
-    wristRotationOverride = jointEditorFacingSnapshot3D.wrist;
-    wristSwingOverride = jointEditorFacingSnapshot3D.swing || { left: null, right: null };
+    restoreHandWristAll3D(jointEditorFacingSnapshot3D);
     refreshHandWristButtons();
     applyPose3D(currentPose3D, { reframe: false });
   }
@@ -452,11 +450,7 @@ async function resetAllJointEdits3D() {
   applyPoseOverridesData3D(all);
 
   // Joint edits.
-  handRotationOverride = { left: null, right: null };
-  wristRotationOverride = { left: null, right: null };
-  wristSwingOverride = { left: null, right: null };
-  elbowBendOverride = { left: null, right: null };
-  elbowLiftOverride = { left: null, right: null };
+  clearAllHandWristPoses3D();
   manualJointEdits3D = {};
   jointEditsSaved3D = all._jointEdits || null;
   jointEditsInitialApplied3D = true;

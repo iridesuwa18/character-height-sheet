@@ -170,7 +170,7 @@ async function pullPoseOverridesFromGitHub() {
     // Saved 3D-editor joint edits ride in the same file — load them right now
     // (no Load button needed).
     if (all._jointEdits) { jointEditsSaved3D = all._jointEdits; applySavedJointEdits3D(); }
-    if (all._handWristOverrides) applyHandWristOverridesState3D(all._handWristOverrides);
+    if (all._handWristOverrides) applyHandWristOverridesState3D(all._handWristOverrides, all._jointEdits && all._jointEdits.pose);
     // Attached Wrists (mesh group/face/H%/V% dot) must land before the
     // _wristPins block below, since enforceWristPinConstraints3D resolves
     // its live dot straight from facesWristAttachment3D every frame — see

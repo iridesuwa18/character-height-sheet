@@ -172,9 +172,10 @@ async function quickSaveJointsToGitHub3D() {
       // the quaternion edits below are what applySavedJointEdits3D re-applies.
       all[JOINT_EDITS_KEY] = jointEditsState;
       // Wrist Bend/Turn/Swing (and the elbow overrides) write to their own
-      // sticky, pose-independent state instead of a quaternion — see
-      // onWristSlider3D — so they need their own save/load, separate from
-      // the block above. This is what was missing for "Turn" specifically.
+      // their own state instead of a quaternion — see onWristSlider3D — so
+      // they need their own save/load, separate from the block above. Saved
+      // PER POSE ({byPose:{[pose]:{...}}}) so one pose's wrist edits never
+      // leak onto another.
       all[HAND_WRIST_OVERRIDES_KEY] = handWristState;
       // Distance-leash wrist pins (pinned XYZ, dot origin XYZ, R, and the
       // shoulder/elbow/torso snapshot the leash chain is built from — see
@@ -213,7 +214,7 @@ async function quickLoadJointsFromGitHub3D() {
       applyJointEditsState3D(all[JOINT_EDITS_KEY]);
       reapplyManualJointEdits3D(); groundBody3D(false);
     }
-    if (hasHandWrist) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
+    if (hasHandWrist) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY], all[JOINT_EDITS_KEY] && all[JOINT_EDITS_KEY].pose);
     // Restore the Attached Wrists dot BEFORE the wrist-pin leash below runs
     // enforceWristPinConstraints3D — that function resolves its live dot
     // straight off facesWristAttachment3D, so loading it after would leave
@@ -282,7 +283,7 @@ async function autoLoadJointsFromGitHub3D() {
   try {
     const { all } = await fetchPoseOverridesFile(s);
     if (all[JOINT_EDITS_KEY]) { jointEditsSaved3D = all[JOINT_EDITS_KEY]; applySavedJointEdits3D(); }
-    if (all[HAND_WRIST_OVERRIDES_KEY]) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY]);
+    if (all[HAND_WRIST_OVERRIDES_KEY]) applyHandWristOverridesState3D(all[HAND_WRIST_OVERRIDES_KEY], all[JOINT_EDITS_KEY] && all[JOINT_EDITS_KEY].pose);
     // Same ordering requirement as quickLoadJointsFromGitHub3D above: the
     // attachment needs to exist before the wrist-pin block's
     // enforceWristPinConstraints3D call below resolves its live dot.

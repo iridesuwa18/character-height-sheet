@@ -402,7 +402,11 @@ function buildBody3D() {
 // re-apply after a rebuild does not, so it doesn't disturb the camera.
 function applyPose3D(poseName, { reframe = false } = {}) {
   const pose = POSES3D[poseName] || POSES3D['stand-relaxed'];
-  currentPose3D = POSES3D[poseName] ? poseName : 'stand-relaxed';
+  const newPoseKey = POSES3D[poseName] ? poseName : 'stand-relaxed';
+  // Hand/Wrist overrides are per pose — swap the outgoing pose's values out and
+  // the incoming pose's in BEFORE currentPose3D changes (see hand-wrist-panel.js).
+  if (newPoseKey !== currentPose3D && typeof switchHandWristPose3D === 'function') switchHandWristPose3D(newPoseKey);
+  currentPose3D = newPoseKey;
   const p = expandPose3D(pose);
 
   // Hand/Wrist Facing panel overrides win over whatever the named pose set,
@@ -577,13 +581,11 @@ function renderPosePanel3D() {
 function setPose3D(poseName) {
   if (!sceneInited3D || !meshRecords3D.length) return;
   // Hand/Wrist Facing overrides (handRotationOverride/wristRotationOverride/
-  // wristSwingOverride/elbow*Override) are pose-independent "sticky" state —
-  // see the header comment in hand-wrist-panel.js — saved/restored across
-  // reloads specifically so they survive picking a pose. They used to be
-  // wiped here on every pose click, which also fired when re-clicking the
-  // ALREADY-active pose, silently discarding whatever had just been loaded
-  // from a save. Use clearHandWristOverrides() (hand-wrist-panel.js) if you
-  // want an explicit "back to this pose's own numbers" reset instead.
+  // wristSwingOverride/elbow*Override) are PER POSE — applyPose3D swaps them
+  // via switchHandWristPose3D (hand-wrist-panel.js), so each pose keeps its
+  // own and they survive picking another pose and coming back. Nothing is
+  // wiped here. Use clearHandWristOverrides() for an explicit "back to this
+  // pose's own numbers" reset of the current pose.
   applyPose3D(poseName, { reframe: true });
   // Attached wrists are per-pose — refresh their readout/markers for this pose.
   if (typeof refreshWristAttachmentsForPoseChange3D === 'function') refreshWristAttachmentsForPoseChange3D();
