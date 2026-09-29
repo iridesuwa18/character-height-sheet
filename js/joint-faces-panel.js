@@ -261,6 +261,28 @@ function applyWristPin3D() {
   };
   syncWristPinReadout3D();
 }
+// Keeps a pinned wrist's saved ELBOW spot in step with the elbow as the person
+// actually edits it (translate-drag / Position fields on the Elbow joint).
+// Why: the pin stores the elbow's spot as it was at PIN APPLY (ex/ey/ez), and
+// enforceWristPinConstraints3D re-aims shoulder+elbow from THAT spot after every
+// applyPose3D and on every reload — so an elbow moved AFTER pinning looked right
+// live, was saved as a shoulder/elbow rotation, and then got overwritten back to
+// the old spot on reload ("elbow flips back out"). Re-freezing ex/ey/ez (and the
+// torso width the torso-nudge is measured against) to the elbow's CURRENT spot
+// makes the edit the pin's new elbow position, so it survives reload and
+// Snap Back. The wrist's own pinned spot/dot data is untouched.
+function refreshWristPinElbow3D(side) {
+  const pin = wristPinsForPose3D(currentPose3D, false)[side];
+  if (!pin || pin.ex == null) return;
+  const elbowGrp = rig3D && rig3D[side + 'Elbow'];
+  const shoulderGrp = rig3D && rig3D[side + 'Shoulder'];
+  const e = elbowGrp ? jointWorldPosSpineLocal3D(elbowGrp) : null;
+  if (!e) return;
+  pin.ex = e.x; pin.ey = e.y; pin.ez = e.z;
+  const s = shoulderGrp ? jointWorldPosSpineLocal3D(shoulderGrp) : null;
+  if (s) { pin.sx = s.x; pin.sy = s.y; pin.sz = s.z; }
+  pin.torsoHalfWidth = torsoHalfWidthCm3D;
+}
 function clearWristPin3D() {
   // Once cleared, R no longer exists (per spec) — wherever the leash's
   // live reach-clamping last left the shoulder/elbow/wrist simply becomes

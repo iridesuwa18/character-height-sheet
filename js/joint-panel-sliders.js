@@ -248,6 +248,9 @@ function onJointGizmoChange3D() {
     jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   }
   reapplyManualJointEdits3D();
+  // Elbow moved on a pinned wrist -> make that the pin's elbow spot so a reload
+  // (or any later applyPose3D) doesn't snap it back — see refreshWristPinElbow3D.
+  if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
   groundBody3D(false); // cheap re-ground during the drag; full reframe happens on release
   updateJointPanelValues3D();
 }
@@ -302,6 +305,7 @@ function onJointPosInput(axis, rawVal) {
   const q = aimBoneToWorldPoint3D(boneGroup, childGroup.position, targetWorld);
   jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   reapplyManualJointEdits3D();
+  if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
   groundBody3D(false);
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
@@ -348,6 +352,7 @@ function onJointRotInput(axis, rawVal) {
   euler[axis] = deg2rad(n);
   jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = new THREE.Quaternion().setFromEuler(euler);
   reapplyManualJointEdits3D();
+  if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
   groundBody3D(false);
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
