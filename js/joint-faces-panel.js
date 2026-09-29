@@ -356,6 +356,34 @@ function reachClampPoint3D(origin, target, maxLen) {
   const k = maxLen / d;
   return { x: origin.x + dx * k, y: origin.y + dy * k, z: origin.z + dz * k };
 }
+// Two-bone reach solve for the ELBOW. Given the shoulder S, where the wrist
+// should be (T), the two bone lengths and a PREFERRED elbow spot P (the pinned
+// elbow, torso-nudged), returns the elbow position that lets the wrist actually
+// land on T while sitting as close to P as the geometry allows — i.e. the elbow
+// swings around the shoulder->wrist axis toward P, and only moves as far as it
+// has to. If T is farther than the arm can stretch, the arm goes fully straight
+// toward T (wrist lands as close as physically possible). Returns null when
+// there's no usable solution (caller falls back to the old fixed-elbow clamp).
+// All in spine-local cm. `out` is a fallback direction if P lies on the axis.
+function solveElbowIK3D(S, T, L1, L2, P, out) {
+  const s = new THREE.Vector3(S.x, S.y, S.z), t = new THREE.Vector3(T.x, T.y, T.z), p = new THREE.Vector3(P.x, P.y, P.z);
+  const st = t.clone().sub(s); const D = st.length();
+  if (D < 1e-6 || L1 < 1e-6 || L2 < 1e-6) return null;
+  const u = st.clone().divideScalar(D);
+  if (D >= L1 + L2) { const e = s.clone().addScaledVector(u, L1); return { x: e.x, y: e.y, z: e.z }; }
+  if (D <= Math.abs(L1 - L2) + 1e-6) return null;
+  const a = (L1 * L1 - L2 * L2 + D * D) / (2 * D);
+  const h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+  const c = s.clone().addScaledVector(u, a);
+  let pc = p.clone().sub(c); pc.addScaledVector(u, -pc.dot(u));
+  if (pc.lengthSq() < 1e-8) {
+    pc = new THREE.Vector3(out.x, out.y, out.z); pc.addScaledVector(u, -pc.dot(u));
+    if (pc.lengthSq() < 1e-8) { pc = new THREE.Vector3(0, 0, 1); pc.addScaledVector(u, -pc.dot(u)); }
+  }
+  pc.normalize();
+  const e = c.addScaledVector(pc, h);
+  return { x: e.x, y: e.y, z: e.z };
+}
 // Recomputes, from the CURRENT live shoulder position, torso width, and dot
 // position, where the elbow and wrist should sit right now:
 //   - ELBOW: stays on its own PIN APPLY-time spot (ex/ey/ez), nudged
@@ -423,7 +451,7 @@ function computeWristPinAdjustedChain3D(side, maxAimDeg) {
     shoulderGrp.quaternion.copy(frozen.qs);
     elbowGrp.quaternion.copy(frozen.qe);
     const w0 = jointWorldPosSpineLocal3D(wristGrp);
-    const tooFar = !!(w0 && liveDot && pin.r != null && dist3(w0, liveDot) > pin.r + WRIST_PIN_HOLD_FAR_CM);
+    const tooFar = !!(w0 && liveDot && pin.r != null && Math.abs(dist3(w0, liveDot) - pin.r) > WRIST_PIN_HOLD_R_TOL_CM);
     const tDelta = (pin.torsoHalfWidth != null) ? (torsoHalfWidthCm3D - pin.torsoHalfWidth) : 0;
     if (!tooFar && Math.abs(tDelta) <= WRIST_PIN_HOLD_TORSO_CM) {
       return {
@@ -444,7 +472,19 @@ function computeWristPinAdjustedChain3D(side, maxAimDeg) {
   const sideSign = side === 'left' ? -1 : 1;
   const torsoDelta = (pin.torsoHalfWidth != null) ? (torsoHalfWidthCm3D - pin.torsoHalfWidth) : 0;
   const elbowPin = { x: pin.ex + sideSign * torsoDelta, y: pin.ey, z: pin.ez };
-  const adjustedElbow = (pin.upperLen != null) ? reachClampPoint3D(liveShoulder, elbowPin, pin.upperLen) : elbowPin;
+  // Elbow: NOT just the pinned spot. The wrist is what's pinned to distance R
+  // from its dot, so solve the arm for that — the elbow moves (as little as it
+  // has to, toward the pinned/nudged spot) so the wrist can actually reach its
+  // target instead of stopping short when the shoulder/dot move apart. Bone
+  // lengths are measured live off the rig, so they're always the real ones.
+  const liveElbowNow = jointWorldPosSpineLocal3D(elbowGrp);
+  const liveWristNow = jointWorldPosSpineLocal3D(wristGrp);
+  const L1 = liveElbowNow ? dist3(liveShoulder, liveElbowNow) : pin.upperLen;
+  const L2 = (liveElbowNow && liveWristNow) ? dist3(liveElbowNow, liveWristNow) : pin.foreLen;
+  let adjustedElbow = (L1 != null && L2 != null)
+    ? solveElbowIK3D(liveShoulder, wristTarget, L1, L2, elbowPin, { x: sideSign, y: 0, z: 0 })
+    : null;
+  if (!adjustedElbow) adjustedElbow = (pin.upperLen != null) ? reachClampPoint3D(liveShoulder, elbowPin, pin.upperLen) : elbowPin;
 
   const shoulderTargetWorld = spineLocalToWorld3D(adjustedElbow);
   const qShoulder = frozen
@@ -454,7 +494,8 @@ function computeWristPinAdjustedChain3D(side, maxAimDeg) {
   // same apply-then-re-read pattern the original Snap Back used.
   shoulderGrp.quaternion.copy(qShoulder);
   const liveElbow = jointWorldPosSpineLocal3D(elbowGrp);
-  const adjustedWrist = (pin.foreLen != null) ? reachClampPoint3D(liveElbow, wristTarget, pin.foreLen) : wristTarget;
+  const foreReach = (L2 != null) ? L2 : pin.foreLen;
+  const adjustedWrist = (foreReach != null) ? reachClampPoint3D(liveElbow, wristTarget, foreReach) : wristTarget;
 
   const elbowTargetWorld = spineLocalToWorld3D(adjustedWrist);
   const qElbow = frozen
