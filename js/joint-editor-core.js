@@ -399,6 +399,10 @@ function copyElbowWristFromPose3D() {
     }
   });
   reapplyManualJointEdits3D();
+  // Copied pins still describe the SOURCE pose's arm (and where its dot was);
+  // re-measure them against the copied arm as it now sits in THIS pose, or the
+  // leash re-solves the elbow away from the rotations that were just copied.
+  if (typeof rebaseWristPinToCurrent3D === 'function') sides.forEach(side => rebaseWristPinToCurrent3D(side));
   // A freshly-copied leash needs its shoulder/elbow/wrist re-derived from
   // its own frozen numbers right away — same reasoning as a reload or a
   // mirror (see enforceWristPinConstraintsConverge3D in
