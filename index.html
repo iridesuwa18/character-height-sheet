@@ -186,6 +186,30 @@
   }
   #jointToggleBar .jp-btn.jt-icon { flex: 0 0 34px; padding: 0; font-size: 13px; }
 
+  /* Quick Options dropdown (⚡▾): icon-only Move / Rotate / Mirror. */
+  #jeQoWrap { position: relative; flex: 0 0 44px; }
+  #jeQoBtn { width: 100%; padding: 0; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 1px; }
+  #jeQoBtn .qo-caret { font-size: 8px; opacity: 0.8; }
+  #jeQoMenu {
+    display: none; position: absolute; top: calc(100% + 4px); right: 0; z-index: 9015;
+    flex-direction: column; gap: 4px; padding: 4px;
+    background: rgba(20,20,24,0.97); border: 1px solid var(--accent-gold); border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+  }
+  #jeQoMenu.open { display: flex; }
+  .qo-item {
+    width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0;
+    background: rgba(22,22,24,0.92); border: 1px solid var(--border); border-radius: 7px;
+    color: var(--text); cursor: pointer;
+  }
+  .qo-item.active { background: rgba(240,192,64,0.22); border-color: var(--accent-gold); color: var(--accent-gold); }
+  .qo-item.needs-joint { opacity: 0.4; }
+  #jeMirrorConfirm {
+    position: absolute; inset: 0; z-index: 9040; display: none;
+    align-items: center; justify-content: center; padding: 12px; background: rgba(0,0,0,0.55);
+  }
+  #jeMirrorConfirm.open { display: flex; }
+
   /* Faces popup: identical backdrop/card pattern to #jeCopyPopup. */
   #jeFacesPopup {
     position: absolute; inset: 0; z-index: 9030; display: none;
@@ -1008,13 +1032,39 @@
       <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')">L Wrist</button>
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="toggleJointSettingsPopup3D()" title="Joint settings">⚙</button>
-      <button type="button" class="jt-btn jp-btn jt-icon" onclick="mirrorSelectedJoint3D()" title="Mirror to opposite side">⇄</button>
+      <div id="jeQoWrap">
+        <button type="button" id="jeQoBtn" class="jt-btn jp-btn" onclick="toggleQuickOptions3D()" title="Quick options" aria-label="Quick options"><span class="qo-ico">⚡</span><span class="qo-caret">▾</span></button>
+        <div id="jeQoMenu">
+          <button type="button" class="qo-item needs-joint" data-qo="move" onclick="toggleGizmoMode3D('translate')" title="Move" aria-label="Move">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
+          </button>
+          <button type="button" class="qo-item needs-joint" data-qo="rotate" onclick="toggleGizmoMode3D('rotate')" title="Rotate" aria-label="Rotate">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>
+          </button>
+          <button type="button" class="qo-item needs-joint" data-qo="mirror" onclick="openMirrorConfirm3D()" title="Mirror" aria-label="Mirror">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18" stroke-dasharray="2 3"/><path d="M9 7L3 17h6z"/><path d="M15 7l6 10h-6z"/></svg>
+          </button>
+        </div>
+      </div>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="openFacesPopup3D()" title="Faces">▦</button>
     </div>
 
     <!-- Faces popup: pick a mesh (highlights it saturated yellow), then one
          of its six box faces (highlights that face saturated pink on top).
          Same centered-card-over-backdrop pattern as the Copy Poses popup. -->
+    <!-- Mirror confirmation (opened from the Quick Options menu). -->
+    <div id="jeMirrorConfirm" onclick="if(event.target===this) closeMirrorConfirm3D()">
+      <div class="jec-card" role="dialog" aria-label="Mirror joints" style="max-width:280px;">
+        <div class="jec-head"><span class="jec-title">Mirror</span></div>
+        <p class="je-note" style="font-size:11px;color:var(--text);margin:4px 0 2px;">Do you want to mirror left and right joints?</p>
+        <p class="je-note" id="jeMirrorConfirmDir" style="margin:0 0 10px;"></p>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="je-bottom-btn je-cancel" onclick="closeMirrorConfirm3D()">Cancel</button>
+          <button type="button" class="je-bottom-btn je-apply" onclick="confirmMirror3D()">OK</button>
+        </div>
+      </div>
+    </div>
+
     <div id="jeFacesPopup" onclick="if(event.target===this) closeFacesPopup3D()">
       <div class="jec-card" role="dialog" aria-label="Faces">
         <div class="jec-head">
