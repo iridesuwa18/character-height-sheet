@@ -48,6 +48,25 @@ function mirrorArmToOtherSide3D(side) {
   groundBody3D(false);
   return { other };
 }
+// Quick Options → Mirror: ask first, so a stray tap can't flip an arm.
+function openMirrorConfirm3D() {
+  if (!selectedJoint3D) { showJointEditorHint3D('Select a joint first'); return; }
+  toggleQuickOptions3D(false);
+  const from = selectedJoint3D.side === 'left' ? 'Left' : 'Right';
+  const to = selectedJoint3D.side === 'left' ? 'Right' : 'Left';
+  const dir = document.getElementById('jeMirrorConfirmDir');
+  if (dir) dir.textContent = from + ' → ' + to;
+  const pop = document.getElementById('jeMirrorConfirm');
+  if (pop) pop.classList.add('open');
+}
+function closeMirrorConfirm3D() {
+  const pop = document.getElementById('jeMirrorConfirm');
+  if (pop) pop.classList.remove('open');
+}
+function confirmMirror3D() {
+  closeMirrorConfirm3D();
+  mirrorSelectedJoint3D();
+}
 function mirrorSelectedJoint3D() {
   if (!selectedJoint3D) return;
   const { side } = selectedJoint3D;

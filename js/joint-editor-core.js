@@ -32,7 +32,7 @@
 // ============================================================================
 let jointEditorInited3D = false;
 let selectedJoint3D = null;            // { side:'left'|'right', jointType:'elbow'|'wrist' } | null
-let gizmoMode3D = 'translate';         // 'translate' | 'rotate'
+let gizmoMode3D = 'translate';         // 'translate' | 'rotate' | 'off' (Quick Options toggles; 'off' = no gizmo)
 let transformControls3D = null;
 let gizmoProxy3D = null;               // world-space stand-in TransformControls actually drags in translate mode
 // Fullscreen "3D Editor" mode: the model floods the screen with the joint
@@ -173,6 +173,7 @@ function toggleJoint3D(side, jointType) {
   }
 }
 function refreshJointPickerButtons3D() {
+  if (typeof refreshQuickOptions3D === 'function') refreshQuickOptions3D();
   document.querySelectorAll('#jointToggleBar .jt-btn[data-joint]').forEach(b => {
     b.classList.toggle('active', !!selectedJoint3D && b.dataset.side === selectedJoint3D.side && b.dataset.joint === selectedJoint3D.jointType);
   });

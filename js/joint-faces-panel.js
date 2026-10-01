@@ -621,15 +621,18 @@ function snapWristToPin3D(side) {
     if (!chain) return;
     jointEditsForPose3D(currentPose3D)[side].shoulderQuat = chain.qShoulder;
     jointEditsForPose3D(currentPose3D)[side].elbowQuat = chain.qElbow;
-    if (chain.qWristAim) {
-      // The hand-aim quaternion already IS the wrist's full local rotation
-      // (bend+swing combined) — store it as a direct override, same as a
-      // manual translate-gizmo drag would, and clear the numeric Bend/
-      // Swing overrides so they don't fight it on the next repose.
-      jointEditsForPose3D(currentPose3D)[side].wristQuat = chain.qWristAim;
-      wristRotationOverride[side] = null;
-      wristSwingOverride[side] = null;
-    }
+    // Rotation: put the wrist's pinned Turn / Bend / Swing back exactly, same
+    // as the unleashed path below. (This path used to skip them entirely — and
+    // when the wrist fell short it even baked the hand-aim quaternion in and
+    // nulled Bend/Swing — so Snap Back never restored them.) The numeric
+    // overrides are the one source of truth, so any stale wristQuat /
+    // handTurnQuat from a gizmo drag is cleared. The live hand-lean toward the
+    // dot (enforceWristPinConstraints3D) is never saved, so it can't fight this.
+    wristRotationOverride[side] = clampWristBend(pin.bend);
+    handRotationOverride[side] = clampTurnFree(pin.turn);
+    wristSwingOverride[side] = clampWristSwing(pin.swing);
+    jointEditsForPose3D(currentPose3D)[side].wristQuat = null;
+    jointEditsForPose3D(currentPose3D)[side].handTurnQuat = null;
     applyPose3D(currentPose3D, { reframe: false });
     reapplyManualJointEdits3D();
     groundBody3D(false);

@@ -112,13 +112,53 @@ function updateWristSliderOverlay3D() {
   card.style.left = Math.round(x) + 'px';
   card.style.top = Math.round(y) + 'px';
 }
+// ---- Quick Options dropdown (⚡ in the joint bar): Move / Rotate / Mirror -----
+// Move and Rotate are mutually-exclusive toggles (tapping the active one turns
+// the gizmo off); both need a joint picked first. Mirror asks for confirmation.
+function showJointEditorHint3D(msg) {
+  const s = document.getElementById('jeMirrorStatus'); // shared fade-out status line
+  if (!s) return;
+  s.textContent = msg; s.style.opacity = '1';
+  clearTimeout(showJointEditorHint3D._t);
+  showJointEditorHint3D._t = setTimeout(() => { s.style.opacity = '0'; }, 1800);
+}
+function toggleQuickOptions3D(force) {
+  const m = document.getElementById('jeQoMenu'); if (!m) return;
+  const open = (force === undefined) ? !m.classList.contains('open') : !!force;
+  m.classList.toggle('open', open);
+  const b = document.getElementById('jeQoBtn'); if (b) b.classList.toggle('active', open);
+  refreshQuickOptions3D();
+}
+function refreshQuickOptions3D() {
+  const has = !!selectedJoint3D;
+  const set = (k, active) => {
+    const b = document.querySelector('#jeQoMenu [data-qo="' + k + '"]'); if (!b) return;
+    b.classList.toggle('needs-joint', !has);
+    b.classList.toggle('active', !!active);
+  };
+  set('move', has && gizmoMode3D === 'translate');
+  set('rotate', has && gizmoMode3D === 'rotate');
+  set('mirror', false);
+}
+function toggleGizmoMode3D(mode) {
+  if (!selectedJoint3D) { showJointEditorHint3D('Select a joint first'); return; }
+  setGizmoMode3D(gizmoMode3D === mode ? 'off' : mode);
+}
+document.addEventListener('pointerdown', (e) => {
+  const w = document.getElementById('jeQoWrap');
+  if (w && !w.contains(e.target)) toggleQuickOptions3D(false);
+});
 function setGizmoMode3D(mode) {
   gizmoMode3D = mode;
   if (selectedJoint3D) attachGizmoToSelection3D();
+  if (mode !== 'rotate' && typeof wristSliderEl3D !== 'undefined' && wristSliderEl3D) wristSliderEl3D.style.display = 'none';
+  refreshQuickOptions3D();
   const panel = document.getElementById('jointEditorPanel');
   if (panel) panel.querySelectorAll('.je-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   const note = document.getElementById('jeNote');
-  if (note) note.textContent = mode === 'rotate'
+  if (note) note.textContent = mode === 'off'
+    ? 'Gizmo is off — turn on Move or Rotate from the quick options menu to drag on the model, or type exact numbers below.'
+    : mode === 'rotate'
     ? (selectedJoint3D && selectedJoint3D.jointType === 'wrist'
         ? 'Use the Bend / Turn sliders next to the wrist on the model, or type exact numbers below.'
         : 'Drag the rotate rings on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.')
@@ -129,6 +169,13 @@ function attachGizmoToSelection3D() {
   const { side, jointType } = selectedJoint3D;
   const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
   if (!grp) return;
+  // Gizmo toggled off from the Quick Options menu: nothing to drag.
+  if (gizmoMode3D === 'off') {
+    transformControls3D.detach();
+    transformControls3D.enabled = false;
+    transformControls3D.visible = false;
+    return;
+  }
   // Wrist + Rotate: no ring gizmo at all — two Bend/Turn sliders float next
   // to the joint instead (see updateWristSliderOverlay3D). Elbow keeps rings.
   if (gizmoMode3D === 'rotate' && jointType === 'wrist') {
