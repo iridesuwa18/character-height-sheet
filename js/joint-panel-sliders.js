@@ -139,6 +139,28 @@ function refreshQuickOptions3D() {
   set('move', has && gizmoMode3D === 'translate');
   set('rotate', has && gizmoMode3D === 'rotate');
   set('mirror', false);
+  set('snap', false);
+  // Ghost isn't tied to a joint — always enabled; lit while see-through is ON.
+  const g = document.querySelector('#jeQoMenu [data-qo="ghost"]');
+  if (g) { g.classList.remove('needs-joint'); g.classList.toggle('active', typeof facesGhostMode3D !== 'undefined' && facesGhostMode3D); }
+}
+// Quick Options → Clear: exactly the Clear button in the Faces popup (under
+// Attached Wrists) — resets the Mesh/Face selection, highlight and dot state.
+function quickClearFaces3D() {
+  toggleQuickOptions3D(false);
+  resetFacesSelection3D();
+  showJointEditorHint3D('Faces selection cleared');
+}
+// Quick Options → Snap Back: same as the Snap Back button in the Faces popup,
+// for the wrist side of whichever joint is selected.
+function quickSnapBack3D() {
+  if (!selectedJoint3D) { showJointEditorHint3D('Select a joint first'); return; }
+  const side = selectedJoint3D.side;
+  const pin = wristPinsForPose3D(currentPose3D, false)[side];
+  if (!pin) { showJointEditorHint3D('No pin on ' + (side === 'left' ? 'left' : 'right') + ' wrist'); return; }
+  toggleQuickOptions3D(false);
+  snapWristToPin3D(side);
+  showJointEditorHint3D('Snapped ' + (side === 'left' ? 'left' : 'right') + ' wrist back');
 }
 function toggleGizmoMode3D(mode) {
   if (!selectedJoint3D) { showJointEditorHint3D('Select a joint first'); return; }

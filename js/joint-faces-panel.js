@@ -791,11 +791,29 @@ function applyFacesWristAttachment3D() {
   // currently-being-edited-dot state that resetFacesSelection3D clears.
   resetFacesSelection3D();
 }
-function removeFacesWristAttachment3D() {
-  const side = facesWristSelected3D;
+// ---- Ghost mode (Quick Options toggle) -----------------------------------
+// ON (default, the original look): the highlighted mesh/face/outline draw on
+// top of EVERYTHING (depthTest off), so they show through the rest of the body.
+// OFF: they're depth-tested like normal geometry, so a highlighted face on the
+// far side of the body is hidden behind whatever is in front of it.
+// polygonOffset pulls the (otherwise coplanar) overlay a hair toward the camera
+// so it doesn't z-fight with the surface it sits on. Dots/wrist markers always
+// stay on top — they're tiny and you need to find them.
+let facesGhostMode3D = true;
+function facesOverlayDepth3D(mat) {
+  if (facesGhostMode3D) return mat;
+  mat.depthTest = true;
+  mat.polygonOffset = true; mat.polygonOffsetFactor = -2; mat.polygonOffsetUnits = -2;
+  return mat;
+}
+function toggleFacesGhostMode3D() {
+  facesGhostMode3D = !facesGhostMode3D;
+  applyFacesHighlight3D(); // rebuild the overlays with the new depth setting
+  if (typeof refreshQuickOptions3D === 'function') refreshQuickOptions3D();
+}
+// Detaches ONE wrist (no UI refresh) — shared by Remove and the quick-clear button.
+function detachFacesWristSide3D(side) {
   facesWristAttachment3D[side] = null;
-  // The point stays locked if the OTHER wrist still depends on this exact spot.
-  facesDotLocked3D = facesWristMatchesCurrentDot3D(side === 'left' ? 'right' : 'left');
   // If this side is currently pinned AND leashed to the attachment just
   // removed, degrade that pin back to a plain position+rotation pin (r/dox/
   // doy/doz/upperLen/foreLen = null) instead of leaving it a "phantom
@@ -811,6 +829,12 @@ function removeFacesWristAttachment3D() {
     pin.upperLen = null; pin.foreLen = null;
     syncWristPinReadout3D();
   }
+}
+function removeFacesWristAttachment3D() {
+  const side = facesWristSelected3D;
+  detachFacesWristSide3D(side);
+  // The point stays locked if the OTHER wrist still depends on this exact spot.
+  facesDotLocked3D = facesWristMatchesCurrentDot3D(side === 'left' ? 'right' : 'left');
   syncFacesDotInputs3D();
   refreshFacesWristReadouts3D();
   applyFacesHighlight3D();
@@ -1088,7 +1112,7 @@ function addFacesMeshOverlay3D(mesh, outline) {
   // depthTest: false means this always draws on top of the real mesh
   // underneath it, so it no longer needs a real-world offset to stay
   // visible — that's what let the margin above shrink to a hairline.
-  const mat = new THREE.MeshBasicMaterial({ color: FACES_MESH_COLOR, transparent: true, opacity: 0.55, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const mat = facesOverlayDepth3D(new THREE.MeshBasicMaterial({ color: FACES_MESH_COLOR, transparent: true, opacity: 0.55, depthWrite: false, depthTest: false, side: THREE.DoubleSide }));
   const overlay = new THREE.Mesh(geo, mat);
   overlay.name = FACES_MESH_TINT_NAME;
   overlay.renderOrder = 1;
@@ -1108,14 +1132,15 @@ function addFacesOutlineOverlay3D(mesh) {
   removeFacesOverlay3D(mesh, FACES_OUTLINE_CORE_NAME);
   removeFacesOverlay3D(mesh, FACES_OUTLINE_HALO_NAME);
   const coreGeo = new THREE.EdgesGeometry(mesh.geometry);
-  const coreMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false });
+  const coreMat = facesOverlayDepth3D(new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false }));
   const core = new THREE.LineSegments(coreGeo, coreMat);
   core.name = FACES_OUTLINE_CORE_NAME;
+  if (!facesGhostMode3D) core.scale.multiplyScalar(1.003); // lines ignore polygonOffset — ease them off the surface instead
   core.renderOrder = 2;
   mesh.add(core);
 
   const haloGeo = new THREE.EdgesGeometry(mesh.geometry);
-  const haloMat = new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.35, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending });
+  const haloMat = facesOverlayDepth3D(new THREE.LineBasicMaterial({ color: FACES_OUTLINE_COLOR, transparent: true, opacity: 0.35, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
   const halo = new THREE.LineSegments(haloGeo, haloMat);
   halo.name = FACES_OUTLINE_HALO_NAME;
   halo.scale.multiplyScalar(1.03);
@@ -1149,7 +1174,7 @@ function addFacesFaceOverlay3D(mesh, faceName, outline) {
   // enough, which is what keeps this sitting flush on the actual surface
   // instead of visibly floating off it.
   const eps = 0.002;
-  const mat = () => new THREE.MeshBasicMaterial({ color: FACES_FACE_COLOR, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false, side: THREE.DoubleSide });
+  const mat = () => facesOverlayDepth3D(new THREE.MeshBasicMaterial({ color: FACES_FACE_COLOR, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false, side: THREE.DoubleSide }));
   let overlay;
 
   if (faceName === 'front' || faceName === 'back') {
