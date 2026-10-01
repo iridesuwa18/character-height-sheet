@@ -404,9 +404,9 @@
           ],
           "handTurnQuat": [
             0,
-            -0.6884,
+            -0.7254,
             0,
-            0.7254
+            0.6884
           ]
         },
         "right": {
@@ -430,9 +430,9 @@
           ],
           "handTurnQuat": [
             0,
-            0.7547,
+            -0.6561,
             0,
-            0.6561
+            -0.7547
           ]
         }
       }
@@ -584,6 +584,28 @@
         "swing": {
           "left": null,
           "right": null
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "stand-feet-apart": {
+        "hand": {
+          "left": 93,
+          "right": 98
+        },
+        "wrist": {
+          "left": -6,
+          "right": -36
+        },
+        "swing": {
+          "left": 20,
+          "right": 5
         },
         "elbowBend": {
           "left": null,
