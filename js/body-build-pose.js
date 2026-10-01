@@ -6,11 +6,16 @@
 function buildBody3D() {
   if (!sceneInited3D) initScene3D();
   // The old rig3D groups (and the joint meshes the editor highlights/attaches
-  // its gizmo to) are about to be disposed below — drop the selection and
-  // any manual joint edits made against them first, or the gizmo/quaternion
-  // math below would be operating on stale, disposed objects.
+  // its gizmo to) are about to be disposed below — drop the selection first,
+  // or the gizmo math below would be operating on stale, disposed objects.
+  // manualJointEdits3D is deliberately NOT cleared here: those are plain local
+  // quaternions (shoulder/elbow/wrist/hand-turn), not references to the old
+  // meshes, so they re-stamp cleanly onto the new rig in applyPose3D. They used
+  // to be wiped on every rebuild — i.e. every time a shoulder/arm/waist length
+  // changed — which threw away saved elbow/wrist rotations on any arm that
+  // wasn't wrist-pinned (pins live in their own store, so pinned arms survived)
+  // and dropped the arms back to the bare pose angles.
   if (jointEditorInited3D) deselectJoint3D();
-  manualJointEdits3D = {};
   if (typeof resetFacesSelection3D === 'function') resetFacesSelection3D(); // overlays are parented on meshes about to be disposed below
   while (bodyGroup3D.children.length) {
     disposeObject3D(bodyGroup3D.children.pop());
@@ -516,7 +521,9 @@ function applyPose3D(poseName, { reframe = false } = {}) {
   // computed above, so a hand-dragged elbow/wrist survives pose switches,
   // slider tweaks, and hand/wrist-facing overrides until explicitly reset —
   // see reapplyManualJointEdits3D.
-  if (jointEditorInited3D) reapplyManualJointEdits3D();
+  // Not gated on the editor having been opened: loaded/saved edits must apply
+  // after a rebuild even if the Joint Editor was never opened this session.
+  if (jointEditorInited3D || Object.keys(manualJointEdits3D).length) reapplyManualJointEdits3D();
   // Distance-leash wrist pins (see applyWristPin3D / enforceWristPinConstraints3D
   // in joint-faces-panel.js): runs after every pose/slider/rebuild application
   // (this function fires for all of them, including buildBody3D's automatic
