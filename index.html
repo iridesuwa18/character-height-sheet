@@ -1041,6 +1041,15 @@
           <button type="button" class="qo-item needs-joint" data-qo="rotate" onclick="toggleGizmoMode3D('rotate')" title="Rotate" aria-label="Rotate">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>
           </button>
+          <button type="button" class="qo-item needs-joint" data-qo="snap" onclick="quickSnapBack3D()" title="Snap back to pin" aria-label="Snap back to pin">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5v14"/><path d="M20 12H8"/><path d="M12 8l-4 4 4 4"/></svg>
+          </button>
+          <button type="button" class="qo-item" data-qo="clear" onclick="quickClearFaces3D()" title="Clear faces selection" aria-label="Clear faces selection">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/></svg>
+          </button>
+          <button type="button" class="qo-item" data-qo="ghost" onclick="toggleFacesGhostMode3D()" title="Ghost mode (see-through highlights)" aria-label="Ghost mode">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V11a7 7 0 0 1 14 0v10l-3-2-2 2-2-2-2 2-2-2z"/><circle cx="9.5" cy="11" r="1" fill="currentColor"/><circle cx="14.5" cy="11" r="1" fill="currentColor"/></svg>
+          </button>
           <button type="button" class="qo-item needs-joint" data-qo="mirror" onclick="openMirrorConfirm3D()" title="Mirror" aria-label="Mirror">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18" stroke-dasharray="2 3"/><path d="M9 7L3 17h6z"/><path d="M15 7l6 10h-6z"/></svg>
           </button>
