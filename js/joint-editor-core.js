@@ -368,7 +368,21 @@ function copyElbowWristFromPose3D() {
   const srcPins = (typeof wristPinsForPose3D === 'function') ? wristPinsForPose3D(sel.value, false) : { left: null, right: null };
   const srcAtts = (typeof wristAttachmentsForPose3D === 'function') ? wristAttachmentsForPose3D(sel.value, false) : { left: null, right: null };
   let anyPinned = false;
+  // Source pose's Hand/Wrist Facing overrides (hand turn, wrist bend, swing,
+  // elbow bend/lift). The forearm's red/blue colour and the thumb's edge are
+  // derived from the hand-turn VALUE (see applyHandFlipVisuals3D), not from
+  // the copied hand-turn quaternion — so without cloning these, a copied arm
+  // keeps the target pose's own colour/thumb side (e.g. Feet Apart stayed red
+  // while Arms Crossed, at 93°/98°, is blue). readPoseElbowWristQuats3D has
+  // just visited the source pose, so handWristByPose3D[source] is up to date.
+  const srcHW = handWristByPose3D[sel.value] || {};
+  const hwField = (name, side) => (srcHW[name] && srcHW[name][side] !== undefined ? srcHW[name][side] : null);
   sides.forEach(side => {
+    handRotationOverride[side] = hwField('hand', side);
+    wristRotationOverride[side] = hwField('wrist', side);
+    wristSwingOverride[side] = hwField('swing', side);
+    elbowBendOverride[side] = hwField('elbowBend', side);
+    elbowLiftOverride[side] = hwField('elbowLift', side);
     // Exact clone of that side's whole "wrist" — shoulder/elbow/wrist/
     // hand-turn rotation AND whatever wrist-pin state the source pose has
     // (leashed, plain position+rotation, or unpinned), always together. No
@@ -398,11 +412,12 @@ function copyElbowWristFromPose3D() {
       if (srcPin && srcPin.r != null) anyPinned = true;
     }
   });
+  // Re-render so the cloned hand/wrist overrides take effect (recomputes the
+  // forearm colour + thumb edge and the wristTurn clamp/elbow lift); applyPose3D
+  // re-stamps the manual joint edits on top, so the copied quats still win.
+  applyPose3D(currentPose3D, { reframe: false });
   reapplyManualJointEdits3D();
-  // Copied pins still describe the SOURCE pose's arm (and where its dot was);
-  // re-measure them against the copied arm as it now sits in THIS pose, or the
-  // leash re-solves the elbow away from the rotations that were just copied.
-  if (typeof rebaseWristPinToCurrent3D === 'function') sides.forEach(side => rebaseWristPinToCurrent3D(side));
+  if (typeof refreshHandWristButtons === 'function') refreshHandWristButtons();
   // A freshly-copied leash needs its shoulder/elbow/wrist re-derived from
   // its own frozen numbers right away — same reasoning as a reload or a
   // mirror (see enforceWristPinConstraintsConverge3D in

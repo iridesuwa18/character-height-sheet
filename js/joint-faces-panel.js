@@ -298,38 +298,6 @@ function applyWristPin3D() {
   };
   syncWristPinReadout3D();
 }
-// Re-measures a pin's frozen numbers (wrist spot, elbow spot, dot origin, R, bone
-// lengths, torso width, shoulder/elbow rotations) from the arm AS IT IS ON
-// SCREEN right now — everything except the pinned Turn/Bend/Swing, which stay.
-// Used by Copy-from-pose: the copied pin's frozen numbers describe the SOURCE
-// pose, but its attached dot sits somewhere else in the destination pose, so
-// the leash saw "wrist is nowhere near R from the dot" and re-solved the arm —
-// swinging the elbow away from the rotations that were just copied. Re-pinning
-// the copied arm in place makes the copy land exactly as copied (R becomes the
-// wrist-to-dot distance in the destination pose).
-function rebaseWristPinToCurrent3D(side) {
-  const pin = wristPinsForPose3D(currentPose3D, false)[side];
-  if (!pin) return;
-  const pos = currentWristPinPosition3D(side);
-  if (!pos) return;
-  const shoulderGrp = rig3D && rig3D[side + 'Shoulder'];
-  const elbowGrp = rig3D && rig3D[side + 'Elbow'];
-  const shoulderPos = shoulderGrp ? jointWorldPosSpineLocal3D(shoulderGrp) : null;
-  const elbowPos = elbowGrp ? jointWorldPosSpineLocal3D(elbowGrp) : null;
-  const att = facesWristAttachment3D ? wristAttachmentsForPose3D(currentPose3D, false)[side] : null;
-  const dotOrigin = att ? resolveWristAttachmentPoint3D(att) : null;
-  Object.assign(pin, pos, {
-    sx: shoulderPos ? shoulderPos.x : null, sy: shoulderPos ? shoulderPos.y : null, sz: shoulderPos ? shoulderPos.z : null,
-    ex: elbowPos ? elbowPos.x : null, ey: elbowPos ? elbowPos.y : null, ez: elbowPos ? elbowPos.z : null,
-    dox: dotOrigin ? dotOrigin.x : null, doy: dotOrigin ? dotOrigin.y : null, doz: dotOrigin ? dotOrigin.z : null,
-    r: (pin.r != null && dotOrigin) ? dist3(dotOrigin, pos) : null,
-    upperLen: (shoulderPos && elbowPos) ? dist3(shoulderPos, elbowPos) : null,
-    foreLen: (elbowPos && pos) ? dist3(elbowPos, pos) : null,
-    torsoHalfWidth: torsoHalfWidthCm3D,
-    sq: shoulderGrp ? pinQuatToArr3D(shoulderGrp.quaternion) : null,
-    eq: elbowGrp ? pinQuatToArr3D(elbowGrp.quaternion) : null,
-  });
-}
 // Keeps a pinned wrist's saved ELBOW spot in step with the elbow as the person
 // actually edits it (translate-drag / Position fields on the Elbow joint).
 // Why: the pin stores the elbow's spot as it was at PIN APPLY (ex/ey/ez), and
