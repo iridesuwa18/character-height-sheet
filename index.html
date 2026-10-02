@@ -354,8 +354,17 @@
 
   #jointEditorBottomBar {
     position: absolute; left: 6px; right: 6px; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 9010;
-    display: flex; gap: 4px;
+    display: flex; flex-wrap: wrap; gap: 4px;
   }
+  /* Per-pose save indicator, sits on its own row above Cancel / Save / Close. */
+  #jeSaveStatus {
+    flex: 0 0 100%; text-align: center; padding: 4px 6px; border-radius: 6px;
+    font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+    border: 1px solid var(--border); background: rgba(22,22,24,0.92); color: var(--muted);
+  }
+  #jeSaveStatus.nosave  { border-color: #ff4d4d; color: #ff4d4d; }
+  #jeSaveStatus.dirty   { border-color: var(--accent-gold); color: var(--accent-gold); }
+  #jeSaveStatus.latest  { border-color: #4cd964; color: #4cd964; }
   .je-bottom-btn {
     flex: 1; min-width: 0; height: 36px; min-height: 0; padding: 0 2px; border-radius: 7px;
     font-family: 'Space Mono', monospace; font-size: 9px; font-weight: 700; text-transform: uppercase;
@@ -1380,6 +1389,7 @@
     </div>
 
     <div id="jointEditorBottomBar" style="display:none;">
+      <div id="jeSaveStatus" title="Compares this pose's current edits with what's saved on GitHub">Checking save…</div>
       <button type="button" class="je-bottom-btn je-cancel" onclick="cancelJointEditorMode3D()">✕ Cancel</button>
       <button type="button" class="je-bottom-btn" id="jeQuickSaveBtn" onclick="quickSaveJointsToGitHub3D()">⬆ Save</button>
       <button type="button" class="je-bottom-btn je-apply" onclick="closeJointEditorMode3D()">Close</button>
