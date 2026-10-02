@@ -90,7 +90,7 @@ async function githubUpdatePoseOverrides3D(message, mutate) {
     const body = { message, content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
     if (sha) body.sha = sha;
     const putResp = await fetch(apiUrl, { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
-    if (putResp.ok) return all;
+    if (putResp.ok) { if (typeof setSaveBaseline3D === 'function') setSaveBaseline3D(all); return all; }
     const errj = await putResp.json().catch(() => ({}));
     lastErr = new Error(errj.message || putResp.statusText);
     if (!(putResp.status === 409 || putResp.status === 422 || /does not match|sha/i.test(lastErr.message))) throw lastErr;
@@ -159,10 +159,11 @@ async function pullPoseOverridesFromGitHub() {
   if (!s.owner || !s.repo) return;
   try {
     const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
-    if (!resp.ok) return; // 404 = nothing saved yet; other errors fail quietly at load time
+    if (!resp.ok) { if (resp.status === 404 && typeof setSaveBaseline3D === 'function') setSaveBaseline3D({}); return; } // 404 = nothing saved yet; other errors fail quietly at load time
     const j = await resp.json();
     const all = JSON.parse(ghB64ToUtf8(j.content));
     poseOverridesCache3D = all;
+    if (typeof setSaveBaseline3D === 'function') setSaveBaseline3D(all);
     applyPoseOverridesData3D(all);
     // The overrides may have landed after the pose panel's first paint —
     // re-apply the currently-selected pose so any edit to it shows up.

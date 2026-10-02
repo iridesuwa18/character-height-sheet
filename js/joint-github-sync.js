@@ -137,11 +137,12 @@ function applyJointEditsState3D(jstate, { keepPose = false } = {}) {
 // and sha undefined when the file doesn't exist yet.
 async function fetchPoseOverridesFile(s) {
   const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}&_=${Date.now()}`, { headers: ghHeaders(s.token), cache: 'no-store' });
-  if (resp.status === 404) return { all: {}, sha: undefined };
+  if (resp.status === 404) { setSaveBaseline3D({}); return { all: {}, sha: undefined }; }
   if (!resp.ok) throw new Error(resp.statusText);
   const j = await resp.json();
   let all = {};
   try { all = JSON.parse(ghB64ToUtf8(j.content)) || {}; } catch (e) { all = {}; }
+  setSaveBaseline3D(all);
   return { all, sha: j.sha };
 }
 
@@ -298,3 +299,100 @@ async function autoLoadJointsFromGitHub3D() {
   } catch (e) { console.warn('Could not auto-load joint edits from GitHub:', e); }
   finally { jointEditsFetching3D = false; }
 }
+
+
+// ---- Per-pose "save status" indicator (above the ⬆ Save button) ----------
+// Compares the CURRENT pose's live edits (joint quaternions, hand/wrist
+// overrides, wrist pin, attached-wrist dots — the same four things Save
+// writes) against that pose's entry in the last-known saved file:
+//   red    "No Save"              nothing saved for this pose yet
+//   gold   "Please save changes"  saved, but what's on screen differs
+//   green  "On latest save."      identical to the saved data
+// saveBaseline3D is the whole pose-overrides.json as last read from / written
+// to GitHub (see the setSaveBaseline3D calls in fetchPoseOverridesFile,
+// pullPoseOverridesFromGitHub and githubUpdatePoseOverrides3D). null = not
+// known yet (still loading, or GitHub unreachable) -> neutral grey.
+let saveBaseline3D = null;
+function setSaveBaseline3D(all) {
+  saveBaseline3D = (all && typeof all === 'object') ? all : null;
+  updateSaveStatus3D();
+}
+// Drops nulls / undefined / empty objects so "never touched" and "touched
+// then cleared" compare equal, and old saves with explicit nulls match live
+// state that simply has no entry.
+function pruneSaveState3D(x) {
+  if (x === null || x === undefined) return undefined;
+  if (Array.isArray(x)) return x.map(v => (v === null || v === undefined) ? null : pruneSaveState3D(v));
+  if (typeof x === 'object') {
+    const o = {};
+    Object.keys(x).forEach(k => { const v = pruneSaveState3D(x[k]); if (v !== undefined) o[k] = v; });
+    return Object.keys(o).length ? o : undefined;
+  }
+  return x;
+}
+function saveStatesEqual3D(a, b) {
+  if (a === undefined || b === undefined) return a === b;
+  if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 0.0006; // saves round quats to 4dp
+  if (typeof a !== typeof b || (a === null) !== (b === null)) return false;
+  if (typeof a !== 'object' || a === null) return a === b;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a), kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  return ka.every(k => k in b && saveStatesEqual3D(a[k], b[k]));
+}
+// What the saved file holds for one pose, in the same shape poseLiveSaveState3D
+// builds from the live rig. Handles the old flat (pre-per-pose) saves by
+// putting them on the pose they were captured for, like the loaders do.
+function poseSavedState3D(all, poseKey) {
+  const je = all[JOINT_EDITS_KEY] || {};
+  const rawEdits = je.manualJointEdits || {};
+  const legacyPose = je.pose;
+  let joints;
+  if (rawEdits.left || rawEdits.right) joints = (legacyPose === poseKey) ? rawEdits : undefined;
+  else joints = rawEdits[poseKey];
+  const hw = all[HAND_WRIST_OVERRIDES_KEY];
+  let handWrist;
+  if (hw && hw.byPose) handWrist = hw.byPose[poseKey];
+  else if (hw && legacyPose === poseKey) handWrist = { hand: hw.handRotationOverride, wrist: hw.wristRotationOverride, swing: hw.wristSwingOverride, elbowBend: hw.elbowBendOverride, elbowLift: hw.elbowLiftOverride };
+  const pins = (all[WRIST_PINS_KEY] || {})[poseKey];
+  const att = all[WRIST_ATTACHMENTS_KEY];
+  let attach;
+  if (att && ('left' in att || 'right' in att) && !Object.values(att).some(v => v && typeof v === 'object' && ('left' in v || 'right' in v))) attach = (legacyPose === poseKey) ? att : undefined;
+  else attach = att ? att[poseKey] : undefined;
+  return pruneSaveState3D({ joints, handWrist, pins, attach });
+}
+function poseLiveSaveState3D(poseKey) {
+  return pruneSaveState3D({
+    joints: (collectJointEditsState3D().manualJointEdits || {})[poseKey],
+    handWrist: collectHandWristOverridesState3D().byPose[poseKey],
+    pins: collectWristPinsState3D()[poseKey],
+    attach: collectWristAttachmentsState3D()[poseKey],
+  });
+}
+function poseSaveStatus3D(poseKey) {
+  if (!saveBaseline3D) return 'unknown';
+  const saved = poseSavedState3D(saveBaseline3D, poseKey);
+  const entry = saveBaseline3D[poseKey];
+  const hasSave = saved !== undefined || !!(entry && typeof entry === 'object' && entry.jointXYZ);
+  if (!hasSave) return 'nosave';
+  return saveStatesEqual3D(saved, poseLiveSaveState3D(poseKey)) ? 'latest' : 'dirty';
+}
+function updateSaveStatus3D() {
+  const el = document.getElementById('jeSaveStatus');
+  if (!el) return;
+  let st = 'unknown';
+  try { st = poseSaveStatus3D(currentPose3D); } catch (e) { st = 'unknown'; }
+  const map = {
+    unknown: ['', 'Save status unknown'],
+    nosave:  ['nosave', 'No Save'],
+    dirty:   ['dirty', 'Please save changes'],
+    latest:  ['latest', 'On latest save.'],
+  };
+  const [cls, txt] = map[st];
+  if (el.dataset.state === st) return;
+  el.dataset.state = st; el.className = cls; el.textContent = txt;
+}
+// Edits happen through many paths (gizmo drags, typed fields, mirror, copy,
+// pins, pose switches), so rather than hook each one, re-check twice a second
+// while the editor is open. It's a cheap one-pose comparison.
+setInterval(() => { if (typeof jointEditorModeActive3D !== 'undefined' && jointEditorModeActive3D) updateSaveStatus3D(); }, 500);
