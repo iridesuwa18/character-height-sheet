@@ -449,6 +449,20 @@ function applyPose3D(poseName, { reframe = false } = {}) {
     grp.rotation.y = deg2rad(turnDeg || 0);
   };
 
+  // Load the pose "like new": zero every posed joint's rotation first. The
+  // setters below only write SOME axes (an elbow/knee only gets X, a wrist
+  // only X+Z, a hand-turn only Y). A manual Joint Editor drag, a wrist pin's
+  // leash, or Mirror writes the joint's full QUATERNION, which leaves stale
+  // Y/Z (elbow) or X/Z (hand turn) behind on the Euler — so switching to
+  // another pose kept the previous pose's elbow twist/swing on top of the
+  // new pose's numbers. Starting every switch from identity makes the result
+  // depend only on the target pose, never on whichever pose came before it.
+  ['leftHip','rightHip','leftKnee','rightKnee','leftAnkle','rightAnkle',
+   'leftShoulder','rightShoulder','leftElbow','rightElbow',
+   'leftWrist','rightWrist','leftHandTurn','rightHandTurn'].forEach(k => {
+    if (rig3D[k]) rig3D[k].rotation.set(0, 0, 0);
+  });
+
   setBallJoint(rig3D.leftHip,  p.hipL,  p.hipAbdL,  -1);
   setBallJoint(rig3D.rightHip, p.hipR,  p.hipAbdR,   1);
   if (rig3D.leftHip)  rig3D.leftHip.rotation.y  = deg2rad((p.hipTurnL || 0) * -1);
@@ -594,6 +608,13 @@ function setPose3D(poseName) {
   // wiped here. Use clearHandWristOverrides() for an explicit "back to this
   // pose's own numbers" reset of the current pose.
   applyPose3D(poseName, { reframe: true });
+  // Pinned/leashed wrists ease toward their dot a little per pass; since
+  // applyPose3D now starts every joint from a clean slate, run the same
+  // full convergence a reload uses so a pinned arm lands fully in place.
+  if (typeof enforceWristPinConstraintsConverge3D === 'function') {
+    enforceWristPinConstraintsConverge3D();
+    groundBody3D(true);
+  }
   // Attached wrists are per-pose — refresh their readout/markers for this pose.
   if (typeof refreshWristAttachmentsForPoseChange3D === 'function') refreshWristAttachmentsForPoseChange3D();
   document.querySelectorAll('.pose-btn').forEach(btn => {
