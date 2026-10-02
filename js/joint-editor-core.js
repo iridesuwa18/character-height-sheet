@@ -223,6 +223,8 @@ function openJointEditorMode3D() {
   jointEditorCopyLog3D = [];
   updateCopyBadge3D();
   const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = '';
+  const poseBar = document.getElementById('jePoseBar'); if (poseBar) poseBar.style.display = 'flex';
+  updatePoseNameLabel3D();
   setJointEditorCameraView3D('free');
   // Let the layout/CSS settle into fullscreen before telling three.js the
   // canvas has a new size, or it measures the old (small) box.
@@ -240,6 +242,8 @@ function closeJointEditorModeUI3D() {
   const toggleBar = document.getElementById('jointToggleBar'); if (toggleBar) toggleBar.style.display = 'none';
   const bottomBar = document.getElementById('jointEditorBottomBar'); if (bottomBar) bottomBar.style.display = 'none';
   const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = 'none';
+  const poseBar = document.getElementById('jePoseBar'); if (poseBar) poseBar.style.display = 'none';
+  closePosePopup3D();
   closeCopyPopup3D();
   if (typeof closeFacesPopup3D === 'function') closeFacesPopup3D();
   if (typeof resetFacesSelection3D === 'function') resetFacesSelection3D();
@@ -562,3 +566,58 @@ function setJointEditorCameraView3D(view) {
   document.querySelectorAll('#jointEditorTopBar .je-cam-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
 }
 
+
+
+// ---- Current-pose label + Switch Pose pop-up ----
+function updatePoseNameLabel3D() {
+  const el = document.getElementById('jePoseName');
+  if (!el || typeof POSES3D === 'undefined') return;
+  const pose = POSES3D[currentPose3D];
+  el.textContent = pose ? (pose.label || currentPose3D) : currentPose3D;
+}
+function openPosePopup3D() {
+  const popup = document.getElementById('jePosePopup');
+  const list = document.getElementById('jePoseList');
+  if (!popup || !list || typeof POSES3D === 'undefined') return;
+  list.innerHTML = '';
+  let lastSec = null;
+  Object.keys(POSES3D).forEach(key => {
+    const pose = POSES3D[key];
+    const sec = pose.section || 'Other';
+    if (sec !== lastSec) {
+      const h = document.createElement('div');
+      h.className = 'jep-section'; h.textContent = sec;
+      list.appendChild(h);
+      lastSec = sec;
+    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'jep-item' + (key === currentPose3D ? ' active' : '');
+    b.textContent = pose.label || key;
+    b.onclick = () => switchEditorPose3D(key);
+    list.appendChild(b);
+  });
+  popup.classList.add('open');
+  const active = list.querySelector('.jep-item.active');
+  if (active) active.scrollIntoView({ block: 'center' });
+}
+function closePosePopup3D() {
+  const popup = document.getElementById('jePosePopup');
+  if (popup) popup.classList.remove('open');
+}
+// Switches the pose being edited without leaving the 3D editor. Goes through
+// the exact same setPose3D() the Poses panel buttons use (so per-pose joint
+// edits, hand/wrist overrides, pins and attachments all swap in), then
+// refreshes the editor's own pose-dependent UI.
+function switchEditorPose3D(poseKey) {
+  closePosePopup3D();
+  if (!POSES3D[poseKey] || poseKey === currentPose3D) return;
+  setPose3D(poseKey);
+  if (typeof refreshHandWristButtons === 'function') refreshHandWristButtons();
+  jointEditorCopyLog3D = [];
+  updateCopyBadge3D();
+  populateCopyPoseSelect3D();
+  updatePoseNameLabel3D();
+  if (jointEditorCameraView3D !== 'free') setJointEditorCameraView3D(jointEditorCameraView3D);
+  if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+}
