@@ -231,6 +231,39 @@
     font-family: 'Space Mono', monospace; font-size: 9px; font-weight: 700; text-transform: uppercase; white-space: nowrap;
   }
   #jeCopyOpenBtn.has-copy { background: rgba(240,192,64,0.22); }
+
+  /* Current-pose label + switch button, directly under the Copy poses button. */
+  #jePoseBar {
+    position: absolute; top: calc(106px + env(safe-area-inset-top, 0px)); left: 6px; right: 6px; z-index: 9010;
+    display: none; gap: 4px; align-items: center; pointer-events: none;
+  }
+  #jePoseBar > * { pointer-events: auto; }
+  #jeSwitchPoseBtn {
+    flex: 0 0 28px; width: 28px; height: 28px; padding: 0; border-radius: 7px; cursor: pointer;
+    background: rgba(22,22,24,0.92); border: 1px solid var(--accent-gold); color: var(--accent-gold);
+    font-size: 15px; line-height: 26px; text-align: center;
+  }
+  #jePoseName {
+    flex: 0 1 auto; min-width: 0; max-width: 60%; height: 28px; line-height: 28px; padding: 0 2px;
+    font-family: 'Space Mono', monospace; font-size: 9px; color: var(--accent-gold);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  }
+  /* Switch Pose pop-up: same card pattern as Copy poses, with a vertically scrolling list. */
+  #jePosePopup {
+    position: absolute; inset: 0; z-index: 9030; display: none;
+    align-items: center; justify-content: center; padding: 12px; background: rgba(0,0,0,0.55);
+  }
+  #jePosePopup.open { display: flex; }
+  #jePosePopup .jec-card { display: flex; flex-direction: column; overflow: hidden; max-height: 80%; }
+  #jePoseList { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+  .jep-section { font-size: 9px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 8px 0 4px; }
+  .jep-section:first-child { margin-top: 0; }
+  .jep-item {
+    display: block; width: 100%; text-align: left; height: 34px; padding: 0 10px; margin-bottom: 4px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 7px; color: var(--text);
+    font-family: 'Space Mono', monospace; font-size: 11px;
+  }
+  .jep-item.active { border-color: var(--accent-gold); background: rgba(240,192,64,0.18); color: var(--accent-gold); font-weight: 700; }
   #jeResetAllBtn {
     flex: 0 0 72px; margin-left: auto; height: 28px; padding: 0; border-radius: 7px; cursor: pointer;
     background: rgba(22,22,24,0.92); border: 1px solid var(--accent-red); color: var(--accent-red);
@@ -1222,6 +1255,23 @@
     <div id="jeCopyBar" style="display:none;">
       <button type="button" id="jeCopyOpenBtn" onclick="openCopyPopup3D()">📋 Copy poses</button>
       <span id="jeCopyBadge"></span>
+    </div>
+
+
+    <div id="jePoseBar">
+      <button type="button" id="jeSwitchPoseBtn" onclick="openPosePopup3D()" aria-label="Switch pose" title="Switch pose">⇄</button>
+      <span id="jePoseName"></span>
+    </div>
+
+    <!-- Switch Pose pop-up: pick any pose from a scrolling list. -->
+    <div id="jePosePopup" onclick="if(event.target===this) closePosePopup3D()">
+      <div class="jec-card" role="dialog" aria-label="Switch pose">
+        <div class="jec-head">
+          <span class="jec-title">Switch pose</span>
+          <button type="button" class="je-close-btn" onclick="closePosePopup3D()" aria-label="Close">✕</button>
+        </div>
+        <div id="jePoseList"></div>
+      </div>
     </div>
 
     <!-- Copy Poses pop-up: tap "Copy poses" to open, then Copy or Close. -->
