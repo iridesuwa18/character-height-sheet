@@ -79,7 +79,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "stand-arms-open",
+    "pose": "stand-point",
     "manualJointEdits": {
       "stand-relaxed": {
         "left": {
@@ -1437,7 +1437,39 @@
       }
     },
     "stand-point": {
-      "left": null,
+      "left": {
+        "x": -19.13,
+        "y": -17,
+        "z": -1.05,
+        "turn": 0,
+        "bend": -14,
+        "swing": 0,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -13.2,
+        "ey": 12.46,
+        "ez": 0,
+        "dox": -15.70732308113575,
+        "doy": -46.93197724056245,
+        "doz": 0,
+        "r": 30.14532266903897,
+        "upperLen": 40.4074114488914,
+        "foreLen": 30.069236771158657,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "eq": [
+          0.0821,
+          0.7001,
+          -0.058,
+          0.7069
+        ]
+      },
       "right": null
     },
     "stand-thinking": {
@@ -1509,6 +1541,14 @@
       }
     },
     "stand-arms-open": {
+      "left": null,
+      "right": null
+    },
+    "stand-hands-head": {
+      "left": null,
+      "right": null
+    },
+    "model-dynamic-jump": {
       "left": null,
       "right": null
     }
@@ -1643,6 +1683,15 @@
         "h": 0,
         "v": 0
       }
+    },
+    "stand-point": {
+      "left": {
+        "group": "leftLeg",
+        "face": "left",
+        "h": 50,
+        "v": 50
+      },
+      "right": null
     }
   },
   "stand-arms-out": {
@@ -2616,7 +2665,7 @@
         "z": -1.05
       },
       "leftHandTurn": {
-        "x": -18.66,
+        "x": -18.65,
         "y": -27.24,
         "z": -1.38
       },
@@ -2631,13 +2680,13 @@
         "z": 40.33
       },
       "rightWrist": {
-        "x": 13.44,
-        "y": 52.07,
+        "x": 13.43,
+        "y": 52.06,
         "z": 70.38
       },
       "rightHandTurn": {
-        "x": 13.52,
-        "y": 51.76,
+        "x": 13.51,
+        "y": 51.75,
         "z": 80.64
       },
       "leftHip": {
