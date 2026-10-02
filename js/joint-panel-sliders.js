@@ -140,6 +140,8 @@ function refreshQuickOptions3D() {
   set('rotate', has && gizmoMode3D === 'rotate');
   set('mirror', false);
   set('snap', false);
+  const sr = document.querySelector('#jeQoTools [data-qo="snaprot"]'); if (sr) sr.classList.toggle('active', typeof snapRotations3D !== 'undefined' && snapRotations3D);
+  const lv = document.querySelector('#jeQoTools [data-qo="level"]'); if (lv) lv.classList.remove('active');
   // Ghost isn't tied to a joint — always enabled; lit while see-through is ON.
   const g = document.querySelector('#jeQoMenu [data-qo="ghost"]');
   if (g) { g.classList.remove('needs-joint'); g.classList.toggle('active', typeof facesGhostMode3D !== 'undefined' && facesGhostMode3D); }
@@ -295,8 +297,8 @@ function onJointGizmoChange3D() {
       const b = [norm(rad2deg(e.x) + 180), norm(180 - rad2deg(e.y))];
       const dist = c => Math.abs(norm(c[0] - curX)) + Math.abs(norm(c[1] - curY));
       const pick = dist(a) <= dist(b) ? a : b;
-      wristRotationOverride[side] = clampWristBend(pick[0]);
-      handRotationOverride[side] = clampTurnFree(pick[1] * sgn);
+      wristRotationOverride[side] = clampWristBend(snapDeg3D(pick[0]));
+      handRotationOverride[side] = clampTurnFree(snapDeg3D(pick[1]) * sgn);
       jointEditsForPose3D(currentPose3D)[side].wristQuat = null;
       jointEditsForPose3D(currentPose3D)[side].handTurnQuat = null;
       const turn = handRotationOverride[side];
@@ -313,7 +315,7 @@ function onJointGizmoChange3D() {
     const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
     const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
     if (!boneGroup || !childGroup) return;
-    const q = aimBoneToWorldPoint3D(boneGroup, childGroup.position, gizmoProxy3D.position);
+    const q = aimBoneKeepTwist3D(boneGroup, childGroup, gizmoProxy3D.position);
     jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   }
   reapplyManualJointEdits3D();
@@ -371,7 +373,7 @@ function onJointPosInput(axis, rawVal) {
   const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
   const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
   if (!boneGroup || !childGroup) return;
-  const q = aimBoneToWorldPoint3D(boneGroup, childGroup.position, targetWorld);
+  const q = aimBoneKeepTwist3D(boneGroup, childGroup, targetWorld);
   jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   reapplyManualJointEdits3D();
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);

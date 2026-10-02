@@ -43,6 +43,7 @@ let jointEditorFacingSnapshot3D = null; // hand/wrist facing overrides when the 
 let jointEditorModeSnapshot3D = null;  // deep clone of manualJointEdits3D taken on open, restored on Cancel
 let jointSettingsPopupOpen3D = false;  // whether the ⚙ settings popup is currently shown
 let jointEditorCopyLog3D = [];         // what "Copy poses" has pulled onto the current pose this editor session (drives the status chip)
+let snapRotations3D = false;          // Quick Options → Snap rotations: gizmo rotates in 15° steps
 let jointEditorCameraView3D = 'free';  // 'front' | 'back' | 'side-left' | 'side-right' | 'free'
 // Per-side manual overrides, KEYED BY POSE NAME:
 // manualJointEdits3D[poseName] = { left: {...}, right: {...} }. null = "use
@@ -84,6 +85,7 @@ function initJointEditor3D() {
   transformControls3D.enabled = false;
   transformControls3D.visible = false;
   scene3D.add(transformControls3D);
+  applySnapRotations3D();
 
   gizmoProxy3D = new THREE.Object3D();
   scene3D.add(gizmoProxy3D);
@@ -136,6 +138,19 @@ function aimBoneToWorldPoint3D(boneGroup, restLocalVec, targetWorldPos) {
   const rest = restLocalVec.clone();
   if (dir.lengthSq() < 1e-8 || rest.lengthSq() < 1e-8) return boneGroup.quaternion.clone();
   return new THREE.Quaternion().setFromUnitVectors(rest.normalize(), dir.normalize());
+}
+
+// Same job as aimBoneToWorldPoint3D, but swings the bone from where it
+// ALREADY points instead of rebuilding its rotation from scratch. The
+// from-scratch version can only recover the bone's direction, so any twist
+// the person had put on it (e.g. a rotated elbow) was thrown away whenever
+// the joint below it was moved. This keeps that twist and only applies the
+// smallest extra swing needed to reach the target.
+function aimBoneKeepTwist3D(boneGroup, childGroup, targetWorldPos) {
+  if (typeof nudgeBoneQuatToward3D === 'function') {
+    return nudgeBoneQuatToward3D(boneGroup, childGroup.position, boneGroup.quaternion.clone(), targetWorldPos);
+  }
+  return aimBoneToWorldPoint3D(boneGroup, childGroup.position, targetWorldPos);
 }
 
 function selectJoint3D(side, jointType) {
@@ -244,6 +259,7 @@ function closeJointEditorModeUI3D() {
   const copyBar = document.getElementById('jeCopyBar'); if (copyBar) copyBar.style.display = 'none';
   const poseBar = document.getElementById('jePoseBar'); if (poseBar) poseBar.style.display = 'none';
   closePosePopup3D();
+  closeLevelPopup3D();
   closeCopyPopup3D();
   if (typeof closeFacesPopup3D === 'function') closeFacesPopup3D();
   if (typeof resetFacesSelection3D === 'function') resetFacesSelection3D();
@@ -620,4 +636,148 @@ function switchEditorPose3D(poseKey) {
   updatePoseNameLabel3D();
   if (jointEditorCameraView3D !== 'free') setJointEditorCameraView3D(jointEditorCameraView3D);
   if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+}
+
+// Previous/next pose, in the same order as the Switch pose list (wraps around).
+function cycleEditorPose3D(step) {
+  if (typeof POSES3D === 'undefined') return;
+  const keys = Object.keys(POSES3D);
+  if (!keys.length) return;
+  let i = keys.indexOf(currentPose3D);
+  if (i < 0) i = 0;
+  const next = keys[(i + step + keys.length) % keys.length];
+  switchEditorPose3D(next);
+}
+
+// ---- Snap rotations (Quick Options) ----
+const SNAP_ROTATION_DEG_3D = 15;
+function applySnapRotations3D() {
+  if (!transformControls3D) return;
+  transformControls3D.setRotationSnap(snapRotations3D ? deg2rad(SNAP_ROTATION_DEG_3D) : null);
+}
+function toggleSnapRotations3D() {
+  snapRotations3D = !snapRotations3D;
+  applySnapRotations3D();
+  refreshQuickOptions3D();
+  showJointEditorHint3D(snapRotations3D ? 'Snap rotations ON (' + SNAP_ROTATION_DEG_3D + '°)' : 'Snap rotations OFF');
+}
+function snapDeg3D(v) {
+  return snapRotations3D ? Math.round(v / SNAP_ROTATION_DEG_3D) * SNAP_ROTATION_DEG_3D : v;
+}
+
+// ---- Level arm (Quick Options) ----
+// Moves the chosen elbow(s)/wrist(s) so their spine-local X / Y / Z (the same
+// numbers the Position fields show) match the reference joint's. Bones can't
+// stretch, so each joint slides along the sphere its bone length allows
+// (shoulder->elbow for an elbow, elbow->wrist for a wrist) to the point that
+// has the requested coordinate(s) and is closest to where it already is.
+const LEVEL_JOINTS_3D = {
+  'left-elbow':  { side: 'left',  type: 'elbow', label: 'L Elbow' },
+  'right-elbow': { side: 'right', type: 'elbow', label: 'R Elbow' },
+  'left-wrist':  { side: 'left',  type: 'wrist', label: 'L Wrist' },
+  'right-wrist': { side: 'right', type: 'wrist', label: 'R Wrist' },
+};
+let levelSel3D = { joints: new Set(), ref: null, axes: { x: false, y: false, z: false } };
+function refreshLevelPopup3D() {
+  document.querySelectorAll('#jeLevelPopup [data-lvjoint]').forEach(b => b.classList.toggle('active', levelSel3D.joints.has(b.dataset.lvjoint)));
+  document.querySelectorAll('#jeLevelPopup [data-lvref]').forEach(b => b.classList.toggle('active', levelSel3D.ref === b.dataset.lvref));
+  document.querySelectorAll('#jeLevelPopup [data-lvaxis]').forEach(b => b.classList.toggle('active', !!levelSel3D.axes[b.dataset.lvaxis]));
+}
+function openLevelPopup3D() {
+  toggleQuickOptions3D(false);
+  const popup = document.getElementById('jeLevelPopup'); if (!popup) return;
+  const msg = document.getElementById('jeLevelMsg'); if (msg) msg.textContent = '';
+  refreshLevelPopup3D();
+  popup.classList.add('open');
+}
+function closeLevelPopup3D() {
+  const popup = document.getElementById('jeLevelPopup');
+  if (popup) popup.classList.remove('open');
+}
+function toggleLevelJoint3D(id) {
+  if (levelSel3D.joints.has(id)) levelSel3D.joints.delete(id); else levelSel3D.joints.add(id);
+  const msg = document.getElementById('jeLevelMsg'); if (msg) msg.textContent = '';
+  refreshLevelPopup3D();
+}
+function setLevelRef3D(id) {
+  levelSel3D.ref = (levelSel3D.ref === id) ? null : id;
+  const msg = document.getElementById('jeLevelMsg'); if (msg) msg.textContent = '';
+  refreshLevelPopup3D();
+}
+function toggleLevelAxis3D(a) {
+  levelSel3D.axes[a] = !levelSel3D.axes[a];
+  const msg = document.getElementById('jeLevelMsg'); if (msg) msg.textContent = '';
+  refreshLevelPopup3D();
+}
+function levelSpineLocalPos3D(grp) {
+  rig3D.spine.updateMatrixWorld(true);
+  const w = new THREE.Vector3(); grp.getWorldPosition(w);
+  return rig3D.spine.worldToLocal(w);
+}
+// Point on the sphere (centre P, radius L) that has the requested coordinates
+// (axes -> values in ref) and is nearest to C. When the request can't be met
+// exactly (bone too short) it just aims as close as the bone allows.
+function levelTargetLocal3D(P, C, axes, ref) {
+  const L = C.distanceTo(P);
+  const Q = C.clone();
+  axes.forEach(a => { Q[a] = ref[a]; });
+  const unit = a => { const v = new THREE.Vector3(); v[a] = 1; return v; };
+  if (axes.length === 1) {
+    const a = axes[0];
+    const d = ref[a] - P[a];
+    if (Math.abs(d) >= L) return P.clone().addScaledVector(unit(a), Math.sign(d) * L);
+    const v = C.clone().sub(P); v[a] = 0;
+    if (v.lengthSq() < 1e-8) { const o = ['x', 'y', 'z'].find(k => k !== a); v[o] = 1; }
+    return P.clone().addScaledVector(unit(a), d).addScaledVector(v.normalize(), Math.sqrt(L * L - d * d));
+  }
+  if (axes.length === 2) {
+    const b = ['x', 'y', 'z'].find(k => !axes.includes(k));
+    const d1 = ref[axes[0]] - P[axes[0]], d2 = ref[axes[1]] - P[axes[1]];
+    const rem = L * L - d1 * d1 - d2 * d2;
+    if (rem >= 0) {
+      const s = Math.sqrt(rem);
+      const sb = (Math.abs(P[b] + s - C[b]) <= Math.abs(P[b] - s - C[b])) ? s : -s;
+      Q[b] = P[b] + sb;
+    }
+  }
+  return Q; // 3 axes, or unreachable 2-axis case: aim toward this point
+}
+function applyLevelArm3D() {
+  const msg = document.getElementById('jeLevelMsg');
+  const say = t => { if (msg) msg.textContent = t; };
+  const axes = ['x', 'y', 'z'].filter(a => levelSel3D.axes[a]);
+  if (!levelSel3D.joints.size) return say('Choose at least one joint.');
+  if (!levelSel3D.ref) return say('Choose a reference joint.');
+  if (!axes.length) return say('Choose Level X, Y and/or Z.');
+  if (!rig3D || !rig3D.spine) return say('Model not ready.');
+  const refDef = LEVEL_JOINTS_3D[levelSel3D.ref];
+  const refGrp = rig3D[refDef.side + (refDef.type === 'elbow' ? 'Elbow' : 'Wrist')];
+  if (!refGrp) return say('Reference joint not found.');
+  const todo = [...levelSel3D.joints].filter(id => id !== levelSel3D.ref).map(id => ({ id, ...LEVEL_JOINTS_3D[id] }));
+  if (!todo.length) return say('Pick a joint other than the reference.');
+  // Elbows first: moving an elbow carries its wrist along, so wrists are measured afterwards.
+  todo.sort((a, b) => (a.type === 'elbow' ? 0 : 1) - (b.type === 'elbow' ? 0 : 1));
+  const refPos = levelSpineLocalPos3D(refGrp); // frozen at Apply time
+  let partial = 0, done = 0;
+  todo.forEach(j => {
+    const boneGrp  = j.type === 'elbow' ? rig3D[j.side + 'Shoulder'] : rig3D[j.side + 'Elbow'];
+    const childGrp = j.type === 'elbow' ? rig3D[j.side + 'Elbow']    : rig3D[j.side + 'Wrist'];
+    if (!boneGrp || !childGrp) return;
+    const P = levelSpineLocalPos3D(boneGrp), C = levelSpineLocalPos3D(childGrp);
+    const Q = levelTargetLocal3D(P, C, axes, refPos);
+    const targetWorld = rig3D.spine.localToWorld(Q.clone());
+    const q = aimBoneKeepTwist3D(boneGrp, childGrp, targetWorld);
+    jointEditsForPose3D(currentPose3D)[j.side][j.type === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
+    reapplyManualJointEdits3D();
+    if (j.type === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(j.side);
+    const after = levelSpineLocalPos3D(childGrp);
+    if (axes.some(a => Math.abs(after[a] - refPos[a]) > 0.3)) partial++;
+    done++;
+  });
+  groundBody3D(false);
+  if (selectedJoint3D) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  closeLevelPopup3D();
+  showJointEditorHint3D(partial
+    ? `Leveled ${done} joint(s) — ${partial} couldn't fully reach (arm length)`
+    : `Leveled ${done} joint(s) to ${refDef.label} ${axes.map(a => a.toUpperCase()).join('')}`);
 }
