@@ -151,6 +151,14 @@ function refreshQuickOptions3D() {
 function quickClearFaces3D() {
   toggleQuickOptions3D(false);
   resetFacesSelection3D();
+  // Same end state as the popup's Clear button, applied immediately even
+  // though the Faces popup is closed here: hide the floating dot card right
+  // now (instead of waiting for the next frame), refresh the dot section /
+  // inputs and the Attached Wrists readouts, and redraw.
+  if (typeof facesDotFloatingEl3D !== 'undefined' && facesDotFloatingEl3D) facesDotFloatingEl3D.style.display = 'none';
+  if (typeof syncFacesDotInputs3D === 'function') syncFacesDotInputs3D();
+  if (typeof refreshFacesWristReadouts3D === 'function') refreshFacesWristReadouts3D();
+  if (typeof requestRender3D === 'function') requestRender3D(4);
   showJointEditorHint3D('Faces selection cleared');
 }
 // Quick Options → Snap Back: same as the Snap Back button in the Faces popup,

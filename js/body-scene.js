@@ -115,16 +115,69 @@ function resizeBody3D() {
   if (!w || !h) return;
   camera3D.aspect = w/h; camera3D.updateProjectionMatrix();
   renderer3D.setSize(w, h);
+  requestRender3D(3); // setSize clears the canvas — it must be redrawn
 }
+
+// ── Render only when something changed ─────────────────────────────
+// The old loop re-rendered the whole (antialiased, transparent, fullscreen)
+// scene 60x a second even while nothing moved, which is what made the 3D
+// editor laggy. Now every frame we compute a cheap fingerprint of everything
+// that affects the picture (camera, every object's position/rotation/scale/
+// visibility, material colour/opacity, puppet-line endpoints, canvas size)
+// and only run the expensive render + overlay update when it differs from
+// the last drawn frame. Orbit damping still eases out because the camera
+// keeps changing until it settles. requestRender3D() is a manual override,
+// and any click/key/drag/slider input also forces a few frames as a safety
+// net, so nothing can get stuck un-redrawn.
+let _lastFp3D = null, _forceFrames3D = 0;
+function requestRender3D(frames) { _forceFrames3D = Math.max(_forceFrames3D, frames || 3); }
+function sceneFingerprint3D() {
+  let h = 17;
+  const mix = v => { h = (Math.imul(h, 31) + ((v * 1000) | 0)) | 0; };
+  const c = camera3D;
+  mix(c.position.x); mix(c.position.y); mix(c.position.z);
+  mix(c.quaternion.x); mix(c.quaternion.y); mix(c.quaternion.z); mix(c.quaternion.w);
+  mix(c.zoom); mix(c.fov); mix(c.aspect);
+  mix(renderer3D.domElement.width); mix(renderer3D.domElement.height);
+  let n = 0;
+  scene3D.traverse(o => {
+    n++;
+    mix(o.visible ? 1 : 2);
+    const p = o.position, q = o.quaternion, sc = o.scale;
+    mix(p.x); mix(p.y); mix(p.z);
+    mix(q.x); mix(q.y); mix(q.z); mix(q.w);
+    mix(sc.x); mix(sc.y); mix(sc.z);
+    const m = o.material;
+    if (m && !Array.isArray(m)) {
+      if (m.color) { mix(m.color.r); mix(m.color.g); mix(m.color.b); }
+      mix(m.opacity); mix(m.visible === false ? 1 : 2);
+    }
+    if (o.name && o.name.indexOf('__puppetLine:') === 0 && o.geometry && o.geometry.attributes.position) {
+      const a = o.geometry.attributes.position.array;
+      for (let k = 0; k < 6; k++) mix(a[k]);
+    }
+  });
+  return h + ':' + n;
+}
+['pointerdown', 'pointerup', 'wheel', 'keydown', 'keyup', 'input', 'change', 'click', 'touchstart', 'touchmove', 'touchend']
+  .forEach(ev => document.addEventListener(ev, () => requestRender3D(4), { capture: true, passive: true }));
+document.addEventListener('pointermove', e => { if (e.buttons) requestRender3D(2); }, { capture: true, passive: true });
 
 function animate3D() {
   requestAnimationFrame(animate3D);
-  if (!sceneInited3D || document.getElementById('preview3D').style.display === 'none') return;
+  if (!sceneInited3D) return;
+  if (document.getElementById('preview3D').style.display === 'none') { _lastFp3D = null; return; }
   controls3D.update();
-  renderer3D.render(scene3D, camera3D);
+  const fp = sceneFingerprint3D();
+  if (fp === _lastFp3D && _forceFrames3D <= 0) return; // nothing changed — skip all the work
+  if (_forceFrames3D > 0) _forceFrames3D--;
+  // Overlays first (they can move puppet lines etc.), then draw, then store
+  // the fingerprint of what was actually drawn.
   updateWristSliderOverlay3D();
   updateFacesDotOverlayFrame3D();
   updatePuppetLines3D();
+  renderer3D.render(scene3D, camera3D);
+  _lastFp3D = sceneFingerprint3D();
 }
 
 // Recursively frees GPU resources for a mesh/group tree before it's discarded.
