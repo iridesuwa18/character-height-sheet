@@ -79,7 +79,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "stand-lean",
+    "pose": "stand-point",
     "manualJointEdits": {
       "stand-relaxed": {
         "left": {
@@ -513,6 +513,35 @@
           "wristQuat": null,
           "handTurnQuat": null
         }
+      },
+      "stand-point": {
+        "left": {
+          "shoulderQuat": null,
+          "elbowQuat": [
+            0.0821,
+            0.7001,
+            -0.058,
+            0.7069
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null
+        },
+        "right": {
+          "shoulderQuat": [
+            -0.7046,
+            -0.0437,
+            0.044,
+            0.7069
+          ],
+          "elbowQuat": [
+            0.0026,
+            -0.998,
+            -0.0137,
+            0.0623
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null
+        }
       }
     }
   },
@@ -728,6 +757,28 @@
         "swing": {
           "left": 1,
           "right": 10
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "stand-point": {
+        "hand": {
+          "left": null,
+          "right": 180
+        },
+        "wrist": {
+          "left": -14,
+          "right": 0
+        },
+        "swing": {
+          "left": null,
+          "right": 0
         },
         "elbowBend": {
           "left": null,
@@ -1304,6 +1355,10 @@
           0.9706
         ]
       }
+    },
+    "stand-point": {
+      "left": null,
+      "right": null
     }
   },
   "_wristAttachments": {
@@ -2368,6 +2423,85 @@
       "rightAnkle": {
         "x": 20.02,
         "y": -86.05,
+        "z": 0
+      }
+    }
+  },
+  "stand-point": {
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -13.2,
+        "y": 12.46,
+        "z": 0
+      },
+      "leftWrist": {
+        "x": -19.13,
+        "y": -17,
+        "z": -1.05
+      },
+      "leftHandTurn": {
+        "x": -18.66,
+        "y": -27.24,
+        "z": -1.38
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 13.21,
+        "y": 52.97,
+        "z": 40.33
+      },
+      "rightWrist": {
+        "x": 13.44,
+        "y": 52.07,
+        "z": 70.38
+      },
+      "rightHandTurn": {
+        "x": 13.52,
+        "y": 51.76,
+        "z": 80.64
+      },
+      "leftHip": {
+        "x": -7.85,
+        "y": -5.87,
+        "z": 0
+      },
+      "leftKnee": {
+        "x": -7.85,
+        "y": -46.93,
+        "z": 0
+      },
+      "leftAnkle": {
+        "x": -7.85,
+        "y": -87.99,
+        "z": 0
+      },
+      "rightHip": {
+        "x": 7.85,
+        "y": -5.87,
+        "z": 0
+      },
+      "rightKnee": {
+        "x": 7.85,
+        "y": -46.93,
+        "z": 0
+      },
+      "rightAnkle": {
+        "x": 7.85,
+        "y": -87.99,
         "z": 0
       }
     }
