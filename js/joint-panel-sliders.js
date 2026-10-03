@@ -189,7 +189,9 @@ function setGizmoMode3D(mode) {
   const panel = document.getElementById('jointEditorPanel');
   if (panel) panel.querySelectorAll('.je-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   const note = document.getElementById('jeNote');
-  if (note) note.textContent = mode === 'off'
+  if (note && selectedJoint3D && selectedJoint3D.jointType === 'hip' && mode !== 'off') {
+    note.textContent = 'The hip is rotate-only: drag the rotate rings on the model above, or type exact numbers below.';
+  } else if (note) note.textContent = mode === 'off'
     ? 'Gizmo is off — turn on Move or Rotate from the quick options menu to drag on the model, or type exact numbers below.'
     : mode === 'rotate'
     ? (selectedJoint3D && selectedJoint3D.jointType === 'wrist'
@@ -207,11 +209,18 @@ function setGizmoMode3D(mode) {
 const JOINT_DEF_3D = {
   elbow: { grp: 'Elbow', bone: 'Shoulder', moveKey: 'shoulderQuat', rotKey: 'elbowQuat', label: 'Elbow' },
   wrist: { grp: 'Wrist', bone: 'Elbow',    moveKey: 'elbowQuat',    rotKey: 'wristQuat', label: 'Wrist' },
+  // Hip is ROTATE-ONLY: it has no parent bone to re-aim, so no position drag.
+  hip:   { grp: 'Hip',   bone: null,       moveKey: null,           rotKey: 'hipQuat',   label: 'Hip' },
   knee:  { grp: 'Knee',  bone: 'Hip',      moveKey: 'hipQuat',      rotKey: 'kneeQuat',  label: 'Knee' },
   ankle: { grp: 'Ankle', bone: 'Knee',     moveKey: 'kneeQuat',     rotKey: 'ankleQuat', label: 'Ankle' },
 };
 // Knee and ankle are the two leg joints (everything else is an arm joint).
-function isLegJoint3D(jointType) { return jointType === 'knee' || jointType === 'ankle'; }
+function isLegJoint3D(jointType) { return jointType === 'hip' || jointType === 'knee' || jointType === 'ankle'; }
+// The hip can only be rotated, so it always shows the rotate rings even if
+// the editor is in Move mode (Off still hides the gizmo).
+function effectiveGizmoMode3D(jointType) {
+  return (jointType === 'hip' && gizmoMode3D !== 'off') ? 'rotate' : gizmoMode3D;
+}
 function attachGizmoToSelection3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
@@ -226,7 +235,8 @@ function attachGizmoToSelection3D() {
   }
   // Wrist + Rotate: no ring gizmo at all — two Bend/Turn sliders float next
   // to the joint instead (see updateWristSliderOverlay3D). Elbow keeps rings.
-  if (gizmoMode3D === 'rotate' && jointType === 'wrist') {
+  const mode = effectiveGizmoMode3D(jointType);
+  if (mode === 'rotate' && jointType === 'wrist') {
     transformControls3D.detach();
     transformControls3D.enabled = false;
     transformControls3D.visible = false;
@@ -235,7 +245,7 @@ function attachGizmoToSelection3D() {
   }
   transformControls3D.enabled = true;
   transformControls3D.visible = true;
-  if (gizmoMode3D === 'rotate') {
+  if (mode === 'rotate') {
     transformControls3D.setMode('rotate');
     // Rotate rings read much bigger than the translate arrows at the same
     // size value, so shrink them a bit further.
@@ -282,7 +292,7 @@ function attachGizmoToSelection3D() {
 }
 function highlightSelectedJoint3D() {
   ['left', 'right'].forEach(side => {
-    ['Elbow', 'Wrist', 'Knee', 'Ankle'].forEach(j => {
+    ['Elbow', 'Wrist', 'Hip', 'Knee', 'Ankle'].forEach(j => {
       const mesh = rig3D[side + j + 'JointMesh'];
       if (!mesh || !mesh.material) return;
       const isSel = !!selectedJoint3D && selectedJoint3D.side === side && selectedJoint3D.jointType === j.toLowerCase();
@@ -323,7 +333,7 @@ function groundBodyForArmEdit3D(jointType) {
 function onJointGizmoChange3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
-  if (gizmoMode3D === 'rotate') {
+  if (effectiveGizmoMode3D(jointType) === 'rotate') {
     const grp = rig3D[side + JOINT_DEF_3D[jointType].grp];
     if (!grp) return;
     if (jointType === 'wrist') {
@@ -404,6 +414,7 @@ function resetSelectedJoint3D() {
   const { side, jointType } = selectedJoint3D;
   const je = jointEditsForPose3D(currentPose3D);
   if (jointType === 'elbow') { je[side].shoulderQuat = null; je[side].elbowQuat = null; }
+  else if (jointType === 'hip') { je[side].hipQuat = null; }
   else if (jointType === 'knee') { je[side].hipQuat = null; je[side].kneeQuat = null; }
   else if (jointType === 'ankle') { je[side].kneeQuat = null; je[side].ankleQuat = null; }
   else { je[side].wristQuat = null; je[side].handTurnQuat = null; }
@@ -536,6 +547,7 @@ function updateJointPanelValues3D() {
     if (el && document.activeElement !== el) el.value = round1(v);
   };
   setVal('jePosX', local.x); setVal('jePosY', local.y); setVal('jePosZ', local.z);
+  ['jePosX', 'jePosY', 'jePosZ'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = jointType === 'hip'; });
   setVal('jeRotX', euler.x * 180 / Math.PI);
   setVal('jeRotY', euler.y * 180 / Math.PI);
   setVal('jeRotZ', euler.z * 180 / Math.PI);
