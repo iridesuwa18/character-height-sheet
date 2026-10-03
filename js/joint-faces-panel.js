@@ -889,9 +889,10 @@ function resolveWristAttachmentWorldPoint3D(att) {
   for (const meshes of stacks) {
     const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
     const combined = combineFacesOutlineStack3D(pieces);
-    const pt = facesDotLocalPosition3D(att.face, combined, att.h, att.v);
-    if (!pt || !combined.refFrame) continue;
-    return combined.refFrame.localToWorld(pt.clone());
+    const res = facesStackPoint3D(pieces, combined, att.face, att.h, att.v);
+    if (!res) continue;
+    res.owner.mesh.updateWorldMatrix(true, false);
+    return res.owner.mesh.localToWorld(res.local.clone());
   }
   return null;
 }
@@ -982,14 +983,9 @@ function updatePuppetLines3D() {
 function addFacesWristDotOverlay3D(meshes, side, att) {
   const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
   const combined = combineFacesOutlineStack3D(pieces);
-  const pt = facesDotLocalPosition3D(att.face, combined, att.h, att.v);
-  if (!pt) return;
-  let owner = pieces[0];
-  for (let i = 0; i < pieces.length; i++) {
-    const seg = combined.segments[i];
-    if (pt.y >= seg.minY - 1e-4 && pt.y <= seg.maxY + 1e-4) { owner = pieces[i]; break; }
-  }
-  const local = frameLocalToMeshLocal3D(pt, combined.refFrame, owner.mesh);
+  const res = facesStackPoint3D(pieces, combined, att.face, att.h, att.v);
+  if (!res) return;
+  const owner = res.owner, local = res.local;
   const name = FACES_WRIST_DOT_PREFIX + side;
   const existing = owner.mesh.children.find(c => c.name === name);
   if (existing) { owner.mesh.remove(existing); existing.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
@@ -1485,6 +1481,59 @@ function frameLocalToMeshLocal3D(pt, refFrame, ownerMesh) {
   return ownerMesh.worldToLocal(refFrame.localToWorld(pt.clone()));
 }
 
+// Resolves (face, H%, V%) on a stack into the owning piece and the point in
+// THAT piece's own mesh-local space — the one place every consumer (the
+// editing dot, wrist markers, and attached-wrist/pin resolution) gets its
+// point from.
+//  - FLAT stack (pieces share one parent frame, e.g. the torso's pinched
+//    halves): unchanged — one combined sweep, then converted to the owner.
+//  - JOINTED stack (thigh + shin, upper arm + forearm — a real rotating
+//    joint between pieces): the combined axis-aligned box can't describe a
+//    bent limb (it made the dot cut through the middle or float off the
+//    faces once the knee bent). Instead V sweeps top(0%) -> bottom(100%)
+//    along the pieces' own lengths — down the first piece's real face to
+//    the joint, then from the top of the next piece's real face to its
+//    end — and each point is computed against that ONE piece's own
+//    outline, in its own local frame, so it always sits on its true face
+//    at any bend angle. Top/Bottom faces use the uppermost/lowermost piece.
+// Returns { owner: {mesh, outline}, local: Vector3 (owner mesh-local) } or null.
+function facesStackPoint3D(pieces, combined, faceName, hPct, vPct) {
+  const flat = pieces.every(p => p.mesh.parent === combined.refFrame);
+  if (flat) {
+    const pt = facesDotLocalPosition3D(faceName, combined, hPct, vPct);
+    if (!pt) return null;
+    let owner = pieces[0];
+    for (let i = 0; i < pieces.length; i++) {
+      const seg = combined.segments[i];
+      if (pt.y >= seg.minY - 1e-4 && pt.y <= seg.maxY + 1e-4) { owner = pieces[i]; break; }
+    }
+    return { owner, local: frameLocalToMeshLocal3D(pt, combined.refFrame, owner.mesh) };
+  }
+  const own = p => {
+    const o = p.outline;
+    return { ...o, segments: [{ minY: o.minY, maxY: o.maxY, bottom: o.bottom, top: o.top }] };
+  };
+  const topToBottom = pieces.slice().reverse();
+  if (faceName === 'top' || faceName === 'bottom') {
+    const owner = faceName === 'top' ? topToBottom[0] : topToBottom[topToBottom.length - 1];
+    const local = facesDotLocalPosition3D(faceName, own(owner), hPct, vPct);
+    return local ? { owner, local } : null;
+  }
+  const lens = topToBottom.map(p => Math.max(p.outline.maxY - p.outline.minY, 1e-6));
+  const total = lens.reduce((a, b) => a + b, 0);
+  const target = Math.max(0, Math.min(100, vPct)) / 100 * total;
+  let acc = 0, idx = topToBottom.length - 1, within = 1;
+  for (let i = 0; i < topToBottom.length; i++) {
+    if (target <= acc + lens[i] + 1e-9 || i === topToBottom.length - 1) {
+      idx = i; within = Math.max(0, Math.min(1, (target - acc) / lens[i])); break;
+    }
+    acc += lens[i];
+  }
+  const owner = topToBottom[idx];
+  const local = facesDotLocalPosition3D(faceName, own(owner), hPct, within * 100);
+  return local ? { owner, local } : null;
+}
+
 // Places exactly one dot for a stack: computes the dot's point across the
 // COMBINED surface (so Vertical 0-100% sweeps smoothly from the top of the
 // topmost piece through to the bottom of the bottommost piece, right across
@@ -1495,15 +1544,9 @@ function frameLocalToMeshLocal3D(pt, refFrame, ownerMesh) {
 function addFacesDotForStack3D(meshes, faceName) {
   const pieces = meshes.map(mesh => ({ mesh, outline: facesMeshOutline3D(mesh.geometry) }));
   const combined = combineFacesOutlineStack3D(pieces);
-  const pt = facesDotLocalPosition3D(faceName, combined, facesDotH3D, facesDotV3D);
-  if (!pt) return;
-  let owner = pieces[0];
-  for (let i = 0; i < pieces.length; i++) {
-    const seg = combined.segments[i];
-    if (pt.y >= seg.minY - 1e-4 && pt.y <= seg.maxY + 1e-4) { owner = pieces[i]; break; }
-  }
-  const local = frameLocalToMeshLocal3D(pt, combined.refFrame, owner.mesh);
-  addFacesDotOverlayAtPosition3D(owner.mesh, local, owner.outline);
+  const res = facesStackPoint3D(pieces, combined, faceName, facesDotH3D, facesDotV3D);
+  if (!res) return;
+  addFacesDotOverlayAtPosition3D(res.owner.mesh, res.local, res.owner.outline);
 }
 
 // Entry point used by both applyFacesHighlight3D and updateFacesDotOnly3D:
