@@ -185,7 +185,7 @@
   }
   #jointToggleBar .jp-btn {
     flex: 1 1 0; min-width: 0; height: 30px; min-height: 0; padding: 0 2px;
-    font-size: 9px; letter-spacing: 0; white-space: nowrap; border-radius: 7px;
+    font-size: 8px; letter-spacing: 0; white-space: nowrap; border-radius: 7px; /* 6 joint buttons share this row now */
   }
   #jointToggleBar .jp-btn.jt-icon { flex: 0 0 34px; padding: 0; font-size: 13px; }
 
@@ -1114,6 +1114,8 @@
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="toggleJoint3D('right','elbow')">R Elbow</button>
       <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')">L Wrist</button>
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
+      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="ankle" onclick="toggleJoint3D('left','ankle')">L Ankle</button>
+      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="ankle" onclick="toggleJoint3D('right','ankle')">R Ankle</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="toggleJointSettingsPopup3D()" title="Joint settings">⚙</button>
       <div id="jeQoWrap">
         <button type="button" id="jeQoBtn" class="jt-btn jp-btn" onclick="toggleQuickOptions3D()" title="Quick options" aria-label="Quick options"><span class="qo-ico">⚡</span><span class="qo-caret">▾</span></button>
