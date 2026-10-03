@@ -102,7 +102,7 @@ function initJointEditor3D() {
     // now only moves when a Front/Back/Side/Free view button is explicitly
     // pressed (see setJointEditorCameraView3D).
     if (!e.value && selectedJoint3D) {
-      groundBody3D(false);
+      groundBodyForArmEdit3D();
       // Wrist rotate mode drags a proxy snapshotted to the elbow's
       // orientation at attach time (see attachGizmoToSelection3D); once a
       // drag has moved it away from that baseline, re-attach to reset the
@@ -555,11 +555,17 @@ function updateCopyBadge3D() {
   const log = jointEditorCopyLog3D;
   if (btn) btn.classList.toggle('has-copy', log.length > 0);
   if (!badge) return;
-  if (!log.length) { badge.style.display = 'none'; badge.textContent = ''; badge.title = ''; return; }
+  if (!log.length) { clearTimeout(updateCopyBadge3D._t); badge.style.display = 'none'; badge.textContent = ''; badge.title = ''; return; }
   const last = log[log.length - 1];
   badge.textContent = `✓ Copied from ${last.label}` + (log.length > 1 ? ` (+${log.length - 1} more)` : '');
   badge.title = log.map(e => `${e.label} — ${e.side}: ${e.parts}`).join('\n');
   badge.style.display = 'block';
+  // The chip is only a confirmation — hide it after a few seconds (the Copy
+  // poses button stays marked as used, and the log is kept for its tooltip),
+  // or immediately when tapped.
+  badge.onclick = () => { badge.style.display = 'none'; };
+  clearTimeout(updateCopyBadge3D._t);
+  updateCopyBadge3D._t = setTimeout(() => { badge.style.display = 'none'; }, 3500);
 }
 
 // Front/Back/Left-side/Right-side snap the camera to a clean view of the

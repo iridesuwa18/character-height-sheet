@@ -277,6 +277,16 @@ function highlightSelectedJoint3D() {
 }
 
 // Fires continuously while a gizmo handle is being dragged.
+// Re-grounding after a single-arm edit used to translate the WHOLE body
+// whenever that arm's move changed the lowest point of the model — which
+// shifted the OTHER arm (including a pinned wrist/elbow) on screen even
+// though nothing about it had changed. While the Joint Editor is open, an
+// arm edit now leaves the body's vertical placement alone; the full
+// re-ground still runs on every pose/slider/rebuild (applyPose3D).
+function groundBodyForArmEdit3D() {
+  if (typeof jointEditorModeActive3D !== 'undefined' && jointEditorModeActive3D) return;
+  groundBody3D(false);
+}
 function onJointGizmoChange3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
@@ -314,7 +324,7 @@ function onJointGizmoChange3D() {
       if (rig3D[side + 'HandTurn']) rig3D[side + 'HandTurn'].rotation.y = deg2rad(turn * sgn);
       if (r) { r.wrist = wristRotationOverride[side]; r.wristTurn = turn; }
       applyHandFlipVisuals3D(side, turn);
-      groundBody3D(false);
+      groundBodyForArmEdit3D();
       updateJointPanelValues3D();
       return;
     }
@@ -330,7 +340,7 @@ function onJointGizmoChange3D() {
   // Elbow moved on a pinned wrist -> make that the pin's elbow spot so a reload
   // (or any later applyPose3D) doesn't snap it back — see refreshWristPinElbow3D.
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
-  groundBody3D(false); // cheap re-ground during the drag; full reframe happens on release
+  groundBodyForArmEdit3D(); // cheap re-ground during the drag; full reframe happens on release
   updateJointPanelValues3D();
 }
 
@@ -385,7 +395,7 @@ function onJointPosInput(axis, rawVal) {
   jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   reapplyManualJointEdits3D();
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
-  groundBody3D(false);
+  groundBodyForArmEdit3D();
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
 }
