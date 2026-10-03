@@ -551,6 +551,10 @@ function openCopyPopup3D() {
   if (!popup) return;
   populateCopyPoseSelect3D();
   const msg = document.getElementById('jeCopyMsg'); if (msg) msg.textContent = '';
+  // Always open with the same defaults (Arms ticked, Legs not) so a tap never flips a stale state.
+  const cbA = document.getElementById('jeCopyArms'), cbL = document.getElementById('jeCopyLegs');
+  if (cbA) cbA.checked = true;
+  if (cbL) cbL.checked = false;
   const target = document.getElementById('jeCopyTarget');
   if (target && typeof POSES3D !== 'undefined' && POSES3D[currentPose3D]) {
     target.textContent = `Copying onto: ${POSES3D[currentPose3D].label || currentPose3D}`;
