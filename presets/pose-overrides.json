@@ -97,6 +97,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -115,6 +116,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -135,6 +137,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -153,6 +156,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -173,6 +177,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -191,6 +196,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -211,6 +217,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -229,6 +236,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -249,6 +257,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -267,6 +276,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -287,6 +297,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -300,6 +311,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -320,6 +332,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -333,6 +346,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -353,6 +367,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -371,6 +386,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -386,6 +402,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -414,6 +431,7 @@
             0,
             0.7314
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -444,6 +462,7 @@
             0,
             0.9205
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -472,6 +491,7 @@
             0,
             0.3665
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -492,6 +512,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -520,6 +541,7 @@
             0,
             0.7193
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -540,6 +562,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -558,6 +581,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -573,6 +597,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -591,6 +616,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -611,6 +637,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -629,6 +656,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -649,6 +677,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -657,6 +686,7 @@
           "elbowQuat": null,
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -672,6 +702,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -685,6 +716,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -700,6 +732,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -718,6 +751,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -738,6 +772,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -756,6 +791,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -776,6 +812,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -794,6 +831,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -824,6 +862,7 @@
             0,
             0.7314
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -852,6 +891,7 @@
             0,
             0.7314
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -882,6 +922,7 @@
             0,
             0.7193
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -900,6 +941,7 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
@@ -930,6 +972,7 @@
             0,
             0.7193
           ],
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
@@ -948,29 +991,57 @@
           ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         }
       },
       "dyn-high-kick": {
         "left": {
-          "shoulderQuat": null,
-          "elbowQuat": null,
+          "shoulderQuat": [
+            -0.0629,
+            0.0036,
+            -0.2926,
+            0.9542
+          ],
+          "elbowQuat": [
+            -0.5993,
+            0.2484,
+            -0.7294,
+            0.2169
+          ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
         },
         "right": {
-          "shoulderQuat": null,
-          "elbowQuat": null,
+          "shoulderQuat": [
+            -0.0629,
+            -0.0036,
+            0.2926,
+            0.9542
+          ],
+          "elbowQuat": [
+            -0.5993,
+            -0.2484,
+            0.7294,
+            0.2169
+          ],
           "wristQuat": null,
           "handTurnQuat": null,
+          "hipQuat": [
+            -0.8112,
+            0,
+            0,
+            0.5847
+          ],
           "kneeQuat": [
-            -0.0932,
+            0.0335,
             0,
             0,
-            0.9956
+            0.9994
           ],
           "ankleQuat": [
             0.4338,
@@ -1370,6 +1441,28 @@
         "swing": {
           "left": null,
           "right": -30
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "dyn-high-kick": {
+        "hand": {
+          "left": 0,
+          "right": null
+        },
+        "wrist": {
+          "left": 0,
+          "right": null
+        },
+        "swing": {
+          "left": 0,
+          "right": null
         },
         "elbowBend": {
           "left": null,
@@ -4351,19 +4444,19 @@
         "z": 0
       },
       "leftElbow": {
-        "x": -13.2,
-        "y": 12.47,
-        "z": 0
+        "x": -35.27,
+        "y": 21.09,
+        "z": 4.85
       },
       "leftWrist": {
-        "x": -13.2,
-        "y": -17.59,
-        "z": 0
+        "x": -21.79,
+        "y": 42.92,
+        "z": 20.52
       },
       "leftHandTurn": {
-        "x": -13.2,
-        "y": -27.86,
-        "z": 0
+        "x": -17.2,
+        "y": 50.37,
+        "z": 25.87
       },
       "rightShoulder": {
         "x": 10.7,
@@ -4371,19 +4464,19 @@
         "z": 0
       },
       "rightElbow": {
-        "x": 13.2,
-        "y": 12.47,
-        "z": 0
+        "x": 35.27,
+        "y": 21.09,
+        "z": 4.85
       },
       "rightWrist": {
-        "x": 13.2,
-        "y": -17.59,
-        "z": 0
+        "x": 21.79,
+        "y": 42.92,
+        "z": 20.52
       },
       "rightHandTurn": {
-        "x": 13.2,
-        "y": -27.86,
-        "z": 0
+        "x": 17.19,
+        "y": 50.37,
+        "z": 25.87
       },
       "leftHip": {
         "x": -7.85,
@@ -4407,13 +4500,13 @@
       },
       "rightKnee": {
         "x": 7.85,
-        "y": 1.27,
-        "z": 40.44
+        "y": 7.12,
+        "z": 38.96
       },
       "rightAnkle": {
         "x": 7.85,
-        "y": 15.78,
-        "z": 78.85
+        "y": 17.46,
+        "z": 78.69
       }
     }
   }
