@@ -177,7 +177,10 @@
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
   }
   #jointToggleBar {
-    position: absolute; top: calc(40px + env(safe-area-inset-top, 0px)); left: 6px; right: 6px; z-index: 9010;
+    /* 9012 (not 9010): the ⚡ dropdown lives inside this bar's stacking
+       context, so at 9010 the Copy / Pose bars (same z, later in the page)
+       sat on top of the menu and swallowed taps on its buttons. */
+    position: absolute; top: calc(40px + env(safe-area-inset-top, 0px)); left: 6px; right: 6px; z-index: 9012;
     display: flex; gap: 4px; flex-wrap: nowrap;
   }
   #jointToggleBar .jp-btn {
@@ -197,6 +200,8 @@
     box-shadow: 0 6px 18px rgba(0,0,0,0.5);
   }
   #jeQoMenu.open { display: flex; }
+  /* Short screens (phone landscape): never run under the bottom bar — scroll instead. */
+  #jeQoMenu { max-height: calc(100vh - 150px); max-height: calc(100dvh - 150px); overflow-y: auto; touch-action: pan-y; }
   .qo-item {
     width: 40px; height: 36px; display: flex; align-items: center; justify-content: center; padding: 0;
     background: rgba(22,22,24,0.92); border: 1px solid var(--border); border-radius: 7px;
