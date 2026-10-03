@@ -277,6 +277,17 @@ function highlightSelectedJoint3D() {
 }
 
 // Fires continuously while a gizmo handle is being dragged.
+// A leash-pinned arm's on-screen shoulder/elbow come from the live pin
+// enforcer, NOT from manualJointEdits3D (the enforcer never writes there).
+// reapplyManualJointEdits3D() stamps BOTH arms' raw manual rotations, so
+// editing one arm used to pop the OTHER, pinned arm back to its raw stored
+// rotations (e.g. the ones copied from another pose) with no enforcement
+// afterwards — the pinned arm visibly jumped. Re-run the enforcer for the
+// arm that is NOT being edited right after any stamp.
+function reenforceOtherSidePin3D(editedSide) {
+  if (typeof enforceWristPinConstraints3D !== 'function') return;
+  enforceWristPinConstraints3D(editedSide === 'left' ? 'right' : 'left');
+}
 // Re-grounding after a single-arm edit used to translate the WHOLE body
 // whenever that arm's move changed the lowest point of the model — which
 // shifted the OTHER arm (including a pinned wrist/elbow) on screen even
@@ -337,6 +348,7 @@ function onJointGizmoChange3D() {
     jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   }
   reapplyManualJointEdits3D();
+  reenforceOtherSidePin3D(side);
   // Elbow moved on a pinned wrist -> make that the pin's elbow spot so a reload
   // (or any later applyPose3D) doesn't snap it back — see refreshWristPinElbow3D.
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
@@ -394,6 +406,7 @@ function onJointPosInput(axis, rawVal) {
   const q = aimBoneKeepTwist3D(boneGroup, childGroup, targetWorld);
   jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
   reapplyManualJointEdits3D();
+  reenforceOtherSidePin3D(side);
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
   groundBodyForArmEdit3D();
   attachGizmoToSelection3D();
