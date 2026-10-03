@@ -345,6 +345,7 @@
     display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; margin-bottom: 6px; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border); border-radius: 7px;
   }
+  .jec-opt:has(input:checked) { border-color: var(--accent-gold); background: rgba(240,192,64,0.14); }
   .jec-opt input { margin: 2px 0 0; flex: 0 0 auto; width: 16px; height: 16px; accent-color: var(--accent-gold); }
   .jec-opt b { display: block; font-size: 10px; font-weight: 700; }
   .jec-opt small { display: block; font-size: 9px; color: var(--muted); line-height: 1.35; margin-top: 1px; }
@@ -1114,6 +1115,8 @@
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="toggleJoint3D('right','elbow')">R Elbow</button>
       <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')">L Wrist</button>
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
+      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="hip" onclick="toggleJoint3D('left','hip')">L Hip</button>
+      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="hip" onclick="toggleJoint3D('right','hip')">R Hip</button>
       <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="knee" onclick="toggleJoint3D('left','knee')">L Knee</button>
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="knee" onclick="toggleJoint3D('right','knee')">R Knee</button>
       <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="ankle" onclick="toggleJoint3D('left','ankle')">L Ankle</button>
