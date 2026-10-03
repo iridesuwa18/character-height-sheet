@@ -79,7 +79,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "dyn-leg-up",
+    "pose": "dyn-flamingo",
     "manualJointEdits": {
       "stand-relaxed": {
         "left": {
@@ -2254,6 +2254,10 @@
           -0.0099
         ]
       }
+    },
+    "dyn-flamingo": {
+      "left": null,
+      "right": null
     }
   },
   "_wristAttachments": {
@@ -4132,6 +4136,85 @@
         "x": 7.85,
         "y": -52.25,
         "z": -8.18
+      }
+    }
+  },
+  "dyn-flamingo": {
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.8,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -40.98,
+        "y": 26.05,
+        "z": 0
+      },
+      "leftWrist": {
+        "x": -62.24,
+        "y": 4.79,
+        "z": 0
+      },
+      "leftHandTurn": {
+        "x": -69.5,
+        "y": -2.47,
+        "z": 0
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.8,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 40.98,
+        "y": 26.05,
+        "z": 0
+      },
+      "rightWrist": {
+        "x": 62.24,
+        "y": 4.79,
+        "z": 0
+      },
+      "rightHandTurn": {
+        "x": 69.5,
+        "y": -2.47,
+        "z": 0
+      },
+      "leftHip": {
+        "x": -7.85,
+        "y": -5.86,
+        "z": 0
+      },
+      "leftKnee": {
+        "x": -7.85,
+        "y": -46.93,
+        "z": 0
+      },
+      "leftAnkle": {
+        "x": -7.85,
+        "y": -87.99,
+        "z": 0
+      },
+      "rightHip": {
+        "x": 7.85,
+        "y": -5.86,
+        "z": 0
+      },
+      "rightKnee": {
+        "x": 7.85,
+        "y": -46.3,
+        "z": 7.13
+      },
+      "rightAnkle": {
+        "x": 7.85,
+        "y": -14.85,
+        "z": -19.26
       }
     }
   }
