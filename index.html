@@ -1114,6 +1114,8 @@
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="toggleJoint3D('right','elbow')">R Elbow</button>
       <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')">L Wrist</button>
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
+      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="knee" onclick="toggleJoint3D('left','knee')">L Knee</button>
+      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="knee" onclick="toggleJoint3D('right','knee')">R Knee</button>
       <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="ankle" onclick="toggleJoint3D('left','ankle')">L Ankle</button>
       <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="ankle" onclick="toggleJoint3D('right','ankle')">R Ankle</button>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="toggleJointSettingsPopup3D()" title="Joint settings">⚙</button>
@@ -1192,7 +1194,10 @@
       <div class="jec-card" role="dialog" aria-label="Mirror joints" style="max-width:280px;">
         <div class="jec-head"><span class="jec-title">Mirror</span></div>
         <p class="je-note" style="font-size:11px;color:var(--text);margin:4px 0 2px;">Do you want to mirror left and right joints?</p>
-        <p class="je-note" id="jeMirrorConfirmDir" style="margin:0 0 10px;"></p>
+        <p class="je-note" id="jeMirrorConfirmDir" style="margin:0 0 8px;"></p>
+        <label class="jec-opt"><input type="checkbox" id="jeMirrorArms"><span><b>Arms</b><small>Shoulder, elbow, wrist &amp; hand</small></span></label>
+        <label class="jec-opt"><input type="checkbox" id="jeMirrorLegs"><span><b>Legs</b><small>Knee &amp; ankle</small></span></label>
+        <p class="je-note" id="jeMirrorMsg" style="margin:0 0 8px;color:var(--accent-red);min-height:12px;"></p>
         <div style="display:flex;gap:8px;">
           <button type="button" class="je-bottom-btn je-cancel" onclick="closeMirrorConfirm3D()">Cancel</button>
           <button type="button" class="je-bottom-btn je-apply" onclick="confirmMirror3D()">OK</button>
@@ -1381,12 +1386,14 @@
         <p class="jec-target" id="jeCopyTarget"></p>
         <div class="jec-row">
           <select id="jeCopyPoseSelect" title="Pose to copy arms &amp; wrist pins from" onchange="document.getElementById('jeCopyMsg').textContent=''"></select>
-          <select id="jeCopySideSelect" title="Which arm(s) to copy">
+          <select id="jeCopySideSelect" title="Which side(s) to copy">
             <option value="both">Both</option>
             <option value="left">Left</option>
             <option value="right">Right</option>
           </select>
         </div>
+        <label class="jec-opt"><input type="checkbox" id="jeCopyArms" checked><span><b>Arms</b><small>Shoulder, elbow, wrist, hand + wrist pins</small></span></label>
+        <label class="jec-opt"><input type="checkbox" id="jeCopyLegs"><span><b>Legs</b><small>Hip, knee &amp; ankle as they look on that pose</small></span></label>
         <div id="jeCopyMsg"></div>
         <div class="jec-actions">
           <button type="button" onclick="closeCopyPopup3D()">Close</button>
