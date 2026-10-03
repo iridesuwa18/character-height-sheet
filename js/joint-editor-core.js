@@ -31,7 +31,7 @@
 // aimBoneToWorldPoint3D.
 // ============================================================================
 let jointEditorInited3D = false;
-let selectedJoint3D = null;            // { side:'left'|'right', jointType:'elbow'|'wrist' } | null
+let selectedJoint3D = null;            // { side:'left'|'right', jointType:'elbow'|'wrist'|'knee'|'ankle' } | null
 let gizmoMode3D = 'translate';         // 'translate' | 'rotate' | 'off' (Quick Options toggles; 'off' = no gizmo)
 let transformControls3D = null;
 let gizmoProxy3D = null;               // world-space stand-in TransformControls actually drags in translate mode
@@ -55,10 +55,12 @@ let jointEditorCameraView3D = 'free';  // 'front' | 'back' | 'side-left' | 'side
 // EVERY other pose too: reapplyManualJointEdits3D() below only ever reads
 // the bucket for whichever pose is currently active, never any other pose's.
 let manualJointEdits3D = {};
-// kneeQuat / ankleQuat: the leg side of the editor. Dragging an ANKLE's position
-// re-aims the knee pivot (kneeQuat) exactly like dragging a wrist re-aims the
-// elbow; rotating the ankle writes ankleQuat.
-const JOINT_EDIT_KEYS_3D = ['shoulderQuat', 'elbowQuat', 'wristQuat', 'handTurnQuat', 'kneeQuat', 'ankleQuat'];
+// hipQuat / kneeQuat / ankleQuat: the leg side of the editor, same chain as the
+// arm. Dragging a KNEE's position re-aims the hip pivot (hipQuat) exactly like
+// dragging an elbow re-aims the shoulder; rotating the knee writes kneeQuat.
+// Dragging an ANKLE's position re-aims the knee pivot (kneeQuat) like a wrist
+// re-aims the elbow; rotating the ankle writes ankleQuat.
+const JOINT_EDIT_KEYS_3D = ['shoulderQuat', 'elbowQuat', 'wristQuat', 'handTurnQuat', 'hipQuat', 'kneeQuat', 'ankleQuat'];
 function blankJointEditsSide3D() { const o = {}; JOINT_EDIT_KEYS_3D.forEach(k => { o[k] = null; }); return o; }
 const BLANK_JOINT_EDITS_3D = Object.freeze(blankJointEditsSide3D());
 // Looks up the edit bucket for one pose. create=true (the default) lazily
@@ -365,6 +367,10 @@ function readPoseElbowWristQuats3D(poseKey) {
       out[side].elbowQuat = e ? e.quaternion.clone() : null;
       out[side].wristQuat = w ? w.quaternion.clone() : null;
       out[side].handTurnQuat = t ? t.quaternion.clone() : null;
+      const hp = rig3D[side + 'Hip'], kn = rig3D[side + 'Knee'], an = rig3D[side + 'Ankle'];
+      out[side].hipQuat = hp ? hp.quaternion.clone() : null;
+      out[side].kneeQuat = kn ? kn.quaternion.clone() : null;
+      out[side].ankleQuat = an ? an.quaternion.clone() : null;
     });
   } finally {
     manualJointEdits3D = savedManual;
@@ -378,6 +384,10 @@ function copyElbowWristFromPose3D() {
   const msg = document.getElementById('jeCopyMsg');
   if (!sel) return;
   if (!sel.value || !POSES3D[sel.value]) { if (msg) msg.textContent = 'Choose a pose to copy from first.'; return; }
+  const armsEl = document.getElementById('jeCopyArms');
+  const doArms = armsEl ? armsEl.checked : true;
+  const doLegs = !!(document.getElementById('jeCopyLegs') || {}).checked;
+  if (!doArms && !doLegs) { if (msg) msg.textContent = 'Tick Arms and/or Legs to copy.'; return; }
   if (msg) msg.textContent = '';
   const sides = (sideSel && sideSel.value === 'left') ? ['left']
               : (sideSel && sideSel.value === 'right') ? ['right'] : ['left', 'right'];
@@ -398,6 +408,13 @@ function copyElbowWristFromPose3D() {
   const srcHW = handWristByPose3D[sel.value] || {};
   const hwField = (name, side) => (srcHW[name] && srcHW[name][side] !== undefined ? srcHW[name][side] : null);
   sides.forEach(side => {
+    const je = jointEditsForPose3D(currentPose3D);
+    if (doLegs) {
+      // Legs: clone the source's hip/knee/ankle exactly as they look on that
+      // pose (its own manual edits already included).
+      ['hipQuat', 'kneeQuat', 'ankleQuat'].forEach(k => { if (src[side][k]) je[side][k] = src[side][k].clone(); });
+    }
+    if (!doArms) return; // legs-only copy: leave this side's arm, hand and pins untouched
     handRotationOverride[side] = hwField('hand', side);
     wristRotationOverride[side] = hwField('wrist', side);
     wristSwingOverride[side] = hwField('swing', side);
@@ -412,19 +429,10 @@ function copyElbowWristFromPose3D() {
     // along for free the moment the pin itself is cloned below; for an
     // unpinned side the copied shoulderQuat/elbowQuat here is what actually
     // reproduces the source's arm position.
-    const je = jointEditsForPose3D(currentPose3D);
     if (src[side].shoulderQuat) je[side].shoulderQuat = src[side].shoulderQuat;
     if (src[side].elbowQuat) je[side].elbowQuat = src[side].elbowQuat;
     if (src[side].wristQuat) je[side].wristQuat = src[side].wristQuat;
     if (src[side].handTurnQuat) je[side].handTurnQuat = src[side].handTurnQuat;
-    // Leg edits (knee/ankle) are copied only when the source pose actually has
-    // its OWN manual knee/ankle edits — never its computed leg pose, which
-    // would overwrite this pose's leg with another pose's bend.
-    const srcManual = manualJointEdits3D[sel.value];
-    if (srcManual && srcManual[side]) {
-      if (srcManual[side].kneeQuat) je[side].kneeQuat = srcManual[side].kneeQuat.clone();
-      if (srcManual[side].ankleQuat) je[side].ankleQuat = srcManual[side].ankleQuat.clone();
-    }
 
     // Clone (not alias) the pin itself onto the current pose — including
     // clearing it to null when the source side has no pin, so "Copy"
@@ -462,8 +470,9 @@ function copyElbowWristFromPose3D() {
   // saves anything on its own — same as before, it just stamps the copy in
   // as manual edits (+ pin state) that Cancel reverts and ⬆ Save persists.
   const srcLabel = POSES3D[sel.value].label || sel.value;
-  const sideWord = sides.length === 2 ? 'both arms' : (sides[0] === 'left' ? 'left arm' : 'right arm');
-  const partsLabel = 'shoulder, elbow, wrist' + (anyPinned ? ' + pin' : '');
+  const partNoun = doArms && doLegs ? 'arm + leg' : doArms ? 'arm' : 'leg';
+  const sideWord = sides.length === 2 ? `both ${partNoun}s` : `${sides[0]} ${partNoun}`;
+  const partsLabel = [doArms ? 'shoulder, elbow, wrist' + (anyPinned ? ' + pin' : '') : '', doLegs ? 'hip, knee, ankle' : ''].filter(Boolean).join(' + ');
   jointEditorCopyLog3D.push({ label: srcLabel, side: sideWord, parts: partsLabel });
   updateCopyBadge3D();
   closeCopyPopup3D();

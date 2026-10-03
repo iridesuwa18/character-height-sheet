@@ -350,6 +350,7 @@ function buildBody3D() {
     knee.position.set(0, 0, 0);
     kneeGroup.add(knee);
     meshRecords3D.push({ mesh: knee, group: 'joint', wCm: legJointCm, hCm: legJointCm });
+    rig3D[side + 'KneeJointMesh'] = knee; // used by the Joint Editor to highlight the selected joint
 
     // Ankle pivot: the foot hangs from here, local y=0 at the ankle.
     const ankleGroup = new THREE.Group();

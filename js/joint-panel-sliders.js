@@ -165,7 +165,7 @@ function quickClearFaces3D() {
 // for the wrist side of whichever joint is selected.
 function quickSnapBack3D() {
   if (!selectedJoint3D) { showJointEditorHint3D('Select a joint first'); return; }
-  if (selectedJoint3D.jointType === 'ankle') { showJointEditorHint3D('Snap back is for wrist pins'); return; }
+  if (isLegJoint3D(selectedJoint3D.jointType)) { showJointEditorHint3D('Snap back is for wrist pins'); return; }
   const side = selectedJoint3D.side;
   const pin = wristPinsForPose3D(currentPose3D, false)[side];
   if (!pin) { showJointEditorHint3D('No pin on ' + (side === 'left' ? 'left' : 'right') + ' wrist'); return; }
@@ -201,13 +201,17 @@ function setGizmoMode3D(mode) {
 // group; `bone` = the parent pivot that gets re-aimed when the joint's
 // POSITION is dragged (bones can't stretch, so moving a joint = rotating its
 // parent); `moveKey` = where that aim is stored in manualJointEdits3D;
-// `rotKey` = where rotating the joint itself is stored. The ankle follows the
-// elbow's pattern: drag position -> kneeQuat, rotate -> ankleQuat.
+// `rotKey` = where rotating the joint itself is stored. The knee follows the
+// elbow's pattern (drag position -> hipQuat, rotate -> kneeQuat) and the ankle
+// follows the wrist's (drag position -> kneeQuat, rotate -> ankleQuat).
 const JOINT_DEF_3D = {
   elbow: { grp: 'Elbow', bone: 'Shoulder', moveKey: 'shoulderQuat', rotKey: 'elbowQuat', label: 'Elbow' },
   wrist: { grp: 'Wrist', bone: 'Elbow',    moveKey: 'elbowQuat',    rotKey: 'wristQuat', label: 'Wrist' },
+  knee:  { grp: 'Knee',  bone: 'Hip',      moveKey: 'hipQuat',      rotKey: 'kneeQuat',  label: 'Knee' },
   ankle: { grp: 'Ankle', bone: 'Knee',     moveKey: 'kneeQuat',     rotKey: 'ankleQuat', label: 'Ankle' },
 };
+// Knee and ankle are the two leg joints (everything else is an arm joint).
+function isLegJoint3D(jointType) { return jointType === 'knee' || jointType === 'ankle'; }
 function attachGizmoToSelection3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
@@ -278,7 +282,7 @@ function attachGizmoToSelection3D() {
 }
 function highlightSelectedJoint3D() {
   ['left', 'right'].forEach(side => {
-    ['Elbow', 'Wrist', 'Ankle'].forEach(j => {
+    ['Elbow', 'Wrist', 'Knee', 'Ankle'].forEach(j => {
       const mesh = rig3D[side + j + 'JointMesh'];
       if (!mesh || !mesh.material) return;
       const isSel = !!selectedJoint3D && selectedJoint3D.side === side && selectedJoint3D.jointType === j.toLowerCase();
@@ -298,9 +302,9 @@ function highlightSelectedJoint3D() {
 // arm that is NOT being edited right after any stamp.
 function reenforceOtherSidePin3D(editedSide, jointType) {
   if (typeof enforceWristPinConstraints3D !== 'function') return;
-  // An ankle edit isn't on either arm, so BOTH arms' pins need re-settling
+  // A leg edit isn't on either arm, so BOTH arms' pins need re-settling
   // after the raw-quaternion stamp.
-  if (jointType === 'ankle') { enforceWristPinConstraints3D('left'); enforceWristPinConstraints3D('right'); return; }
+  if (isLegJoint3D(jointType)) { enforceWristPinConstraints3D('left'); enforceWristPinConstraints3D('right'); return; }
   enforceWristPinConstraints3D(editedSide === 'left' ? 'right' : 'left');
 }
 // Re-grounding after a single-arm edit used to translate the WHOLE body
@@ -312,7 +316,7 @@ function reenforceOtherSidePin3D(editedSide, jointType) {
 function groundBodyForArmEdit3D(jointType) {
   // A leg edit changes where the feet are, so the body must re-ground (feet
   // stay on the floor); only ARM edits skip it while the editor is open.
-  if (jointType === 'ankle') { groundBody3D(false); return; }
+  if (isLegJoint3D(jointType)) { groundBody3D(false); return; }
   if (typeof jointEditorModeActive3D !== 'undefined' && jointEditorModeActive3D) return;
   groundBody3D(false);
 }
@@ -387,7 +391,9 @@ function reapplyManualJointEdits3D() {
     if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
     if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
     if (m.handTurnQuat && rig3D[side + 'HandTurn']) rig3D[side + 'HandTurn'].quaternion.copy(m.handTurnQuat);
-    // Legs: knee first (it carries the ankle), then the ankle's own rotation.
+    // Legs: hip first (it carries the knee), then the knee (it carries the
+    // ankle), then the ankle's own rotation.
+    if (m.hipQuat && rig3D[side + 'Hip'])     rig3D[side + 'Hip'].quaternion.copy(m.hipQuat);
     if (m.kneeQuat && rig3D[side + 'Knee'])   rig3D[side + 'Knee'].quaternion.copy(m.kneeQuat);
     if (m.ankleQuat && rig3D[side + 'Ankle']) rig3D[side + 'Ankle'].quaternion.copy(m.ankleQuat);
   });
@@ -398,6 +404,7 @@ function resetSelectedJoint3D() {
   const { side, jointType } = selectedJoint3D;
   const je = jointEditsForPose3D(currentPose3D);
   if (jointType === 'elbow') { je[side].shoulderQuat = null; je[side].elbowQuat = null; }
+  else if (jointType === 'knee') { je[side].hipQuat = null; je[side].kneeQuat = null; }
   else if (jointType === 'ankle') { je[side].kneeQuat = null; je[side].ankleQuat = null; }
   else { je[side].wristQuat = null; je[side].handTurnQuat = null; }
   applyPose3D(currentPose3D, { reframe: false });
@@ -567,7 +574,7 @@ function updateJointPanelValues3D() {
       if (res && document.activeElement !== el) el.value = i === 0 ? round1(res.wrist) : i === 1 ? round1(res.wristTurn) : round1(res.swing || 0);
       el.min = i === 0 ? WRIST_BEND_RANGE[0] : i === 1 ? -180 : WRIST_SWING_RANGE[0];
       el.max = i === 0 ? WRIST_BEND_RANGE[1] : i === 1 ? 180 : WRIST_SWING_RANGE[1];
-    } else { sp.textContent = jointType === 'ankle' ? ['Flex', 'Turn', 'Tilt'][i] : rotLabels[i]; el.disabled = false; el.removeAttribute('min'); el.removeAttribute('max'); }
+    } else { sp.textContent = isLegJoint3D(jointType) ? ['Flex', 'Turn', 'Tilt'][i] : rotLabels[i]; el.disabled = false; el.removeAttribute('min'); el.removeAttribute('max'); }
   });
 }
 

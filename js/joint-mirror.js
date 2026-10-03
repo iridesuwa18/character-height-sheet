@@ -56,6 +56,12 @@ function openMirrorConfirm3D() {
   const to = selectedJoint3D.side === 'left' ? 'Right' : 'Left';
   const dir = document.getElementById('jeMirrorConfirmDir');
   if (dir) dir.textContent = from + ' → ' + to;
+  // Default to the kind of joint that's selected; tick the other box too for both.
+  const legSel = isLegJoint3D(selectedJoint3D.jointType);
+  const cbA = document.getElementById('jeMirrorArms'), cbL = document.getElementById('jeMirrorLegs');
+  if (cbA) cbA.checked = !legSel;
+  if (cbL) cbL.checked = legSel;
+  const mm = document.getElementById('jeMirrorMsg'); if (mm) mm.textContent = '';
   const pop = document.getElementById('jeMirrorConfirm');
   if (pop) pop.classList.add('open');
 }
@@ -64,17 +70,26 @@ function closeMirrorConfirm3D() {
   if (pop) pop.classList.remove('open');
 }
 function confirmMirror3D() {
+  const arms = !!(document.getElementById('jeMirrorArms') || {}).checked;
+  const legs = !!(document.getElementById('jeMirrorLegs') || {}).checked;
+  if (!arms && !legs) {
+    const mm = document.getElementById('jeMirrorMsg');
+    if (mm) mm.textContent = 'Tick Arms and/or Legs.';
+    return; // keep the popup open
+  }
   closeMirrorConfirm3D();
-  mirrorSelectedJoint3D();
+  mirrorSelectedJoint3D({ arms, legs });
 }
 // Mirrors a leg's knee + ankle rotations onto the other side (same quaternion
 // reflection as the arms — left/right leg groups share identical local axes).
 // The HIP's rotation is pose-driven (hip flex/abduction/turn in the pose data),
-// so it isn't touched here.
+// so it is only mirrored when the source leg has a manual hip edit (i.e. the
+// knee's position was dragged in the Joint Editor).
 function mirrorLegToOtherSide3D(side) {
   const other = side === 'left' ? 'right' : 'left';
-  const kneeGrp = rig3D[side + 'Knee'], ankleGrp = rig3D[side + 'Ankle'];
+  const hipGrp = rig3D[side + 'Hip'], kneeGrp = rig3D[side + 'Knee'], ankleGrp = rig3D[side + 'Ankle'];
   const je = jointEditsForPose3D(currentPose3D);
+  if (hipGrp && je[side].hipQuat) je[other].hipQuat = mirrorQuat3D(hipGrp.quaternion);
   if (kneeGrp)  je[other].kneeQuat  = mirrorQuat3D(kneeGrp.quaternion);
   if (ankleGrp) je[other].ankleQuat = mirrorQuat3D(ankleGrp.quaternion);
   reapplyManualJointEdits3D();
@@ -82,26 +97,24 @@ function mirrorLegToOtherSide3D(side) {
   groundBody3D(false);
   return { other };
 }
-function mirrorSelectedJoint3D() {
+// opts = { arms, legs } from the Mirror popup's checkboxes. Called with no
+// opts it falls back to the selected joint's own kind (arm joint -> arms,
+// leg joint -> legs).
+function mirrorSelectedJoint3D(opts) {
   if (!selectedJoint3D) return;
   const { side } = selectedJoint3D;
-  if (selectedJoint3D.jointType === 'ankle') {
-    const { other } = mirrorLegToOtherSide3D(side);
-    if (selectedJoint3D.side === other) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
-    const st = document.getElementById('jeMirrorStatus');
-    if (st) {
-      st.textContent = `Mirrored leg (knee + ankle) to ${other === 'left' ? 'Left' : 'Right'}`;
-      st.style.opacity = '1';
-      clearTimeout(mirrorSelectedJoint3D._t);
-      mirrorSelectedJoint3D._t = setTimeout(() => { st.style.opacity = '0'; }, 1600);
-    }
-    return;
-  }
-  const { other } = mirrorArmAndAttachmentToOtherSide3D(side);
-  if (selectedJoint3D && (selectedJoint3D.side === other)) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+  const legSel = isLegJoint3D(selectedJoint3D.jointType);
+  const doArms = opts ? !!opts.arms : !legSel;
+  const doLegs = opts ? !!opts.legs : legSel;
+  if (!doArms && !doLegs) return;
+  const other = side === 'left' ? 'right' : 'left';
+  if (doArms) mirrorArmAndAttachmentToOtherSide3D(side);
+  if (doLegs) mirrorLegToOtherSide3D(side);
+  attachGizmoToSelection3D(); updateJointPanelValues3D();
+  const what = doArms && doLegs ? 'arm + hand + leg' : doArms ? 'arm + hand' : 'leg';
   const status = document.getElementById('jeMirrorStatus');
   if (status) {
-    status.textContent = `Mirrored arm + hand to ${other === 'left' ? 'Left' : 'Right'}`;
+    status.textContent = `Mirrored ${what} to ${other === 'left' ? 'Left' : 'Right'}`;
     status.style.opacity = '1';
     clearTimeout(mirrorSelectedJoint3D._t);
     mirrorSelectedJoint3D._t = setTimeout(() => { status.style.opacity = '0'; }, 1600);
