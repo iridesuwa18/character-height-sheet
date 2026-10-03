@@ -90,8 +90,8 @@ function collectJointEditsState3D() {
   Object.keys(manualJointEdits3D).forEach(poseName => {
     const m = manualJointEdits3D[poseName];
     byPose[poseName] = {
-      left:  { shoulderQuat: q2a(m.left.shoulderQuat),  elbowQuat: q2a(m.left.elbowQuat),  wristQuat: q2a(m.left.wristQuat),  handTurnQuat: q2a(m.left.handTurnQuat) },
-      right: { shoulderQuat: q2a(m.right.shoulderQuat), elbowQuat: q2a(m.right.elbowQuat), wristQuat: q2a(m.right.wristQuat), handTurnQuat: q2a(m.right.handTurnQuat) },
+      left:  { shoulderQuat: q2a(m.left.shoulderQuat),  elbowQuat: q2a(m.left.elbowQuat),  wristQuat: q2a(m.left.wristQuat),  handTurnQuat: q2a(m.left.handTurnQuat),  kneeQuat: q2a(m.left.kneeQuat),  ankleQuat: q2a(m.left.ankleQuat) },
+      right: { shoulderQuat: q2a(m.right.shoulderQuat), elbowQuat: q2a(m.right.elbowQuat), wristQuat: q2a(m.right.wristQuat), handTurnQuat: q2a(m.right.handTurnQuat), kneeQuat: q2a(m.right.kneeQuat), ankleQuat: q2a(m.right.ankleQuat) },
     };
   });
   return {
@@ -117,6 +117,8 @@ function applyJointEditsState3D(jstate, { keepPose = false } = {}) {
       je[side].elbowQuat    = a2q(src.elbowQuat);
       je[side].wristQuat    = a2q(src.wristQuat);
       je[side].handTurnQuat = a2q(src.handTurnQuat);
+      je[side].kneeQuat     = a2q(src.kneeQuat);
+      je[side].ankleQuat    = a2q(src.ankleQuat);
     });
   } else {
     Object.keys(raw).forEach(poseName => {
@@ -128,6 +130,8 @@ function applyJointEditsState3D(jstate, { keepPose = false } = {}) {
         je[side].elbowQuat    = a2q(s.elbowQuat);
         je[side].wristQuat    = a2q(s.wristQuat);
         je[side].handTurnQuat = a2q(s.handTurnQuat);
+        je[side].kneeQuat     = a2q(s.kneeQuat);   // absent in older saves -> null (unchanged leg)
+        je[side].ankleQuat    = a2q(s.ankleQuat);
       });
     });
   }

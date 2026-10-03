@@ -67,9 +67,36 @@ function confirmMirror3D() {
   closeMirrorConfirm3D();
   mirrorSelectedJoint3D();
 }
+// Mirrors a leg's knee + ankle rotations onto the other side (same quaternion
+// reflection as the arms — left/right leg groups share identical local axes).
+// The HIP's rotation is pose-driven (hip flex/abduction/turn in the pose data),
+// so it isn't touched here.
+function mirrorLegToOtherSide3D(side) {
+  const other = side === 'left' ? 'right' : 'left';
+  const kneeGrp = rig3D[side + 'Knee'], ankleGrp = rig3D[side + 'Ankle'];
+  const je = jointEditsForPose3D(currentPose3D);
+  if (kneeGrp)  je[other].kneeQuat  = mirrorQuat3D(kneeGrp.quaternion);
+  if (ankleGrp) je[other].ankleQuat = mirrorQuat3D(ankleGrp.quaternion);
+  reapplyManualJointEdits3D();
+  if (typeof enforceWristPinConstraints3D === 'function') { enforceWristPinConstraints3D('left'); enforceWristPinConstraints3D('right'); }
+  groundBody3D(false);
+  return { other };
+}
 function mirrorSelectedJoint3D() {
   if (!selectedJoint3D) return;
   const { side } = selectedJoint3D;
+  if (selectedJoint3D.jointType === 'ankle') {
+    const { other } = mirrorLegToOtherSide3D(side);
+    if (selectedJoint3D.side === other) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
+    const st = document.getElementById('jeMirrorStatus');
+    if (st) {
+      st.textContent = `Mirrored leg (knee + ankle) to ${other === 'left' ? 'Left' : 'Right'}`;
+      st.style.opacity = '1';
+      clearTimeout(mirrorSelectedJoint3D._t);
+      mirrorSelectedJoint3D._t = setTimeout(() => { st.style.opacity = '0'; }, 1600);
+    }
+    return;
+  }
   const { other } = mirrorArmAndAttachmentToOtherSide3D(side);
   if (selectedJoint3D && (selectedJoint3D.side === other)) { attachGizmoToSelection3D(); updateJointPanelValues3D(); }
   const status = document.getElementById('jeMirrorStatus');

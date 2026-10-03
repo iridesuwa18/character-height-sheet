@@ -55,7 +55,12 @@ let jointEditorCameraView3D = 'free';  // 'front' | 'back' | 'side-left' | 'side
 // EVERY other pose too: reapplyManualJointEdits3D() below only ever reads
 // the bucket for whichever pose is currently active, never any other pose's.
 let manualJointEdits3D = {};
-const BLANK_JOINT_EDITS_3D = Object.freeze({ shoulderQuat: null, elbowQuat: null, wristQuat: null, handTurnQuat: null });
+// kneeQuat / ankleQuat: the leg side of the editor. Dragging an ANKLE's position
+// re-aims the knee pivot (kneeQuat) exactly like dragging a wrist re-aims the
+// elbow; rotating the ankle writes ankleQuat.
+const JOINT_EDIT_KEYS_3D = ['shoulderQuat', 'elbowQuat', 'wristQuat', 'handTurnQuat', 'kneeQuat', 'ankleQuat'];
+function blankJointEditsSide3D() { const o = {}; JOINT_EDIT_KEYS_3D.forEach(k => { o[k] = null; }); return o; }
+const BLANK_JOINT_EDITS_3D = Object.freeze(blankJointEditsSide3D());
 // Looks up the edit bucket for one pose. create=true (the default) lazily
 // makes one if it doesn't exist yet — use for anything that's about to WRITE
 // into it. Pass create=false for read-only lookups (e.g. reapply) so merely
@@ -63,10 +68,7 @@ const BLANK_JOINT_EDITS_3D = Object.freeze({ shoulderQuat: null, elbowQuat: null
 function jointEditsForPose3D(poseName, create = true) {
   if (!manualJointEdits3D[poseName]) {
     if (!create) return { left: BLANK_JOINT_EDITS_3D, right: BLANK_JOINT_EDITS_3D };
-    manualJointEdits3D[poseName] = {
-      left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null, handTurnQuat: null },
-      right: { shoulderQuat: null, elbowQuat: null, wristQuat: null, handTurnQuat: null },
-    };
+    manualJointEdits3D[poseName] = { left: blankJointEditsSide3D(), right: blankJointEditsSide3D() };
   }
   return manualJointEdits3D[poseName];
 }
@@ -214,10 +216,8 @@ function cloneManualJointEdits3D(src) {
   const out = {};
   Object.keys(src || {}).forEach(poseName => {
     const s = src[poseName];
-    out[poseName] = {
-      left:  { shoulderQuat: c(s.left.shoulderQuat),  elbowQuat: c(s.left.elbowQuat),  wristQuat: c(s.left.wristQuat),  handTurnQuat: c(s.left.handTurnQuat) },
-      right: { shoulderQuat: c(s.right.shoulderQuat), elbowQuat: c(s.right.elbowQuat), wristQuat: c(s.right.wristQuat), handTurnQuat: c(s.right.handTurnQuat) },
-    };
+    const cs = (side) => { const o = {}; JOINT_EDIT_KEYS_3D.forEach(k => { o[k] = c(side[k]); }); return o; };
+    out[poseName] = { left: cs(s.left), right: cs(s.right) };
   });
   return out;
 }
@@ -417,6 +417,14 @@ function copyElbowWristFromPose3D() {
     if (src[side].elbowQuat) je[side].elbowQuat = src[side].elbowQuat;
     if (src[side].wristQuat) je[side].wristQuat = src[side].wristQuat;
     if (src[side].handTurnQuat) je[side].handTurnQuat = src[side].handTurnQuat;
+    // Leg edits (knee/ankle) are copied only when the source pose actually has
+    // its OWN manual knee/ankle edits — never its computed leg pose, which
+    // would overwrite this pose's leg with another pose's bend.
+    const srcManual = manualJointEdits3D[sel.value];
+    if (srcManual && srcManual[side]) {
+      if (srcManual[side].kneeQuat) je[side].kneeQuat = srcManual[side].kneeQuat.clone();
+      if (srcManual[side].ankleQuat) je[side].ankleQuat = srcManual[side].ankleQuat.clone();
+    }
 
     // Clone (not alias) the pin itself onto the current pose — including
     // clearing it to null when the source side has no pin, so "Copy"
@@ -520,10 +528,7 @@ async function resetAllJointEdits3D() {
 // this is just a normal per-pose undo.
 async function clearAllManualJointOverridesAndSave3D() {
   if (!confirm('Clear manual arm/wrist overrides (shoulder, elbow, wrist, hand turn) on both sides for the CURRENT pose and save that cleared state? This does not touch other poses.')) return;
-  manualJointEdits3D[currentPose3D] = {
-    left:  { shoulderQuat: null, elbowQuat: null, wristQuat: null, handTurnQuat: null },
-    right: { shoulderQuat: null, elbowQuat: null, wristQuat: null, handTurnQuat: null },
-  };
+  manualJointEdits3D[currentPose3D] = { left: blankJointEditsSide3D(), right: blankJointEditsSide3D() };
   applyPose3D(currentPose3D, { reframe: false });
   reapplyManualJointEdits3D();
   groundBody3D(false);

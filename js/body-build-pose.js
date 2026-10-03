@@ -361,6 +361,7 @@ function buildBody3D() {
     ankle.position.set(0, 0, 0);
     ankleGroup.add(ankle);
     meshRecords3D.push({ mesh: ankle, group: 'joint', wCm: legJointCm, hCm: legJointCm });
+    rig3D[side + 'AnkleJointMesh'] = ankle; // used by the Joint Editor to highlight the selected joint
 
     const footBox = boxes.find(b => b.group === 'feet' && Math.sign(b.xCm) === Math.sign(legBox.xCm));
     if (footBox) {

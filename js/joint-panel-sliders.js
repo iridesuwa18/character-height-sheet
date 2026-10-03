@@ -165,6 +165,7 @@ function quickClearFaces3D() {
 // for the wrist side of whichever joint is selected.
 function quickSnapBack3D() {
   if (!selectedJoint3D) { showJointEditorHint3D('Select a joint first'); return; }
+  if (selectedJoint3D.jointType === 'ankle') { showJointEditorHint3D('Snap back is for wrist pins'); return; }
   const side = selectedJoint3D.side;
   const pin = wristPinsForPose3D(currentPose3D, false)[side];
   if (!pin) { showJointEditorHint3D('No pin on ' + (side === 'left' ? 'left' : 'right') + ' wrist'); return; }
@@ -196,10 +197,21 @@ function setGizmoMode3D(mode) {
         : 'Drag the rotate rings on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.')
     : 'Drag the move handles on the model above, or type exact numbers below — dragging a handle automatically pauses orbit/zoom until you release it.';
 }
+// What each editable joint maps to in the rig. `grp` = the joint's own pivot
+// group; `bone` = the parent pivot that gets re-aimed when the joint's
+// POSITION is dragged (bones can't stretch, so moving a joint = rotating its
+// parent); `moveKey` = where that aim is stored in manualJointEdits3D;
+// `rotKey` = where rotating the joint itself is stored. The ankle follows the
+// elbow's pattern: drag position -> kneeQuat, rotate -> ankleQuat.
+const JOINT_DEF_3D = {
+  elbow: { grp: 'Elbow', bone: 'Shoulder', moveKey: 'shoulderQuat', rotKey: 'elbowQuat', label: 'Elbow' },
+  wrist: { grp: 'Wrist', bone: 'Elbow',    moveKey: 'elbowQuat',    rotKey: 'wristQuat', label: 'Wrist' },
+  ankle: { grp: 'Ankle', bone: 'Knee',     moveKey: 'kneeQuat',     rotKey: 'ankleQuat', label: 'Ankle' },
+};
 function attachGizmoToSelection3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
-  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  const grp = rig3D[side + JOINT_DEF_3D[jointType].grp];
   if (!grp) return;
   // Gizmo toggled off from the Quick Options menu: nothing to drag.
   if (gizmoMode3D === 'off') {
@@ -266,7 +278,7 @@ function attachGizmoToSelection3D() {
 }
 function highlightSelectedJoint3D() {
   ['left', 'right'].forEach(side => {
-    ['Elbow', 'Wrist'].forEach(j => {
+    ['Elbow', 'Wrist', 'Ankle'].forEach(j => {
       const mesh = rig3D[side + j + 'JointMesh'];
       if (!mesh || !mesh.material) return;
       const isSel = !!selectedJoint3D && selectedJoint3D.side === side && selectedJoint3D.jointType === j.toLowerCase();
@@ -284,8 +296,11 @@ function highlightSelectedJoint3D() {
 // rotations (e.g. the ones copied from another pose) with no enforcement
 // afterwards — the pinned arm visibly jumped. Re-run the enforcer for the
 // arm that is NOT being edited right after any stamp.
-function reenforceOtherSidePin3D(editedSide) {
+function reenforceOtherSidePin3D(editedSide, jointType) {
   if (typeof enforceWristPinConstraints3D !== 'function') return;
+  // An ankle edit isn't on either arm, so BOTH arms' pins need re-settling
+  // after the raw-quaternion stamp.
+  if (jointType === 'ankle') { enforceWristPinConstraints3D('left'); enforceWristPinConstraints3D('right'); return; }
   enforceWristPinConstraints3D(editedSide === 'left' ? 'right' : 'left');
 }
 // Re-grounding after a single-arm edit used to translate the WHOLE body
@@ -294,7 +309,10 @@ function reenforceOtherSidePin3D(editedSide) {
 // though nothing about it had changed. While the Joint Editor is open, an
 // arm edit now leaves the body's vertical placement alone; the full
 // re-ground still runs on every pose/slider/rebuild (applyPose3D).
-function groundBodyForArmEdit3D() {
+function groundBodyForArmEdit3D(jointType) {
+  // A leg edit changes where the feet are, so the body must re-ground (feet
+  // stay on the floor); only ARM edits skip it while the editor is open.
+  if (jointType === 'ankle') { groundBody3D(false); return; }
   if (typeof jointEditorModeActive3D !== 'undefined' && jointEditorModeActive3D) return;
   groundBody3D(false);
 }
@@ -302,7 +320,7 @@ function onJointGizmoChange3D() {
   if (!selectedJoint3D) return;
   const { side, jointType } = selectedJoint3D;
   if (gizmoMode3D === 'rotate') {
-    const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+    const grp = rig3D[side + JOINT_DEF_3D[jointType].grp];
     if (!grp) return;
     if (jointType === 'wrist') {
       // The gizmo is dragging gizmoProxy3D (a world-space stand-in oriented
@@ -335,24 +353,24 @@ function onJointGizmoChange3D() {
       if (rig3D[side + 'HandTurn']) rig3D[side + 'HandTurn'].rotation.y = deg2rad(turn * sgn);
       if (r) { r.wrist = wristRotationOverride[side]; r.wristTurn = turn; }
       applyHandFlipVisuals3D(side, turn);
-      groundBodyForArmEdit3D();
+      groundBodyForArmEdit3D(jointType);
       updateJointPanelValues3D();
       return;
     }
-    jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = grp.quaternion.clone();
+    jointEditsForPose3D(currentPose3D)[side][JOINT_DEF_3D[jointType].rotKey] = grp.quaternion.clone();
   } else {
-    const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
-    const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
+    const boneGroup  = rig3D[side + JOINT_DEF_3D[jointType].bone];
+    const childGroup = rig3D[side + JOINT_DEF_3D[jointType].grp];
     if (!boneGroup || !childGroup) return;
     const q = aimBoneKeepTwist3D(boneGroup, childGroup, gizmoProxy3D.position);
-    jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
+    jointEditsForPose3D(currentPose3D)[side][JOINT_DEF_3D[jointType].moveKey] = q;
   }
   reapplyManualJointEdits3D();
-  reenforceOtherSidePin3D(side);
+  reenforceOtherSidePin3D(side, jointType);
   // Elbow moved on a pinned wrist -> make that the pin's elbow spot so a reload
   // (or any later applyPose3D) doesn't snap it back — see refreshWristPinElbow3D.
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
-  groundBodyForArmEdit3D(); // cheap re-ground during the drag; full reframe happens on release
+  groundBodyForArmEdit3D(jointType); // cheap re-ground during the drag; full reframe happens on release
   updateJointPanelValues3D();
 }
 
@@ -369,6 +387,9 @@ function reapplyManualJointEdits3D() {
     if (m.elbowQuat && rig3D[side + 'Elbow'])       rig3D[side + 'Elbow'].quaternion.copy(m.elbowQuat);
     if (m.wristQuat && rig3D[side + 'Wrist'])       rig3D[side + 'Wrist'].quaternion.copy(m.wristQuat);
     if (m.handTurnQuat && rig3D[side + 'HandTurn']) rig3D[side + 'HandTurn'].quaternion.copy(m.handTurnQuat);
+    // Legs: knee first (it carries the ankle), then the ankle's own rotation.
+    if (m.kneeQuat && rig3D[side + 'Knee'])   rig3D[side + 'Knee'].quaternion.copy(m.kneeQuat);
+    if (m.ankleQuat && rig3D[side + 'Ankle']) rig3D[side + 'Ankle'].quaternion.copy(m.ankleQuat);
   });
 }
 
@@ -377,6 +398,7 @@ function resetSelectedJoint3D() {
   const { side, jointType } = selectedJoint3D;
   const je = jointEditsForPose3D(currentPose3D);
   if (jointType === 'elbow') { je[side].shoulderQuat = null; je[side].elbowQuat = null; }
+  else if (jointType === 'ankle') { je[side].kneeQuat = null; je[side].ankleQuat = null; }
   else { je[side].wristQuat = null; je[side].handTurnQuat = null; }
   applyPose3D(currentPose3D, { reframe: false });
   attachGizmoToSelection3D();
@@ -389,7 +411,7 @@ function onJointPosInput(axis, rawVal) {
   const n = parseFloat(rawVal);
   if (isNaN(n)) return;
   const { side, jointType } = selectedJoint3D;
-  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  const grp = rig3D[side + JOINT_DEF_3D[jointType].grp];
   // Spine-local (NOT bodyGroup3D/pelvis) — the two frames only coincide when
   // the spine has zero bend/twist/lean; any spine rotation rotates+offsets
   // one relative to the other. See updateJointPanelValues3D for the matching
@@ -400,15 +422,15 @@ function onJointPosInput(axis, rawVal) {
   const local = rig3D.spine.worldToLocal(world.clone());
   local[axis] = n;
   const targetWorld = rig3D.spine.localToWorld(local.clone());
-  const boneGroup  = jointType === 'elbow' ? rig3D[side + 'Shoulder'] : rig3D[side + 'Elbow'];
-  const childGroup = jointType === 'elbow' ? rig3D[side + 'Elbow']    : rig3D[side + 'Wrist'];
+  const boneGroup  = rig3D[side + JOINT_DEF_3D[jointType].bone];
+  const childGroup = rig3D[side + JOINT_DEF_3D[jointType].grp];
   if (!boneGroup || !childGroup) return;
   const q = aimBoneKeepTwist3D(boneGroup, childGroup, targetWorld);
-  jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'shoulderQuat' : 'elbowQuat'] = q;
+  jointEditsForPose3D(currentPose3D)[side][JOINT_DEF_3D[jointType].moveKey] = q;
   reapplyManualJointEdits3D();
-  reenforceOtherSidePin3D(side);
+  reenforceOtherSidePin3D(side, jointType);
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
-  groundBodyForArmEdit3D();
+  groundBodyForArmEdit3D(jointType);
   attachGizmoToSelection3D();
   updateJointPanelValues3D();
 }
@@ -448,11 +470,11 @@ function onJointRotInput(axis, rawVal) {
   if (isNaN(n)) return;
   const { side, jointType } = selectedJoint3D;
   if (jointType === 'wrist') { setWristNumbers3D(side, axis, n); return; }
-  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  const grp = rig3D[side + JOINT_DEF_3D[jointType].grp];
   if (!grp) return;
   const euler = new THREE.Euler().setFromQuaternion(grp.quaternion, 'XYZ');
   euler[axis] = deg2rad(n);
-  jointEditsForPose3D(currentPose3D)[side][jointType === 'elbow' ? 'elbowQuat' : 'wristQuat'] = new THREE.Quaternion().setFromEuler(euler);
+  jointEditsForPose3D(currentPose3D)[side][JOINT_DEF_3D[jointType].rotKey] = new THREE.Quaternion().setFromEuler(euler);
   reapplyManualJointEdits3D();
   if (jointType === 'elbow' && typeof refreshWristPinElbow3D === 'function') refreshWristPinElbow3D(side);
   groundBody3D(false);
@@ -493,7 +515,7 @@ function updateJointPanelValues3D() {
   if (!selectedJoint3D) return;
   syncWristSliders3D();
   const { side, jointType } = selectedJoint3D;
-  const grp = rig3D[side + (jointType === 'elbow' ? 'Elbow' : 'Wrist')];
+  const grp = rig3D[side + JOINT_DEF_3D[jointType].grp];
   // Spine-local, matching onJointPosInput's own frame (see the comment
   // there) — the panel's numbers always agree with whatever's on screen,
   // whatever the spine is doing.
@@ -511,7 +533,7 @@ function updateJointPanelValues3D() {
   setVal('jeRotY', euler.y * 180 / Math.PI);
   setVal('jeRotZ', euler.z * 180 / Math.PI);
   const title = document.getElementById('jeTitle');
-  if (title) title.textContent = `${side === 'left' ? 'Left' : 'Right'} ${jointType === 'elbow' ? 'Elbow' : 'Wrist'}`;
+  if (title) title.textContent = `${side === 'left' ? 'Left' : 'Right'} ${JOINT_DEF_3D[jointType].label}`;
   // Keep the Hand Facing / Wrist dropdowns showing what's actually active.
   const hSel = document.getElementById('jeHandFacingSel'), wSel = document.getElementById('jeWristFacingSel');
   // Show the ACTUAL resolved degrees as a word (0° -> Front etc.), so the
@@ -545,7 +567,7 @@ function updateJointPanelValues3D() {
       if (res && document.activeElement !== el) el.value = i === 0 ? round1(res.wrist) : i === 1 ? round1(res.wristTurn) : round1(res.swing || 0);
       el.min = i === 0 ? WRIST_BEND_RANGE[0] : i === 1 ? -180 : WRIST_SWING_RANGE[0];
       el.max = i === 0 ? WRIST_BEND_RANGE[1] : i === 1 ? 180 : WRIST_SWING_RANGE[1];
-    } else { sp.textContent = rotLabels[i]; el.disabled = false; el.removeAttribute('min'); el.removeAttribute('max'); }
+    } else { sp.textContent = jointType === 'ankle' ? ['Flex', 'Turn', 'Tilt'][i] : rotLabels[i]; el.disabled = false; el.removeAttribute('min'); el.removeAttribute('max'); }
   });
 }
 
