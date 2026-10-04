@@ -189,6 +189,26 @@
   }
   #jointToggleBar .jp-btn.jt-icon { flex: 0 0 34px; padding: 0; font-size: 13px; }
 
+  /* Joint picker: one button per joint type (Elbows / Wrists / Hips / Knees / Ankles) with a Left / Right dropdown,
+     so the row fits on a phone instead of ten squeezed buttons. The Left/Right buttons are the same .jt-btn[data-side][data-joint]
+     buttons as before, so selection + highlight logic is unchanged. */
+  #jointToggleBar .jt-group { position: relative; flex: 1 1 0; min-width: 0; }
+  #jointToggleBar .jt-group-btn { position: relative; width: 100%; display: flex; align-items: center; justify-content: center; font-size: 8px; padding: 0 1px; letter-spacing: 0; }
+  /* caret + selected side ride in the button's corners so the 6-letter label always has the full width */
+  #jointToggleBar .jt-group-btn .jt-caret { position: absolute; right: 2px; bottom: 1px; font-size: 6px; line-height: 1; opacity: 0.8; }
+  #jointToggleBar .jt-group-btn .jt-sel { position: absolute; right: 2px; top: 1px; font-size: 7px; line-height: 1; color: var(--accent-gold); }
+  @media (max-width: 345px) { #jointToggleBar .jt-group-btn { font-size: 7px; } }
+  #jointToggleBar .jt-group.has-active > .jt-group-btn,
+  #jointToggleBar .jt-group.open > .jt-group-btn { background: rgba(240,192,64,0.22); border-color: var(--accent-gold); color: var(--accent-gold); }
+  #jointToggleBar .jt-group-menu {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; width: max-content; z-index: 9015;
+    flex-direction: column; gap: 4px; padding: 4px;
+    background: rgba(20,20,24,0.97); border: 1px solid var(--accent-gold); border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+  }
+  #jointToggleBar .jt-group.open > .jt-group-menu { display: flex; }
+  #jointToggleBar .jt-group-menu .jp-btn { flex: none; width: 100%; height: 34px; min-width: 64px; padding: 0 10px; font-size: 10px; }
+
   /* Quick Options dropdown (⚡▾): icon-only Move / Rotate / Mirror. */
   #jeQoWrap { position: relative; flex: 0 0 44px; }
   #jeQoBtn { width: 100%; padding: 0; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 1px; }
@@ -1111,16 +1131,41 @@
     <div id="jeMirrorStatus"></div>
 
     <div id="jointToggleBar" style="display:none;">
-      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="elbow" onclick="toggleJoint3D('left','elbow')">L Elbow</button>
-      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="toggleJoint3D('right','elbow')">R Elbow</button>
-      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="toggleJoint3D('left','wrist')">L Wrist</button>
-      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="toggleJoint3D('right','wrist')">R Wrist</button>
-      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="hip" onclick="toggleJoint3D('left','hip')">L Hip</button>
-      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="hip" onclick="toggleJoint3D('right','hip')">R Hip</button>
-      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="knee" onclick="toggleJoint3D('left','knee')">L Knee</button>
-      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="knee" onclick="toggleJoint3D('right','knee')">R Knee</button>
-      <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="ankle" onclick="toggleJoint3D('left','ankle')">L Ankle</button>
-      <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="ankle" onclick="toggleJoint3D('right','ankle')">R Ankle</button>
+      <div class="jt-group" data-jgroup="elbow">
+        <button type="button" class="jt-btn jp-btn jt-group-btn" onclick="toggleJointGroup3D(this)" aria-haspopup="true" aria-expanded="false">Elbows<span class="jt-sel"></span><span class="jt-caret">&#9662;</span></button>
+        <div class="jt-group-menu">
+          <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="elbow" onclick="closeJointGroups3D(); toggleJoint3D('left','elbow')">Left</button>
+          <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="elbow" onclick="closeJointGroups3D(); toggleJoint3D('right','elbow')">Right</button>
+        </div>
+      </div>
+      <div class="jt-group" data-jgroup="wrist">
+        <button type="button" class="jt-btn jp-btn jt-group-btn" onclick="toggleJointGroup3D(this)" aria-haspopup="true" aria-expanded="false">Wrists<span class="jt-sel"></span><span class="jt-caret">&#9662;</span></button>
+        <div class="jt-group-menu">
+          <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="wrist" onclick="closeJointGroups3D(); toggleJoint3D('left','wrist')">Left</button>
+          <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="wrist" onclick="closeJointGroups3D(); toggleJoint3D('right','wrist')">Right</button>
+        </div>
+      </div>
+      <div class="jt-group" data-jgroup="hip">
+        <button type="button" class="jt-btn jp-btn jt-group-btn" onclick="toggleJointGroup3D(this)" aria-haspopup="true" aria-expanded="false">Hips<span class="jt-sel"></span><span class="jt-caret">&#9662;</span></button>
+        <div class="jt-group-menu">
+          <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="hip" onclick="closeJointGroups3D(); toggleJoint3D('left','hip')">Left</button>
+          <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="hip" onclick="closeJointGroups3D(); toggleJoint3D('right','hip')">Right</button>
+        </div>
+      </div>
+      <div class="jt-group" data-jgroup="knee">
+        <button type="button" class="jt-btn jp-btn jt-group-btn" onclick="toggleJointGroup3D(this)" aria-haspopup="true" aria-expanded="false">Knees<span class="jt-sel"></span><span class="jt-caret">&#9662;</span></button>
+        <div class="jt-group-menu">
+          <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="knee" onclick="closeJointGroups3D(); toggleJoint3D('left','knee')">Left</button>
+          <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="knee" onclick="closeJointGroups3D(); toggleJoint3D('right','knee')">Right</button>
+        </div>
+      </div>
+      <div class="jt-group" data-jgroup="ankle">
+        <button type="button" class="jt-btn jp-btn jt-group-btn" onclick="toggleJointGroup3D(this)" aria-haspopup="true" aria-expanded="false">Ankles<span class="jt-sel"></span><span class="jt-caret">&#9662;</span></button>
+        <div class="jt-group-menu">
+          <button type="button" class="jt-btn jp-btn" data-side="left" data-joint="ankle" onclick="closeJointGroups3D(); toggleJoint3D('left','ankle')">Left</button>
+          <button type="button" class="jt-btn jp-btn" data-side="right" data-joint="ankle" onclick="closeJointGroups3D(); toggleJoint3D('right','ankle')">Right</button>
+        </div>
+      </div>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="toggleJointSettingsPopup3D()" title="Joint settings">⚙</button>
       <div id="jeQoWrap">
         <button type="button" id="jeQoBtn" class="jt-btn jp-btn" onclick="toggleQuickOptions3D()" title="Quick options" aria-label="Quick options"><span class="qo-ico">⚡</span><span class="qo-caret">▾</span></button>
@@ -5350,6 +5395,43 @@ function importFaceExcel(event) {
   'js/button-feedback.js',
   'js/3d-init.js',
 ].forEach(src => document.write('<script src="' + src + '?v=' + Date.now() + '"><\/script>'));
+</script>
+
+<script>
+/* Joint picker dropdowns (Elbows / Wrists / Hips / Knees / Ankles). Display only: selection still goes through toggleJoint3D(). */
+function closeJointGroups3D(except) {
+  document.querySelectorAll('#jointToggleBar .jt-group.open').forEach(function (g) {
+    if (g === except) return;
+    g.classList.remove('open');
+    var b = g.querySelector('.jt-group-btn'); if (b) b.setAttribute('aria-expanded', 'false');
+  });
+}
+function toggleJointGroup3D(btn) {
+  var g = btn.closest('.jt-group'); if (!g) return;
+  var willOpen = !g.classList.contains('open');
+  closeJointGroups3D(g);
+  if (typeof toggleQuickOptions3D === 'function') toggleQuickOptions3D(false);
+  g.classList.toggle('open', willOpen);
+  btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+document.addEventListener('pointerdown', function (e) {
+  if (!e.target.closest || !e.target.closest('#jointToggleBar .jt-group')) closeJointGroups3D();
+});
+(function () {
+  function sync() {
+    document.querySelectorAll('#jointToggleBar .jt-group').forEach(function (g) {
+      var on = g.querySelector('.jt-group-menu .jt-btn.active');
+      g.classList.toggle('has-active', !!on);
+      var sel = g.querySelector('.jt-sel'); if (sel) sel.textContent = on ? (on.dataset.side === 'left' ? '\u00b7L' : '\u00b7R') : '';
+    });
+  }
+  function init() {
+    var bar = document.getElementById('jointToggleBar'); if (!bar) return;
+    new MutationObserver(sync).observe(bar, { subtree: true, attributes: true, attributeFilter: ['class'] });
+    sync();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
 </script>
 </body>
 </html>
