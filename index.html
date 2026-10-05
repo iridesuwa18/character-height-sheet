@@ -234,6 +234,11 @@
     align-items: center; justify-content: center; padding: 12px; background: rgba(0,0,0,0.55);
   }
   #jeMirrorConfirm.open { display: flex; }
+  #jeUnsavedPoseConfirm {
+    position: absolute; inset: 0; z-index: 9050; display: none;
+    align-items: center; justify-content: center; padding: 12px; background: rgba(0,0,0,0.55);
+  }
+  #jeUnsavedPoseConfirm.open { display: flex; }
 
   /* Faces popup: identical backdrop/card pattern to #jeCopyPopup. */
   #jeFacesPopup {
@@ -1249,6 +1254,18 @@
         <div style="display:flex;gap:8px;">
           <button type="button" class="je-bottom-btn je-cancel" onclick="closeMirrorConfirm3D()">Cancel</button>
           <button type="button" class="je-bottom-btn je-apply" onclick="confirmMirror3D()">OK</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- "Save before continuing?" — shown when leaving a pose that has unsaved changes. -->
+    <div id="jeUnsavedPoseConfirm">
+      <div class="jec-card" role="dialog" aria-label="Unsaved changes" style="max-width:280px;">
+        <div class="jec-head"><span class="jec-title">Unsaved changes</span></div>
+        <p class="je-note" style="font-size:11px;color:var(--text);margin:4px 0 10px;">Would you like to save <b id="jeUnsavedPoseName"></b> before continuing?</p>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="je-bottom-btn je-apply" onclick="unsavedPoseConfirmYes3D()">YES</button>
+          <button type="button" class="je-bottom-btn je-cancel" onclick="unsavedPoseConfirmNo3D()">NO</button>
         </div>
       </div>
     </div>
