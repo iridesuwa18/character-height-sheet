@@ -169,6 +169,13 @@ async function quickSaveJointsToGitHub3D() {
   const handWristState = collectHandWristOverridesState3D();
   const wristPinsState = collectWristPinsState3D();
   const wristAttachmentsState = collectWristAttachmentsState3D();
+  // Same moment: what Cancel should treat as this pose's "last good" state.
+  const snapCap = {
+    joints: manualJointEdits3D[poseKey] ? cloneManualJointEdits3D({ [poseKey]: manualJointEdits3D[poseKey] })[poseKey] : null,
+    facing: snapshotHandWristAll3D().map[poseKey] || null,
+    pins: wristPinsState[poseKey] || null,
+    attach: wristAttachmentsState[poseKey] || null,
+  };
   try {
     await githubUpdatePoseOverrides3D('Save joint XYZ + edits: ' + poseKey, all => {
       all[poseKey] = all[poseKey] || {};
@@ -194,6 +201,8 @@ async function quickSaveJointsToGitHub3D() {
       // land BEFORE the wrist-pin leash math can trust its dot again.
       all[WRIST_ATTACHMENTS_KEY] = wristAttachmentsState;
     });
+    // Saved poses survive Cancel: move Cancel's restore point up to this save.
+    if (typeof commitPoseToEditorSnapshot3D === 'function') commitPoseToEditorSnapshot3D(poseKey, snapCap);
     setBtn('✓ Saved', false);
     setTimeout(() => setBtn('⬆ Save', false), 1600);
   } catch (err) {

@@ -41,6 +41,9 @@ let gizmoProxy3D = null;               // world-space stand-in TransformControls
 let jointEditorModeActive3D = false;
 let jointEditorFacingSnapshot3D = null; // hand/wrist facing overrides when the editor opened, restored on Cancel
 let jointEditorModeSnapshot3D = null;  // deep clone of manualJointEdits3D taken on open, restored on Cancel
+let jointEditorPinsSnapshot3D = null;  // wrist pins (all poses) when the editor opened, restored on Cancel
+let jointEditorAttachSnapshot3D = null; // Attached Wrists dots (all poses) when the editor opened, restored on Cancel
+let pendingPoseSwitch3D = null;        // pose the person was heading to when the "save first?" prompt popped up
 let jointSettingsPopupOpen3D = false;  // whether the ⚙ settings popup is currently shown
 let jointEditorCopyLog3D = [];         // what "Copy poses" has pulled onto the current pose this editor session (drives the status chip)
 let snapRotations3D = false;          // Quick Options → Snap rotations: gizmo rotates in 15° steps
@@ -228,6 +231,8 @@ function openJointEditorMode3D() {
   if (!jointEditorInited3D) initJointEditor3D();
   jointEditorModeSnapshot3D = cloneManualJointEdits3D(manualJointEdits3D);
   jointEditorFacingSnapshot3D = snapshotHandWristAll3D();
+  jointEditorPinsSnapshot3D = collectWristPinsState3D();
+  jointEditorAttachSnapshot3D = collectWristAttachmentsState3D();
   jointEditorModeActive3D = true;
   const preview = document.getElementById('preview3D');
   if (preview) preview.classList.add('je-fullscreen');
@@ -250,6 +255,11 @@ function openJointEditorMode3D() {
 function closeJointEditorModeUI3D() {
   jointEditorModeActive3D = false;
   jointEditorModeSnapshot3D = null;
+  jointEditorFacingSnapshot3D = null;
+  jointEditorPinsSnapshot3D = null;
+  jointEditorAttachSnapshot3D = null;
+  pendingPoseSwitch3D = null;
+  closeUnsavedPoseConfirm3D();
   jointSettingsPopupOpen3D = false;
   const preview = document.getElementById('preview3D');
   if (preview) preview.classList.remove('je-fullscreen');
@@ -277,9 +287,28 @@ function closeJointEditorModeUI3D() {
 function closeJointEditorMode3D() {
   closeJointEditorModeUI3D();
 }
+// Called right after a ⬆ Save succeeds. Cancel rolls back to "the state when the
+// editor opened", so without this a pose you saved mid-session would be rolled
+// back too. `cap` is what was captured at the moment Save was pressed.
+function commitPoseToEditorSnapshot3D(poseKey, cap) {
+  if (!jointEditorModeActive3D || !cap) return;
+  const put = (obj, val) => { if (!obj) return; if (val) obj[poseKey] = val; else delete obj[poseKey]; };
+  put(jointEditorModeSnapshot3D, cap.joints);
+  put(jointEditorFacingSnapshot3D && jointEditorFacingSnapshot3D.map, cap.facing);
+  put(jointEditorPinsSnapshot3D, cap.pins);
+  put(jointEditorAttachSnapshot3D, cap.attach);
+}
 // Reverts every joint back to the snapshot taken when the editor opened,
 // discarding anything changed (or mirrored) since — then closes the UI.
 function cancelJointEditorMode3D() {
+  // Pins and Attached-Wrist dots are part of an arm's pose too. They used to be
+  // left as-is while the joint rotations were rolled back, so the two got out of
+  // step and the arms came back twisted — put them back first, together.
+  if (jointEditorPinsSnapshot3D) {
+    wristPinLocked3D = {};
+    applyWristPinsState3D(jointEditorPinsSnapshot3D);
+  }
+  if (jointEditorAttachSnapshot3D) applyWristAttachmentsState3D(jointEditorAttachSnapshot3D);
   if (jointEditorFacingSnapshot3D) {
     restoreHandWristAll3D(jointEditorFacingSnapshot3D);
     refreshHandWristButtons();
@@ -649,9 +678,43 @@ function closePosePopup3D() {
 // the exact same setPose3D() the Poses panel buttons use (so per-pose joint
 // edits, hand/wrist overrides, pins and attachments all swap in), then
 // refreshes the editor's own pose-dependent UI.
-function switchEditorPose3D(poseKey) {
+// True when the pose on screen has edits that aren't in the last save.
+function isPoseUnsaved3D(poseKey) {
+  try {
+    const st = poseSaveStatus3D(poseKey);
+    if (st === 'dirty') return true;
+    if (st === 'nosave') return poseLiveSaveState3D(poseKey) !== undefined; // never saved, but has edits
+  } catch (e) {}
+  return false; // 'latest', or save status unknown (e.g. GitHub unreachable)
+}
+function openUnsavedPoseConfirm3D(targetKey) {
+  pendingPoseSwitch3D = targetKey;
+  const pose = POSES3D[currentPose3D];
+  const nameEl = document.getElementById('jeUnsavedPoseName');
+  if (nameEl) nameEl.textContent = pose ? (pose.label || currentPose3D) : currentPose3D;
+  const pop = document.getElementById('jeUnsavedPoseConfirm');
+  if (pop) pop.classList.add('open');
+}
+function closeUnsavedPoseConfirm3D() {
+  const pop = document.getElementById('jeUnsavedPoseConfirm');
+  if (pop) pop.classList.remove('open');
+}
+// YES: stay on this pose so it can be saved.
+function unsavedPoseConfirmYes3D() {
+  pendingPoseSwitch3D = null;
+  closeUnsavedPoseConfirm3D();
+}
+// NO: carry on to the pose that was asked for.
+function unsavedPoseConfirmNo3D() {
+  const target = pendingPoseSwitch3D;
+  pendingPoseSwitch3D = null;
+  closeUnsavedPoseConfirm3D();
+  if (target) switchEditorPose3D(target, { skipSavePrompt: true });
+}
+function switchEditorPose3D(poseKey, { skipSavePrompt = false } = {}) {
   closePosePopup3D();
   if (!POSES3D[poseKey] || poseKey === currentPose3D) return;
+  if (!skipSavePrompt && isPoseUnsaved3D(currentPose3D)) { openUnsavedPoseConfirm3D(poseKey); return; }
   setPose3D(poseKey);
   if (typeof refreshHandWristButtons === 'function') refreshHandWristButtons();
   jointEditorCopyLog3D = [];
