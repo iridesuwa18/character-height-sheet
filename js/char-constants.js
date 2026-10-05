@@ -202,9 +202,9 @@ const MAX_ELBOW_LIFT_DEG = 45;           // cap so a wildly out-of-range value c
 const WRIST_BEND_RANGE = [-80, 80];
 const clampWristBend = (deg) => Math.min(WRIST_BEND_RANGE[1], Math.max(WRIST_BEND_RANGE[0], deg || 0));
 // Wrist swing (side-to-side, in the HAND's own frame — radial/ulnar deviation).
-// Positive = toward the thumb side (radial, small range), negative = toward the
-// pinky side (ulnar, larger range). Same number on both hands = mirrored pair.
-const WRIST_SWING_RANGE = [-40, 20];
+// Positive = toward the thumb side (radial), negative = toward the
+// pinky side (ulnar). Both directions now go to 40. Same number on both hands = mirrored pair.
+const WRIST_SWING_RANGE = [-40, 40];
 const clampWristSwing = (deg) => Math.min(WRIST_SWING_RANGE[1], Math.max(WRIST_SWING_RANGE[0], deg || 0));
 // How far (degrees, as a single rotation-angle budget) the wrist-dot leash's
 // final hand-aim pass (see enforceWristPinConstraints3D in
