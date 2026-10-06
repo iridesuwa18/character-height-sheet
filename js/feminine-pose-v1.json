@@ -1,0 +1,307 @@
+{
+  "_name": "Feminine Pose v1",
+  "fp1-shy-clasp": {
+    "label": "Shy Pigeon-Toed, Hands Clasped",
+    "section": "Feminine Pose v1",
+    "spineBend": 4,
+    "spineSide": 3,
+    "right": {
+      "hip": -8,
+      "knee": 8,
+      "hipAbd": 4,
+      "hipTurn": -8,
+      "ankleTurn": -8,
+      "shoulder": 15,
+      "shoulderAbd": 13,
+      "shoulderRoll": -46,
+      "elbow": -58,
+      "wrist": 38,
+      "wristSwing": -21,
+      "wristTurnEdit": -33
+    },
+    "left": {
+      "hipAbd": 4,
+      "hipTurn": -8,
+      "ankleTurn": 8,
+      "shoulder": 15,
+      "shoulderAbd": 13,
+      "shoulderRoll": -46,
+      "elbow": -58,
+      "wrist": 38,
+      "wristSwing": -21,
+      "wristTurnEdit": -33
+    }
+  },
+  "fp1-toe-tap-hands-back": {
+    "label": "Hands Behind Back, Toe Tap",
+    "section": "Feminine Pose v1",
+    "spineBend": 5,
+    "spineSide": 3,
+    "right": {
+      "hip": -30,
+      "knee": 68,
+      "ankle": 12,
+      "hipTurn": -10,
+      "hipAbd": 1,
+      "shoulder": 40,
+      "shoulderAbd": 11,
+      "shoulderRoll": -35,
+      "elbow": -48,
+      "wrist": -36,
+      "wristSwing": -35,
+      "wristTurnEdit": 5
+    },
+    "left": {
+      "hipAbd": 2,
+      "shoulder": 40,
+      "shoulderAbd": 11,
+      "shoulderRoll": -35,
+      "elbow": -48,
+      "wrist": -36,
+      "wristSwing": -35,
+      "wristTurnEdit": 5
+    }
+  },
+  "fp1-peace-hand-hip": {
+    "label": "Peace Sign, Hand on Hip",
+    "section": "Feminine Pose v1",
+    "spineSide": 5,
+    "right": {
+      "hip": -10,
+      "knee": 14,
+      "ankle": -4,
+      "hipAbd": 3,
+      "hipTurn": -6,
+      "shoulder": -42,
+      "shoulderAbd": 24,
+      "shoulderRoll": -18,
+      "elbow": -128,
+      "wristSwing": 15,
+      "wristTurnEdit": -153
+    },
+    "left": {
+      "hipAbd": 3,
+      "shoulder": 40,
+      "shoulderAbd": 24,
+      "shoulderRoll": -25,
+      "elbow": -84,
+      "wrist": 49,
+      "wristSwing": -17,
+      "wristTurnEdit": -51
+    }
+  },
+  "fp1-cheek-cup-tiptoe": {
+    "label": "Cheeks Cupped, On Tiptoes",
+    "section": "Feminine Pose v1",
+    "spineSide": 6,
+    "right": {
+      "ankle": 25,
+      "hipAbd": 2,
+      "shoulder": -61,
+      "shoulderAbd": 4,
+      "shoulderRoll": -13,
+      "elbow": -150,
+      "wrist": -28,
+      "wristSwing": -5,
+      "wristTurnEdit": -100
+    },
+    "left": {
+      "ankle": 25,
+      "hipAbd": 2,
+      "shoulder": -61,
+      "shoulderAbd": 4,
+      "shoulderRoll": -13,
+      "elbow": -150,
+      "wrist": -28,
+      "wristSwing": -5,
+      "wristTurnEdit": -100
+    }
+  },
+  "fp1-giggle-mouth": {
+    "label": "Giggle, Hand Over Mouth",
+    "section": "Feminine Pose v1",
+    "spineBend": 4,
+    "spineSide": -4,
+    "spineTwist": 8,
+    "right": {
+      "hip": -10,
+      "knee": 12,
+      "ankle": -2,
+      "hipTurn": -8,
+      "hipAbd": 1,
+      "shoulder": -49,
+      "shoulderAbd": 9,
+      "shoulderRoll": -33,
+      "elbow": -145,
+      "wrist": 26,
+      "wristSwing": -12,
+      "wristTurnEdit": -10
+    },
+    "left": {
+      "hipAbd": 2,
+      "hipTurn": -3,
+      "shoulderAbd": 37,
+      "shoulderRoll": -75,
+      "elbow": -98,
+      "wrist": 6,
+      "wristSwing": -13,
+      "wristTurnEdit": 5
+    }
+  },
+  "fp1-hair-twirl": {
+    "label": "Twirling Hair, Knee Pop",
+    "section": "Feminine Pose v1",
+    "spineSide": 6,
+    "spineTwist": -6,
+    "right": {
+      "hip": -30,
+      "knee": 68,
+      "ankle": 12,
+      "hipTurn": -10,
+      "hipAbd": 1,
+      "shoulder": -39,
+      "shoulderAbd": 36,
+      "shoulderRoll": -10,
+      "elbow": -141,
+      "wrist": -26,
+      "wristSwing": 20,
+      "wristTurnEdit": -82
+    },
+    "left": {
+      "hipAbd": 2,
+      "shoulder": 30,
+      "shoulderAbd": 25,
+      "shoulderRoll": -43,
+      "elbow": -48,
+      "wrist": 30,
+      "wristSwing": -15,
+      "wristTurnEdit": -41
+    }
+  },
+  "fp1-heart-hands": {
+    "label": "Heart Hands, Head Tilt",
+    "section": "Feminine Pose v1",
+    "spineBend": 2,
+    "spineSide": 6,
+    "right": {
+      "hip": -8,
+      "knee": 10,
+      "ankle": -2,
+      "hipTurn": -6,
+      "ankleTurn": -6,
+      "hipAbd": 3,
+      "shoulderAbd": 21,
+      "shoulderRoll": -26,
+      "elbow": -130,
+      "wrist": -44,
+      "wristSwing": -30,
+      "wristTurnEdit": -156
+    },
+    "left": {
+      "hipAbd": 3,
+      "hipTurn": -4,
+      "ankleTurn": 4,
+      "shoulderAbd": 21,
+      "shoulderRoll": -26,
+      "elbow": -130,
+      "wrist": -44,
+      "wristSwing": -30,
+      "wristTurnEdit": -156
+    }
+  },
+  "fp1-heel-pop-plead": {
+    "label": "Hands Under Chin, Heel Pop",
+    "section": "Feminine Pose v1",
+    "spineBend": 4,
+    "spineSide": 3,
+    "right": {
+      "hip": 6,
+      "knee": 78,
+      "ankle": 20,
+      "hipAbd": 2,
+      "shoulder": -13,
+      "shoulderAbd": 24,
+      "shoulderRoll": -50,
+      "elbow": -139,
+      "wrist": -27,
+      "wristSwing": 19,
+      "wristTurnEdit": -134
+    },
+    "left": {
+      "hipAbd": 2,
+      "shoulder": -13,
+      "shoulderAbd": 24,
+      "shoulderRoll": -50,
+      "elbow": -139,
+      "wrist": -27,
+      "wristSwing": 19,
+      "wristTurnEdit": -134
+    }
+  },
+  "fp1-peek-lean-hands-back": {
+    "label": "Peekaboo Lean, Hands Behind",
+    "section": "Feminine Pose v1",
+    "spineBend": 22,
+    "spineSide": 4,
+    "right": {
+      "hipAbd": 4,
+      "hipTurn": -8,
+      "ankleTurn": -8,
+      "knee": 6,
+      "hip": -6,
+      "shoulder": 40,
+      "shoulderAbd": 11,
+      "shoulderRoll": -35,
+      "elbow": -48,
+      "wrist": -36,
+      "wristSwing": -35,
+      "wristTurnEdit": 5
+    },
+    "left": {
+      "hipAbd": 4,
+      "hipTurn": -8,
+      "ankleTurn": 8,
+      "knee": 6,
+      "hip": -6,
+      "shoulder": 40,
+      "shoulderAbd": 11,
+      "shoulderRoll": -35,
+      "elbow": -48,
+      "wrist": -36,
+      "wristSwing": -35,
+      "wristTurnEdit": 5
+    }
+  },
+  "fp1-cat-paws": {
+    "label": "Cat Paws, Knee Pop",
+    "section": "Feminine Pose v1",
+    "spineBend": 3,
+    "spineSide": -5,
+    "right": {
+      "hip": -28,
+      "knee": 66,
+      "ankle": 10,
+      "hipTurn": -16,
+      "hipAbd": 1,
+      "ankleTurn": -10,
+      "shoulder": -18,
+      "shoulderAbd": 18,
+      "shoulderRoll": -19,
+      "elbow": -129,
+      "wrist": -25,
+      "wristSwing": -18,
+      "wristTurnEdit": -153
+    },
+    "left": {
+      "hipAbd": 2,
+      "hipTurn": -3,
+      "shoulder": -18,
+      "shoulderAbd": 18,
+      "shoulderRoll": -19,
+      "elbow": -129,
+      "wrist": -25,
+      "wristSwing": -18,
+      "wristTurnEdit": -153
+    }
+  }
+}
