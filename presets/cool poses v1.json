@@ -573,6 +573,83 @@
       "wrist": 11,
       "wristSwing": -14,
       "wristTurnEdit": -67
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -25.37,
+        "y": 18.61,
+        "z": 15.78
+      },
+      "leftWrist": {
+        "x": 4.03,
+        "y": 23.3,
+        "z": 19.93
+      },
+      "leftHandTurn": {
+        "x": 12.98,
+        "y": 28.32,
+        "z": 20.37
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 23.45,
+        "y": 21.51,
+        "z": 22.18
+      },
+      "rightWrist": {
+        "x": -5.88,
+        "y": 27.89,
+        "z": 23.89
+      },
+      "rightHandTurn": {
+        "x": -13.19,
+        "y": 26.48,
+        "z": 16.82
+      },
+      "leftHip": {
+        "x": -7.85,
+        "y": -5.87,
+        "z": 0
+      },
+      "leftKnee": {
+        "x": -10,
+        "y": -44.64,
+        "z": -13.35
+      },
+      "leftAnkle": {
+        "x": -12.08,
+        "y": -78.63,
+        "z": -36.29
+      },
+      "rightHip": {
+        "x": 7.85,
+        "y": -5.87,
+        "z": 0
+      },
+      "rightKnee": {
+        "x": 11.43,
+        "y": -46.78,
+        "z": 0
+      },
+      "rightAnkle": {
+        "x": 15,
+        "y": -87.63,
+        "z": -2.15
+      }
     }
   },
   "cp1-pockets-both": {
@@ -698,7 +775,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "cp1-chin-rest-fold",
+    "pose": "cp1-arms-crossed-toe-tap",
     "manualJointEdits": {
       "cp1-pocket-lean": {
         "left": {
@@ -829,6 +906,66 @@
           "kneeQuat": null,
           "ankleQuat": null
         }
+      },
+      "cp1-arms-crossed-toe-tap": {
+        "left": {
+          "shoulderQuat": [
+            -0.2,
+            0.0202,
+            -0.162,
+            0.9661
+          ],
+          "elbowQuat": [
+            -0.8253,
+            0.5066,
+            0.093,
+            0.2313
+          ],
+          "wristQuat": [
+            -0.0515,
+            -0.0091,
+            -0.1734,
+            0.9835
+          ],
+          "handTurnQuat": [
+            0,
+            0.3907,
+            0,
+            0.9205
+          ],
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": [
+            -0.2842,
+            -0.0417,
+            0.1484,
+            0.9463
+          ],
+          "elbowQuat": [
+            -0.8273,
+            -0.493,
+            -0.098,
+            0.2507
+          ],
+          "wristQuat": [
+            -0.4199,
+            -0.0478,
+            -0.1026,
+            0.9005
+          ],
+          "handTurnQuat": [
+            0,
+            0.9304,
+            0,
+            0.3665
+          ],
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
       }
     }
   },
@@ -868,6 +1005,28 @@
         "swing": {
           "left": 13,
           "right": null
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "cp1-arms-crossed-toe-tap": {
+        "hand": {
+          "left": -46,
+          "right": 137
+        },
+        "wrist": {
+          "left": -6,
+          "right": -50
+        },
+        "swing": {
+          "left": 20,
+          "right": -13
         },
         "elbowBend": {
           "left": null,
@@ -1156,6 +1315,42 @@
           0.2588
         ]
       }
+    },
+    "cp1-arms-crossed-toe-tap": {
+      "left": {
+        "x": 4.04,
+        "y": 23.32,
+        "z": 19.93,
+        "turn": -46,
+        "bend": -6,
+        "swing": 20,
+        "sx": -10.7,
+        "sy": 52.8,
+        "sz": 0,
+        "ex": -25.37,
+        "ey": 18.62,
+        "ez": 15.79,
+        "dox": 23.607603628354898,
+        "doy": 29.158389116846237,
+        "doz": 17.404536213759904,
+        "r": 20.575613394786714,
+        "upperLen": 40.40798683428809,
+        "foreLen": 30.06954771858067,
+        "torsoHalfWidth": 10.69861181640625,
+        "sq": [
+          -0.2,
+          0.0202,
+          -0.162,
+          0.9661
+        ],
+        "eq": [
+          -0.8253,
+          0.5066,
+          0.093,
+          0.2313
+        ]
+      },
+      "right": null
     }
   },
   "_wristAttachments": {
@@ -1217,6 +1412,20 @@
         "face": "left",
         "h": 50,
         "v": 75
+      }
+    },
+    "cp1-arms-crossed-toe-tap": {
+      "left": {
+        "group": "rightArm",
+        "face": "right",
+        "h": 50,
+        "v": 45
+      },
+      "right": {
+        "group": "leftArm",
+        "face": "left",
+        "h": 50,
+        "v": 45
       }
     }
   }
