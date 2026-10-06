@@ -29,6 +29,83 @@
       "wrist": 19,
       "wristSwing": -14,
       "wristTurnEdit": -38
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -17.5,
+        "y": 13.05,
+        "z": -2.74
+      },
+      "leftWrist": {
+        "x": -18.87,
+        "y": -16.9,
+        "z": -0.53
+      },
+      "leftHandTurn": {
+        "x": -18.62,
+        "y": -27.12,
+        "z": 0.4
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 25.9,
+        "y": 15.46,
+        "z": 2.82
+      },
+      "rightWrist": {
+        "x": 10.13,
+        "y": -8.26,
+        "z": 12.43
+      },
+      "rightHandTurn": {
+        "x": 8.16,
+        "y": -18.3,
+        "z": 11.63
+      },
+      "leftHip": {
+        "x": -8.2,
+        "y": -5.31,
+        "z": 0.82
+      },
+      "leftKnee": {
+        "x": -13.76,
+        "y": -45.27,
+        "z": 8.47
+      },
+      "leftAnkle": {
+        "x": -19,
+        "y": -85.99,
+        "z": 7.57
+      },
+      "rightHip": {
+        "x": 7.38,
+        "y": -6.4,
+        "z": -0.82
+      },
+      "rightKnee": {
+        "x": 5.94,
+        "y": -47.44,
+        "z": -0.97
+      },
+      "rightAnkle": {
+        "x": 4.35,
+        "y": -88.44,
+        "z": -2.55
+      }
     }
   },
   "cp1-nape-hip-pop": {
@@ -310,6 +387,146 @@
       "wrist": -34,
       "wristSwing": -25,
       "wristTurnEdit": -71
+    }
+  },
+  "_jointEdits": {
+    "pose": "cp1-pocket-lean",
+    "manualJointEdits": {
+      "cp1-pocket-lean": {
+        "left": {
+          "shoulderQuat": [
+            0.0338,
+            -0.0028,
+            -0.0537,
+            0.998
+          ],
+          "elbowQuat": [
+            0.0718,
+            -0.7078,
+            0.0282,
+            -0.7022
+          ],
+          "wristQuat": [
+            -0.0349,
+            -0.0003,
+            -0.0087,
+            0.9994
+          ],
+          "handTurnQuat": [
+            0,
+            0.0175,
+            0,
+            0.9998
+          ],
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": [
+            -0.0353,
+            -0.0022,
+            0.1614,
+            0.9863
+          ],
+          "elbowQuat": [
+            -0.4308,
+            -0.8917,
+            0.1173,
+            0.0739
+          ],
+          "wristQuat": [
+            -0.2041,
+            -0.0397,
+            -0.1866,
+            0.9602
+          ],
+          "handTurnQuat": [
+            0,
+            -1,
+            0,
+            0
+          ],
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
+      }
+    }
+  },
+  "_handWristOverrides": {
+    "byPose": {
+      "cp1-pocket-lean": {
+        "hand": {
+          "left": -2,
+          "right": -180
+        },
+        "wrist": {
+          "left": -4,
+          "right": -24
+        },
+        "swing": {
+          "left": 1,
+          "right": -22
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      }
+    }
+  },
+  "_wristPins": {
+    "cp1-pocket-lean": {
+      "left": null,
+      "right": {
+        "x": 10.12,
+        "y": -8.25,
+        "z": 12.44,
+        "turn": -180,
+        "bend": -24,
+        "swing": -22,
+        "sx": 10.7,
+        "sy": 52.8,
+        "sz": 0,
+        "ex": 25.9,
+        "ey": 15.47,
+        "ez": 2.82,
+        "dox": 3.9247877124398958,
+        "doy": -46.92595166015625,
+        "doz": 8.381046585083007,
+        "r": 39.3787378534552,
+        "upperLen": 40.40447128722265,
+        "foreLen": 30.0697721973413,
+        "torsoHalfWidth": 10.69861181640625,
+        "sq": [
+          -0.0353,
+          -0.0022,
+          0.1614,
+          0.9863
+        ],
+        "eq": [
+          -0.4308,
+          -0.8917,
+          0.1173,
+          0.0739
+        ]
+      }
+    }
+  },
+  "_wristAttachments": {
+    "cp1-pocket-lean": {
+      "left": null,
+      "right": {
+        "group": "rightLeg",
+        "face": "front",
+        "h": 25,
+        "v": 50
+      }
     }
   }
 }
