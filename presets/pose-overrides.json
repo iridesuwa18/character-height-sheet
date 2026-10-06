@@ -79,7 +79,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "stretch-wide-fold",
+    "pose": "stretch-calf",
     "manualJointEdits": {
       "stand-relaxed": {
         "left": {
@@ -9030,10 +9030,10 @@
             0.9246
           ],
           "elbowQuat": [
+            0,
+            0.8359,
             -0.5489,
-            0,
-            0,
-            0.8359
+            0
           ],
           "wristQuat": null,
           "handTurnQuat": null,
@@ -9064,10 +9064,10 @@
             0.9246
           ],
           "elbowQuat": [
-            -0.5489,
             0,
-            0,
-            0.8359
+            -0.8359,
+            0.5489,
+            0
           ],
           "wristQuat": null,
           "handTurnQuat": null,
@@ -15711,16 +15711,16 @@
       },
       "stretch-calf": {
         "hand": {
-          "left": 174,
-          "right": 174
+          "left": 180,
+          "right": 180
         },
         "wrist": {
-          "left": -71,
-          "right": -71
+          "left": 74,
+          "right": 74
         },
         "swing": {
-          "left": 11,
-          "right": 11
+          "left": -13,
+          "right": -13
         },
         "elbowBend": {
           "left": null,
@@ -36863,19 +36863,19 @@
         "z": 0
       },
       "leftElbow": {
-        "x": -15.58,
-        "y": 24.04,
-        "z": 27.97
+        "x": -15.68,
+        "y": 24.06,
+        "z": 27.98
       },
       "leftWrist": {
-        "x": -10.7,
-        "y": 33.73,
-        "z": 56
+        "x": -10.8,
+        "y": 33.75,
+        "z": 56.02
       },
       "leftHandTurn": {
-        "x": -10.76,
-        "y": 44,
-        "z": 55.98
+        "x": -11.28,
+        "y": 43.99,
+        "z": 55.52
       },
       "rightShoulder": {
         "x": 10.7,
@@ -36883,19 +36883,19 @@
         "z": 0
       },
       "rightElbow": {
-        "x": 15.58,
-        "y": 24.04,
-        "z": 27.97
+        "x": 15.68,
+        "y": 24.06,
+        "z": 27.98
       },
       "rightWrist": {
-        "x": 10.7,
-        "y": 33.73,
-        "z": 56
+        "x": 10.8,
+        "y": 33.75,
+        "z": 56.02
       },
       "rightHandTurn": {
-        "x": 10.76,
-        "y": 44,
-        "z": 55.98
+        "x": 11.27,
+        "y": 43.99,
+        "z": 55.52
       },
       "leftHip": {
         "x": -7.85,
@@ -36919,12 +36919,12 @@
       },
       "rightKnee": {
         "x": 10,
-        "y": -43.03,
+        "y": -43.04,
         "z": 17.33
       },
       "rightAnkle": {
         "x": 12.15,
-        "y": -81.56,
+        "y": -81.57,
         "z": 31.35
       }
     }
