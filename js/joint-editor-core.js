@@ -355,8 +355,11 @@ function populateCopyPoseSelect3D() {
   ph.value = ''; ph.textContent = 'Choose a pose…';
   sel.appendChild(ph);
   const groups = {};
-  Object.keys(POSES3D).forEach(key => {
+  const copyKeys = (typeof filteredPoseKeys3D === 'function') ? filteredPoseKeys3D('copy') : Object.keys(POSES3D);
+  let copyShown = 0;
+  copyKeys.forEach(key => {
     if (key === currentPose3D) return; // copying a pose onto itself is a no-op
+    copyShown++;
     const pose = POSES3D[key];
     const sec = pose.section || 'Other';
     if (!groups[sec]) {
@@ -371,6 +374,8 @@ function populateCopyPoseSelect3D() {
   });
   if (prev && POSES3D[prev] && prev !== currentPose3D) sel.value = prev;
   else sel.value = '';
+  if (typeof updatePoseSearchCount3D === 'function') updatePoseSearchCount3D('copy', copyShown);
+  if (copyShown === 0 && ph) ph.textContent = 'No poses match…';
 }
 function readPoseElbowWristQuats3D(poseKey) {
   // Render the source pose exactly the way it looks when you click it — its
@@ -578,6 +583,8 @@ async function clearAllManualJointOverridesAndSave3D() {
 function openCopyPopup3D() {
   const popup = document.getElementById('jeCopyPopup');
   if (!popup) return;
+  if (typeof clearPoseSearch3D === 'function') clearPoseSearch3D('copy');
+  if (typeof refreshPoseSetSelects3D === 'function') refreshPoseSetSelects3D();
   populateCopyPoseSelect3D();
   const msg = document.getElementById('jeCopyMsg'); if (msg) msg.textContent = '';
   // Always open with the same defaults (Arms ticked, Legs not) so a tap never flips a stale state.
@@ -644,13 +651,14 @@ function updatePoseNameLabel3D() {
   const pose = POSES3D[currentPose3D];
   el.textContent = pose ? (pose.label || currentPose3D) : currentPose3D;
 }
-function openPosePopup3D() {
-  const popup = document.getElementById('jePosePopup');
+// Rebuilds the Switch Pose list, honouring the search box + set filter.
+function renderPosePopupList3D() {
   const list = document.getElementById('jePoseList');
-  if (!popup || !list || typeof POSES3D === 'undefined') return;
+  if (!list || typeof POSES3D === 'undefined') return;
   list.innerHTML = '';
   let lastSec = null;
-  Object.keys(POSES3D).forEach(key => {
+  const keys = (typeof filteredPoseKeys3D === 'function') ? filteredPoseKeys3D('popup') : Object.keys(POSES3D);
+  keys.forEach(key => {
     const pose = POSES3D[key];
     const sec = pose.section || 'Other';
     if (sec !== lastSec) {
@@ -666,6 +674,20 @@ function openPosePopup3D() {
     b.onclick = () => switchEditorPose3D(key);
     list.appendChild(b);
   });
+  if (!keys.length) {
+    const h = document.createElement('div');
+    h.className = 'jep-section'; h.textContent = 'No poses match.';
+    list.appendChild(h);
+  }
+  if (typeof updatePoseSearchCount3D === 'function') updatePoseSearchCount3D('popup', keys.length);
+}
+function openPosePopup3D() {
+  const popup = document.getElementById('jePosePopup');
+  const list = document.getElementById('jePoseList');
+  if (!popup || !list || typeof POSES3D === 'undefined') return;
+  if (typeof clearPoseSearch3D === 'function') clearPoseSearch3D('popup'); // fresh search each time (the set filter is remembered)
+  if (typeof refreshPoseSetSelects3D === 'function') refreshPoseSetSelects3D();
+  renderPosePopupList3D();
   popup.classList.add('open');
   const active = list.querySelector('.jep-item.active');
   if (active) active.scrollIntoView({ block: 'center' });

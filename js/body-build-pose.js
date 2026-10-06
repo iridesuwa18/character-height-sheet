@@ -586,18 +586,26 @@ function renderPosePanel3D() {
   const container = document.getElementById('poseSections');
   if (!container) return;
   const sections = {};
-  Object.keys(POSES3D).forEach(key => {
+  const keys = (typeof filteredPoseKeys3D === 'function') ? filteredPoseKeys3D('panel') : Object.keys(POSES3D);
+  keys.forEach(key => {
     const pose = POSES3D[key];
     (sections[pose.section] = sections[pose.section] || []).push({ key, ...pose });
   });
-  container.innerHTML = Object.keys(sections).map(sectionName => `
+  const esc = (typeof escapeHtmlPose3D === 'function') ? escapeHtmlPose3D : (x => x);
+  let html = Object.keys(sections).map(sectionName => `
     <div class="pose-section">
-      <div class="pose-section-title">${sectionName}</div>
+      <div class="pose-section-title">${esc(sectionName)}</div>
       <div class="pose-btn-row">
-        ${sections[sectionName].map(p => `<button type="button" class="pose-btn${p.key === currentPose3D ? ' active' : ''}" data-pose="${p.key}" onclick="setPose3D('${p.key}')">${p.label}</button>`).join('')}
+        ${sections[sectionName].map(p => `<button type="button" class="pose-btn${p.key === currentPose3D ? ' active' : ''}" data-pose="${esc(p.key)}" onclick="setPose3D('${esc(p.key)}')">${esc(p.label)}</button>`).join('')}
       </div>
     </div>
   `).join('');
+  if (!keys.length) html = '<div class="pose-empty">No poses match.</div>';
+  if (typeof poseSetErrors3D !== 'undefined' && poseSetErrors3D.length) {
+    html += `<div class="pose-empty">⚠ ${poseSetErrors3D.map(esc).join('<br>⚠ ')}</div>`;
+  }
+  container.innerHTML = html;
+  if (typeof updatePoseSearchCount3D === 'function') updatePoseSearchCount3D('panel', keys.length);
 }
 
 // Called from the Pose panel buttons: switches to a named pose, snaps it to

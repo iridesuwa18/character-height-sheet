@@ -65,17 +65,18 @@ function captureAllJointXYZ3D() {
 // edits still apply for the rest of this session, they just won't survive
 // a reload.
 const POSE_OVERRIDES_GH_PATH = 'presets/pose-overrides.json';
-function poseOverridesApiUrl(s) {
-  return `https://api.github.com/repos/${s.owner}/${s.repo}/contents/${POSE_OVERRIDES_GH_PATH.split('/').map(encodeURIComponent).join('/')}`;
+function poseOverridesApiUrl(s, path) {
+  return `https://api.github.com/repos/${s.owner}/${s.repo}/contents/${(path || POSE_OVERRIDES_GH_PATH).split('/').map(encodeURIComponent).join('/')}`;
 }
 // GitHub's contents API can hand back a stale sha for a moment after a commit,
 // so a quick second write fails with "does not match <sha>". Every write goes
 // through this: fetch fresh (cache-busted), apply `mutate`, PUT, and on a sha
 // mismatch wait a beat and retry.
-async function githubUpdatePoseOverrides3D(message, mutate) {
+// `path` = which presets/*.json to write (defaults to pose-overrides.json); a pose's edits go to the file the pose lives in.
+async function githubUpdatePoseOverrides3D(message, mutate, path) {
   const s = ghGetSettings();
   if (!s.token || !s.owner || !s.repo) throw new Error('Set your GitHub token in the GitHub Presets panel first (needed to save).');
-  const apiUrl = poseOverridesApiUrl(s);
+  const apiUrl = poseOverridesApiUrl(s, path);
   let lastErr;
   for (let attempt = 0; attempt < 5; attempt++) {
     if (attempt) await new Promise(r => setTimeout(r, 500 * attempt));
@@ -90,7 +91,11 @@ async function githubUpdatePoseOverrides3D(message, mutate) {
     const body = { message, content: ghUtf8ToB64(JSON.stringify(all, null, 2)), branch: s.branch };
     if (sha) body.sha = sha;
     const putResp = await fetch(apiUrl, { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
-    if (putResp.ok) { if (typeof setSaveBaseline3D === 'function') setSaveBaseline3D(all); return all; }
+    if (putResp.ok) {
+      if (typeof recordPoseFileData3D === 'function') recordPoseFileData3D((path || POSE_OVERRIDES_GH_PATH).split('/').pop(), all);
+      else if (typeof setSaveBaseline3D === 'function') setSaveBaseline3D(all);
+      return all;
+    }
     const errj = await putResp.json().catch(() => ({}));
     lastErr = new Error(errj.message || putResp.statusText);
     if (!(putResp.status === 409 || putResp.status === 422 || /does not match|sha/i.test(lastErr.message))) throw lastErr;
@@ -119,18 +124,20 @@ async function clearAllSavedPoseEdits() {
 // into poseLiteralFacing3D, declared in hand-wrist-panel.js) so an override
 // of 'default' can go back to them even after a saved edit has been
 // layered on top. Called once, right after POSES3D is defined.
+function capturePoseLiteralFacingFor3D(k) {
+  if (!poseLiteralFacing3D || typeof POSES3D === 'undefined' || !POSES3D[k]) return;
+  poseLiteralFacing3D[k] = {};
+  ['left', 'right'].forEach(side => {
+    const r = POSES3D[k][side]; if (!r) return;
+    const o = {};
+    ['wristTurn', 'wrist', 'handRotation', 'wristRotation'].forEach(f => { if (r[f] !== undefined) o[f] = r[f]; });
+    poseLiteralFacing3D[k][side] = o;
+  });
+}
 function capturePoseLiteralFacing3D() {
   if (poseLiteralFacing3D || typeof POSES3D === 'undefined') return;
   poseLiteralFacing3D = {};
-  Object.keys(POSES3D).forEach(k => {
-    poseLiteralFacing3D[k] = {};
-    ['left', 'right'].forEach(side => {
-      const r = POSES3D[k][side]; if (!r) return;
-      const o = {};
-      ['wristTurn', 'wrist', 'handRotation', 'wristRotation'].forEach(f => { if (r[f] !== undefined) o[f] = r[f]; });
-      poseLiteralFacing3D[k][side] = o;
-    });
-  });
+  Object.keys(POSES3D).forEach(capturePoseLiteralFacingFor3D);
 }
 // Applies a parsed pose-overrides.json (everything except the joint-edit blob
 // and each pose's jointXYZ snapshot, which nothing currently re-drives the
@@ -159,9 +166,15 @@ async function pullPoseOverridesFromGitHub() {
   if (!s.owner || !s.repo) return;
   try {
     const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
-    if (!resp.ok) { if (resp.status === 404 && typeof setSaveBaseline3D === 'function') setSaveBaseline3D({}); return; } // 404 = nothing saved yet; other errors fail quietly at load time
+    if (!resp.ok) { if (resp.status === 404 && typeof recordPoseFileData3D === 'function') recordPoseFileData3D('pose-overrides.json', {}); return; } // 404 = nothing saved yet; other errors fail quietly at load time
     const j = await resp.json();
-    const all = JSON.parse(ghB64ToUtf8(j.content));
+    const mainAll = JSON.parse(ghB64ToUtf8(j.content));
+    // Poses from presets/*.json sets must exist before saved edits for them can be applied.
+    if (typeof poseSetsReady3D !== 'undefined' && poseSetsReady3D) { try { await poseSetsReady3D; } catch (e) {} }
+    // pose-overrides.json and every set file share one layout; fold them into one object so the rest of this
+    // function (and every loader) sees all poses' saved state at once.
+    let all = mainAll;
+    if (typeof recordPoseFileData3D === 'function') { recordPoseFileData3D('pose-overrides.json', mainAll); all = mergedPoseFilesData3D(); }
     poseOverridesCache3D = all;
     if (typeof setSaveBaseline3D === 'function') setSaveBaseline3D(all);
     applyPoseOverridesData3D(all);

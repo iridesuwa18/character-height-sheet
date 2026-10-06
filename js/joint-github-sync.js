@@ -143,13 +143,18 @@ function applyJointEditsState3D(jstate, { keepPose = false } = {}) {
 // and sha undefined when the file doesn't exist yet.
 async function fetchPoseOverridesFile(s) {
   const resp = await fetch(`${poseOverridesApiUrl(s)}?ref=${encodeURIComponent(s.branch)}&_=${Date.now()}`, { headers: ghHeaders(s.token), cache: 'no-store' });
-  if (resp.status === 404) { setSaveBaseline3D({}); return { all: {}, sha: undefined }; }
-  if (!resp.ok) throw new Error(resp.statusText);
-  const j = await resp.json();
-  let all = {};
-  try { all = JSON.parse(ghB64ToUtf8(j.content)) || {}; } catch (e) { all = {}; }
-  setSaveBaseline3D(all);
-  return { all, sha: j.sha };
+  let mainAll = {}, sha;
+  if (resp.status !== 404) {
+    if (!resp.ok) throw new Error(resp.statusText);
+    const j = await resp.json();
+    try { mainAll = JSON.parse(ghB64ToUtf8(j.content)) || {}; } catch (e) { mainAll = {}; }
+    sha = j.sha;
+  }
+  // Same layout in every presets/*.json set file — re-read those too and hand back everything as one object.
+  if (typeof recordPoseFileData3D !== 'function') { setSaveBaseline3D(mainAll); return { all: mainAll, sha }; }
+  recordPoseFileData3D('pose-overrides.json', mainAll);
+  await refreshPoseSetFilesData3D(s);
+  return { all: mergedPoseFilesData3D(), sha };
 }
 
 // ---- ⬆ Save: snapshot every joint's current XYZ, push it, only on press ----
@@ -176,6 +181,15 @@ async function quickSaveJointsToGitHub3D() {
     pins: wristPinsState[poseKey] || null,
     attach: wristAttachmentsState[poseKey] || null,
   };
+  // The pose saves into the file it lives in: a pose from "model poses v2.json" goes back into that file,
+  // an original pose into pose-overrides.json. Each file only gets its own poses' state.
+  const fileName = (typeof poseFileNameFor3D === 'function') ? poseFileNameFor3D(poseKey) : 'pose-overrides.json';
+  const mine = (k) => (typeof poseFileNameFor3D !== 'function') || poseFileNameFor3D(k) === fileName;
+  const only = (obj) => { const o = {}; Object.keys(obj || {}).forEach(k => { if (mine(k)) o[k] = obj[k]; }); return o; };
+  const jointEditsOut = { pose: jointEditsState.pose, manualJointEdits: only(jointEditsState.manualJointEdits) };
+  const handWristOut = { byPose: only(handWristState.byPose) };
+  const wristPinsOut = only(wristPinsState);
+  const wristAttachmentsOut = only(wristAttachmentsState);
   try {
     await githubUpdatePoseOverrides3D('Save joint XYZ + edits: ' + poseKey, all => {
       all[poseKey] = all[poseKey] || {};
@@ -184,23 +198,23 @@ async function quickSaveJointsToGitHub3D() {
       // refresh restores what's on screen. jointXYZ alone can't do this —
       // it's a position snapshot with no consumer yet (see notes above);
       // the quaternion edits below are what applySavedJointEdits3D re-applies.
-      all[JOINT_EDITS_KEY] = jointEditsState;
+      all[JOINT_EDITS_KEY] = jointEditsOut;
       // Wrist Bend/Turn/Swing (and the elbow overrides) write to their own
       // their own state instead of a quaternion — see onWristSlider3D — so
       // they need their own save/load, separate from the block above. Saved
       // PER POSE ({byPose:{[pose]:{...}}}) so one pose's wrist edits never
       // leak onto another.
-      all[HAND_WRIST_OVERRIDES_KEY] = handWristState;
+      all[HAND_WRIST_OVERRIDES_KEY] = handWristOut;
       // Distance-leash wrist pins (pinned XYZ, dot origin XYZ, R, and the
       // shoulder/elbow/torso snapshot the leash chain is built from — see
       // applyWristPin3D in joint-faces-panel.js), one set per pose, same
       // as JOINT_EDITS_KEY above.
-      all[WRIST_PINS_KEY] = wristPinsState;
+      all[WRIST_PINS_KEY] = wristPinsOut;
       // The Attached Wrists dot (mesh group + face + H/V%) itself — see the
       // comment above collectWristAttachmentsState3D for why this needs to
       // land BEFORE the wrist-pin leash math can trust its dot again.
-      all[WRIST_ATTACHMENTS_KEY] = wristAttachmentsState;
-    });
+      all[WRIST_ATTACHMENTS_KEY] = wristAttachmentsOut;
+    }, 'presets/' + fileName);
     // Saved poses survive Cancel: move Cancel's restore point up to this save.
     if (typeof commitPoseToEditorSnapshot3D === 'function') commitPoseToEditorSnapshot3D(poseKey, snapCap);
     setBtn('✓ Saved', false);
