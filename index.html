@@ -512,6 +512,16 @@
   .depth-row .depth-val { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--accent-gold); text-align: right; }
 
   /* ── 3D Pose Panel ── */
+  /* Pose search + set filter (Pose panel, Switch Pose pop-up, Copy Poses pop-up). */
+  .pose-search-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .pose-search-input, .pose-set-select {
+    height: 34px; padding: 0 8px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; color: var(--text); font-family: 'Space Mono', monospace; font-size: 11px; min-width: 0;
+  }
+  .pose-search-input { flex: 1 1 0; width: auto; }
+  .pose-set-select { flex: 0 1 46%; width: auto; }
+  .pose-search-count { font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted); min-height: 12px; margin: 0 0 6px 2px; }
+  .pose-empty { font-family: 'Space Mono', monospace; font-size: 10px; color: var(--muted); padding: 6px 2px; line-height: 1.5; }
   .pose-section { margin-bottom: 12px; }
   .pose-section-title {
     font-family: 'Space Mono', monospace; font-size: 9px; color: var(--muted);
@@ -1437,6 +1447,11 @@
           <span class="jec-title">Switch pose</span>
           <button type="button" class="je-close-btn" onclick="closePosePopup3D()" aria-label="Close">✕</button>
         </div>
+        <div class="pose-search-row">
+          <input type="search" id="jePoseSearchInput" class="pose-search-input" placeholder="Search poses…" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="onPoseSearch3D('popup', this.value)">
+          <select id="jePoseSetSelect" class="pose-set-select" title="Only show poses from one set (JSON file)" onchange="onPoseSetFilter3D('popup', this.value)"></select>
+        </div>
+        <div class="pose-search-count" id="jePoseSearchCount"></div>
         <div id="jePoseList"></div>
       </div>
     </div>
@@ -1449,6 +1464,11 @@
           <button type="button" class="je-close-btn" onclick="closeCopyPopup3D()" aria-label="Close">✕</button>
         </div>
         <p class="jec-target" id="jeCopyTarget"></p>
+        <div class="pose-search-row">
+          <input type="search" id="jeCopySearchInput" class="pose-search-input" placeholder="Search poses…" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="onPoseSearch3D('copy', this.value)">
+          <select id="jeCopySetSelect" class="pose-set-select" title="Only show poses from one set (JSON file)" onchange="onPoseSetFilter3D('copy', this.value)"></select>
+        </div>
+        <div class="pose-search-count" id="jeCopySearchCount"></div>
         <div class="jec-row">
           <select id="jeCopyPoseSelect" title="Pose to copy arms &amp; wrist pins from" onchange="document.getElementById('jeCopyMsg').textContent=''"></select>
           <select id="jeCopySideSelect" title="Which side(s) to copy">
@@ -1542,6 +1562,11 @@
       <div class="pose-modal-tab-panel active" id="poseModalTabPose">
         <div class="panel" style="width:100%; margin-bottom:0;" id="posePanel">
           <div class="panel-title">Pose</div>
+          <div class="pose-search-row">
+            <input type="search" id="poseSearchInput" class="pose-search-input" placeholder="Search poses…" autocomplete="off" autocapitalize="off" spellcheck="false" oninput="onPoseSearch3D('panel', this.value)">
+            <select id="poseSetSelect" class="pose-set-select" title="Only show poses from one set (JSON file)" onchange="onPoseSetFilter3D('panel', this.value)"></select>
+          </div>
+          <div class="pose-search-count" id="poseSearchCount"></div>
           <div id="poseSections"></div>
         </div>
       </div>
@@ -5402,6 +5427,7 @@ function importFaceExcel(event) {
   'js/hand-wrist-panel.js',
   'js/hand-pins-github.js',
   'js/poses-data.js',
+  'js/pose-sets.js',
   'js/body-scene.js',
   'js/body-build-pose.js',
   'js/joint-editor-core.js',
