@@ -816,6 +816,83 @@
       "wrist": -3,
       "wristSwing": -12,
       "wristTurnEdit": -28
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -13.2,
+        "y": 19.76,
+        "z": -23.13
+      },
+      "leftWrist": {
+        "x": -15.45,
+        "y": -5.08,
+        "z": -6.33
+      },
+      "leftHandTurn": {
+        "x": -16.21,
+        "y": -14.02,
+        "z": -1.36
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 28.63,
+        "y": 28.9,
+        "z": 27.21
+      },
+      "rightWrist": {
+        "x": 4.22,
+        "y": 46.37,
+        "z": 25.52
+      },
+      "rightHandTurn": {
+        "x": -4.86,
+        "y": 50.75,
+        "z": 23.59
+      },
+      "leftHip": {
+        "x": -7.25,
+        "y": -6.39,
+        "z": -1.63
+      },
+      "leftKnee": {
+        "x": -6.7,
+        "y": -47.26,
+        "z": 2.26
+      },
+      "leftAnkle": {
+        "x": -5.53,
+        "y": -88.3,
+        "z": 3.37
+      },
+      "rightHip": {
+        "x": 8.07,
+        "y": -5.32,
+        "z": 1.63
+      },
+      "rightKnee": {
+        "x": 10.71,
+        "y": -46.22,
+        "z": -0.81
+      },
+      "rightAnkle": {
+        "x": 10.68,
+        "y": -87,
+        "z": -5.62
+      }
     }
   },
   "cp1-shades-adjust": {
@@ -852,7 +929,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "cp1-pockets-both",
+    "pose": "cp1-collar-tug-t-stance",
     "manualJointEdits": {
       "cp1-pocket-lean": {
         "left": {
@@ -1067,6 +1144,31 @@
             0,
             0.9455
           ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
+      },
+      "cp1-collar-tug-t-stance": {
+        "left": {
+          "shoulderQuat": null,
+          "elbowQuat": [
+            -0.5666,
+            -0.0214,
+            -0.0306,
+            0.8232
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": null,
+          "elbowQuat": null,
           "wristQuat": null,
           "handTurnQuat": null,
           "hipQuat": null,
@@ -1548,6 +1650,78 @@
           0.9455
         ]
       }
+    },
+    "cp1-collar-tug-t-stance": {
+      "left": {
+        "x": -15.45,
+        "y": -5.08,
+        "z": -6.33,
+        "turn": -70,
+        "bend": 5,
+        "swing": 0,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -13.2,
+        "ey": 19.76,
+        "ez": -23.13,
+        "dox": -16.233812167831925,
+        "doy": -41.05265259631581,
+        "doz": 8.207925067023128,
+        "r": 38.80718182996605,
+        "upperLen": 40.40083910019692,
+        "foreLen": 30.072048483600184,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0.3007,
+          0,
+          0,
+          0.9537
+        ],
+        "eq": [
+          -0.5666,
+          -0.0214,
+          -0.0306,
+          0.8232
+        ]
+      },
+      "right": {
+        "x": 4.22,
+        "y": 46.37,
+        "z": 25.52,
+        "turn": -28,
+        "bend": -3,
+        "swing": -12,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 28.63,
+        "ey": 28.9,
+        "ez": 27.21,
+        "dox": 10.695003949642178,
+        "doy": 52.79664607959985,
+        "doz": 9.093069366455078,
+        "r": 18.7901970723996,
+        "upperLen": 40.405458789623964,
+        "foreLen": 30.0650145518009,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          -0.2419,
+          -0.351,
+          0.3491,
+          0.8345
+        ],
+        "eq": [
+          -0.9336,
+          0,
+          0,
+          0.3584
+        ]
+      }
+    },
+    "cp1-power-walk": {
+      "left": null,
+      "right": null
     }
   },
   "_wristAttachments": {
@@ -1637,6 +1811,20 @@
         "face": "front",
         "h": 0,
         "v": 50
+      }
+    },
+    "cp1-collar-tug-t-stance": {
+      "left": {
+        "group": "leftLeg",
+        "face": "left",
+        "h": 100,
+        "v": 43
+      },
+      "right": {
+        "group": "torso",
+        "face": "front",
+        "h": 100,
+        "v": 0
       }
     }
   }
