@@ -1,0 +1,401 @@
+{
+  "_name": "Stargazing Pack v1",
+  "sg1-lie-back-point-sky": {
+    "label": "On Back, Pointing at the Sky",
+    "section": "Stargazing Pack v1",
+    "root": -90,
+    "spineTwist": -6,
+    "right": {
+      "hip": -90,
+      "knee": 110,
+      "ankle": -20,
+      "hipAbd": 4,
+      "shoulder": -88,
+      "shoulderAbd": 6,
+      "elbow": -8,
+      "wrist": 5
+    },
+    "left": {
+      "hip": 0,
+      "knee": 4,
+      "ankle": 12,
+      "hipAbd": -3,
+      "hipTurn": 12,
+      "shoulder": -150,
+      "shoulderAbd": 45,
+      "shoulderRoll": -20,
+      "elbow": -125,
+      "wrist": -20,
+      "wristTurnEdit": 40
+    }
+  },
+  "sg1-sit-hug-knees-gaze": {
+    "label": "Hugging Knees, Gazing Up",
+    "section": "Stargazing Pack v1",
+    "spineBend": 12,
+    "spineSide": 6,
+    "spineTwist": -5,
+    "right": {
+      "hip": -125,
+      "knee": 155,
+      "ankle": -20,
+      "hipAbd": 6,
+      "shoulder": -60,
+      "elbow": -140,
+      "wrist": -30
+    },
+    "left": {
+      "hip": -120,
+      "knee": 152,
+      "ankle": -20,
+      "hipAbd": 6,
+      "shoulder": -60,
+      "elbow": -140,
+      "wrist": -30
+    }
+  },
+  "sg1-lean-back-crossed-ankles": {
+    "label": "Leaning Back on Hands, Ankles Crossed",
+    "section": "Stargazing Pack v1",
+    "spineBend": -25,
+    "spineSide": 5,
+    "spineTwist": 6,
+    "right": {
+      "hip": -90,
+      "knee": 4,
+      "ankle": -75,
+      "hipAbd": 8,
+      "shoulder": 40,
+      "shoulderAbd": 8,
+      "elbow": -10,
+      "wrist": 60
+    },
+    "left": {
+      "hip": -88,
+      "knee": 4,
+      "ankle": -75,
+      "hipAbd": -8,
+      "shoulder": 42,
+      "shoulderAbd": 12,
+      "elbow": -10,
+      "wrist": 60
+    }
+  },
+  "sg1-squat-visor-look-up": {
+    "label": "Squat, Hand Shading Eyes, Looking Up",
+    "section": "Stargazing Pack v1",
+    "spineBend": -12,
+    "spineTwist": -8,
+    "right": {
+      "hip": -125,
+      "knee": 145,
+      "ankle": -35,
+      "hipAbd": 12,
+      "shoulder": -85,
+      "shoulderAbd": 25,
+      "shoulderRoll": -20,
+      "elbow": -135,
+      "wrist": -10,
+      "wristTurnEdit": -40
+    },
+    "left": {
+      "hip": -128,
+      "knee": 147,
+      "ankle": -35,
+      "hipAbd": 14,
+      "shoulder": -45,
+      "shoulderAbd": 0,
+      "elbow": -75,
+      "wrist": -20
+    }
+  },
+  "sg1-lie-front-chin-kick": {
+    "label": "On Front, Chin on Fist, Feet Kicked Up",
+    "section": "Stargazing Pack v1",
+    "root": 90,
+    "spineBend": -30,
+    "right": {
+      "hip": 0,
+      "knee": 100,
+      "ankle": -10,
+      "hipAbd": 3,
+      "shoulder": -150,
+      "elbow": -160,
+      "wrist": -20
+    },
+    "left": {
+      "hip": 0,
+      "knee": 40,
+      "ankle": -10,
+      "hipAbd": -3,
+      "shoulder": -150,
+      "elbow": -160,
+      "wrist": -20
+    }
+  },
+  "_jointEdits": {
+    "pose": "sg1-lie-back-point-sky",
+    "manualJointEdits": {}
+  },
+  "_handWristOverrides": {
+    "byPose": {}
+  },
+  "_wristPins": {
+    "sg1-lie-back-point-sky": {
+      "left": {
+        "x": 8.95,
+        "y": 76.81,
+        "z": -14.11,
+        "turn": 113,
+        "bend": 0,
+        "swing": 0,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 38.98,
+        "ey": 78.13,
+        "ez": -13.81,
+        "dox": -10.69500431805849,
+        "doy": 74.17460849702357,
+        "doz": -11.763211540222168,
+        "r": 19.959431332215942,
+        "upperLen": 40.40532266917318,
+        "foreLen": 30.060494007916766,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          -0.7241,
+          0.4003,
+          0.5515,
+          0.1062
+        ],
+        "eq": [
+          -0.9279,
+          -0.0195,
+          -0.0081,
+          0.3723
+        ]
+      },
+      "right": null
+    },
+    "sg1-sit-hug-knees-gaze": {
+      "left": {
+        "x": -9.19,
+        "y": 27.92,
+        "z": 5.7,
+        "turn": 116,
+        "bend": -53,
+        "swing": 20,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -30.01,
+        "ey": 20.48,
+        "ez": -14.67,
+        "dox": -10.213436112729802,
+        "doy": 35.434054110853246,
+        "doz": 13.369767723637738,
+        "r": 10.787163667989839,
+        "upperLen": 40.40134774979667,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.2854,
+          0.362,
+          -0.1312,
+          0.8776
+        ],
+        "eq": [
+          -0.9425,
+          0,
+          0,
+          0.3343
+        ]
+      },
+      "right": {
+        "x": 22.19,
+        "y": 11.75,
+        "z": 54.42,
+        "turn": -83,
+        "bend": -80,
+        "swing": -2,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 23.99,
+        "ey": 29.58,
+        "ez": 30.28,
+        "dox": 11.689909768071937,
+        "doy": 10.865056013821755,
+        "doz": 52.69305749468667,
+        "r": 10.680319484137861,
+        "upperLen": 40.401347749796656,
+        "foreLen": 30.059999999999995,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.2259,
+          -0.5132,
+          0.3713,
+          0.7401
+        ],
+        "eq": [
+          -0.1943,
+          0,
+          0,
+          0.981
+        ]
+      }
+    },
+    "sg1-squat-visor-look-up": {
+      "left": {
+        "x": -9.19,
+        "y": 27.92,
+        "z": 5.7,
+        "turn": 116,
+        "bend": -53,
+        "swing": 20,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -30.01,
+        "ey": 20.48,
+        "ez": -14.67,
+        "dox": -10.213436112729802,
+        "doy": 35.434054110853246,
+        "doz": 13.369767723637738,
+        "r": 10.787163667989839,
+        "upperLen": 40.40134774979667,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.2854,
+          0.362,
+          -0.1312,
+          0.8776
+        ],
+        "eq": [
+          -0.9425,
+          0,
+          0,
+          0.3343
+        ]
+      },
+      "right": {
+        "x": 12.93,
+        "y": 71.67,
+        "z": 22.12,
+        "turn": -40,
+        "bend": -20,
+        "swing": 0,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 33.21,
+        "ey": 52.66,
+        "ez": 33.56,
+        "dox": 7.49,
+        "doy": 77.12,
+        "doz": 11.76,
+        "r": 12.905,
+        "upperLen": 40.4013,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.5591,
+          -0.0909,
+          0.3529,
+          0.7448
+        ],
+        "eq": [
+          0.9239,
+          0.0,
+          0.0,
+          -0.3827
+        ]
+      }
+    },
+    "sg1-lie-front-chin-kick": {
+      "left": null,
+      "right": {
+        "x": 5.49,
+        "y": 52.04,
+        "z": 14,
+        "turn": -30,
+        "bend": 36,
+        "swing": 7,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 5.65,
+        "ey": 27.08,
+        "ez": 30.75,
+        "dox": 3.208500000000001,
+        "doy": 61.34,
+        "doz": 11.763,
+        "r": 9.836961970985024,
+        "upperLen": 40.40134774979667,
+        "foreLen": 30.060000000000006,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.4112,
+          -0.308,
+          0.0467,
+          0.8567
+        ],
+        "eq": [
+          -0.9883,
+          0,
+          0,
+          0.1523
+        ]
+      }
+    }
+  },
+  "_wristAttachments": {
+    "sg1-lie-back-point-sky": {
+      "left": {
+        "group": "head",
+        "face": "back",
+        "h": 50,
+        "v": 60
+      },
+      "right": null
+    },
+    "sg1-sit-hug-knees-gaze": {
+      "left": {
+        "group": "leftLeg",
+        "face": "front",
+        "h": 50,
+        "v": 90
+      },
+      "right": {
+        "group": "rightLeg",
+        "face": "front",
+        "h": 50,
+        "v": 90
+      }
+    },
+    "sg1-squat-visor-look-up": {
+      "left": {
+        "group": "leftLeg",
+        "face": "front",
+        "h": 50,
+        "v": 25
+      },
+      "right": {
+        "group": "head",
+        "face": "front",
+        "h": 50,
+        "v": 85
+      }
+    },
+    "sg1-lie-front-chin-kick": {
+      "left": null,
+      "right": {
+        "group": "head",
+        "face": "front",
+        "h": 65,
+        "v": 100
+      }
+    }
+  }
+}
