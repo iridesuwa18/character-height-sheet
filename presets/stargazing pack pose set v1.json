@@ -27,6 +27,83 @@
       "elbow": -125,
       "wrist": -20,
       "wristTurnEdit": 40
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -40.64,
+        "y": 77.36,
+        "z": -11.51
+      },
+      "leftWrist": {
+        "x": -10.91,
+        "y": 78.34,
+        "z": -15.86
+      },
+      "leftHandTurn": {
+        "x": -0.65,
+        "y": 78.32,
+        "z": -16.31
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 17.4,
+        "y": 51.4,
+        "z": 39.82
+      },
+      "rightWrist": {
+        "x": 20.51,
+        "y": 54.55,
+        "z": 69.56
+      },
+      "rightHandTurn": {
+        "x": 21.58,
+        "y": 54.73,
+        "z": 79.77
+      },
+      "leftHip": {
+        "x": -7.81,
+        "y": -5.87,
+        "z": 0.82
+      },
+      "leftKnee": {
+        "x": -5.67,
+        "y": -46.88,
+        "z": 1.05
+      },
+      "leftAnkle": {
+        "x": -3.24,
+        "y": -87.78,
+        "z": -1.58
+      },
+      "rightHip": {
+        "x": 7.81,
+        "y": -5.87,
+        "z": -0.82
+      },
+      "rightKnee": {
+        "x": 14.94,
+        "y": -5.87,
+        "z": 39.62
+      },
+      "rightAnkle": {
+        "x": 12.5,
+        "y": -44.46,
+        "z": 25.79
+      }
     }
   },
   "sg1-sit-hug-knees-gaze": {
@@ -135,44 +212,98 @@
   },
   "_jointEdits": {
     "pose": "sg1-lie-back-point-sky",
-    "manualJointEdits": {}
+    "manualJointEdits": {
+      "sg1-lie-back-point-sky": {
+        "left": {
+          "shoulderQuat": [
+            -0.4637,
+            -0.3317,
+            -0.7648,
+            0.3
+          ],
+          "elbowQuat": [
+            -0.9202,
+            -0.2595,
+            -0.0783,
+            0.2827
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": null,
+          "elbowQuat": null,
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
+      }
+    }
   },
   "_handWristOverrides": {
-    "byPose": {}
+    "byPose": {
+      "sg1-lie-back-point-sky": {
+        "hand": {
+          "left": -72,
+          "right": null
+        },
+        "wrist": {
+          "left": -1,
+          "right": null
+        },
+        "swing": {
+          "left": -6,
+          "right": null
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      }
+    }
   },
   "_wristPins": {
     "sg1-lie-back-point-sky": {
       "left": {
-        "x": 8.95,
-        "y": 76.81,
-        "z": -14.11,
-        "turn": 113,
-        "bend": 0,
-        "swing": 0,
-        "sx": 10.7,
+        "x": -10.91,
+        "y": 78.34,
+        "z": -15.86,
+        "turn": -72,
+        "bend": -1,
+        "swing": -6,
+        "sx": -10.7,
         "sy": 52.79,
         "sz": 0,
-        "ex": 38.98,
-        "ey": 78.13,
-        "ez": -13.81,
-        "dox": -10.69500431805849,
-        "doy": 74.17460849702357,
-        "doz": -11.763211540222168,
-        "r": 19.959431332215942,
-        "upperLen": 40.40532266917318,
-        "foreLen": 30.060494007916766,
+        "ex": -40.64,
+        "ey": 77.36,
+        "ez": -11.51,
+        "dox": 10.685380127131943,
+        "doy": 74.17460849702354,
+        "doz": -11.763211540222171,
+        "r": 22.371736742876323,
+        "upperLen": 40.40505661424075,
+        "foreLen": 30.062531496865,
         "torsoHalfWidth": 10.699814289689066,
         "sq": [
-          -0.7241,
-          0.4003,
-          0.5515,
-          0.1062
+          -0.4637,
+          -0.3317,
+          -0.7648,
+          0.3
         ],
         "eq": [
-          -0.9279,
-          -0.0195,
-          -0.0081,
-          0.3723
+          -0.9202,
+          -0.2595,
+          -0.0783,
+          0.2827
         ]
       },
       "right": null
@@ -307,8 +438,8 @@
         ],
         "eq": [
           0.9239,
-          0.0,
-          0.0,
+          0,
+          0,
           -0.3827
         ]
       }
@@ -355,8 +486,8 @@
       "left": {
         "group": "head",
         "face": "back",
-        "h": 50,
-        "v": 60
+        "h": 100,
+        "v": 50
       },
       "right": null
     },
