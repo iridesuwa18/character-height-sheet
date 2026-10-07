@@ -242,6 +242,83 @@
       "wrist": 49,
       "wristSwing": -17,
       "wristTurnEdit": -51
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -27.64,
+        "y": 20.27,
+        "z": -16.98
+      },
+      "leftWrist": {
+        "x": -17.62,
+        "y": -0.02,
+        "z": 2.81
+      },
+      "leftHandTurn": {
+        "x": -19.08,
+        "y": -10.11,
+        "z": 4
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 38.16,
+        "y": 27.8,
+        "z": 15.94
+      },
+      "rightWrist": {
+        "x": 24.31,
+        "y": 53.86,
+        "z": 21.69
+      },
+      "rightHandTurn": {
+        "x": 19.17,
+        "y": 62.4,
+        "z": 24.12
+      },
+      "leftHip": {
+        "x": -8.34,
+        "y": -5.16,
+        "z": 0
+      },
+      "leftKnee": {
+        "x": -14.05,
+        "y": -45.83,
+        "z": 0
+      },
+      "leftAnkle": {
+        "x": -19.77,
+        "y": -86.49,
+        "z": 0
+      },
+      "rightHip": {
+        "x": 7.31,
+        "y": -6.53,
+        "z": 0
+      },
+      "rightKnee": {
+        "x": 5.92,
+        "y": -46.91,
+        "z": 7.34
+      },
+      "rightAnkle": {
+        "x": 5.46,
+        "y": -87.89,
+        "z": 4.74
+      }
     }
   },
   "fp1-cheek-cup-tiptoe": {
@@ -536,7 +613,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "fp1-toe-tap-hands-back",
+    "pose": "fp1-peace-hand-hip",
     "manualJointEdits": {
       "fp1-cat-paws": {
         "left": {
@@ -577,6 +654,41 @@
           "kneeQuat": null,
           "ankleQuat": null
         }
+      },
+      "fp1-peace-hand-hip": {
+        "left": {
+          "shoulderQuat": null,
+          "elbowQuat": [
+            -0.6615,
+            -0.0161,
+            -0.0178,
+            0.7496
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": [
+            -0.2201,
+            -0.0047,
+            0.3492,
+            0.9108
+          ],
+          "elbowQuat": [
+            0.2849,
+            -0.327,
+            0.9011,
+            -0.0051
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
       }
     }
   },
@@ -594,6 +706,28 @@
         "swing": {
           "left": -9,
           "right": -9
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "fp1-peace-hand-hip": {
+        "hand": {
+          "left": null,
+          "right": -140
+        },
+        "wrist": {
+          "left": 46,
+          "right": null
+        },
+        "swing": {
+          "left": 5,
+          "right": 4
         },
         "elbowBend": {
           "left": null,
@@ -744,7 +878,39 @@
       }
     },
     "fp1-peace-hand-hip": {
-      "left": null,
+      "left": {
+        "x": -17.62,
+        "y": -0.02,
+        "z": 2.81,
+        "turn": -51,
+        "bend": 46,
+        "swing": 5,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -27.64,
+        "ey": 20.27,
+        "ez": -16.98,
+        "dox": -21.827360738162184,
+        "doy": -44.73253531948816,
+        "doz": 8.376429557800293,
+        "r": 45.25370523061572,
+        "upperLen": 40.408345672645396,
+        "foreLen": 30.062079103082674,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0.2843,
+          0.2684,
+          -0.1183,
+          0.9128
+        ],
+        "eq": [
+          -0.6615,
+          -0.0161,
+          -0.0178,
+          0.7496
+        ]
+      },
       "right": null
     },
     "fp1-cheek-cup-tiptoe": {
@@ -804,6 +970,15 @@
         "h": 0,
         "v": 15
       }
+    },
+    "fp1-peace-hand-hip": {
+      "left": {
+        "group": "leftLeg",
+        "face": "left",
+        "h": 100,
+        "v": 50
+      },
+      "right": null
     }
   }
 }
