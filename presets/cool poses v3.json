@@ -1,0 +1,406 @@
+{
+  "_name": "Cool Pose v3",
+  "cp3-squat-shades-tip": {
+    "label": "Street Squat, Forearm on Knee, Shades Tip",
+    "section": "Cool Pose v3",
+    "spineBend": 24,
+    "spineTwist": -10,
+    "spineSide": -4,
+    "right": {
+      "hip": -128,
+      "knee": 148,
+      "ankle": -35,
+      "hipAbd": 26,
+      "shoulder": -65,
+      "shoulderAbd": 30,
+      "shoulderRoll": -32,
+      "elbow": -135,
+      "wrist": -20,
+      "wristTurnEdit": -40
+    },
+    "left": {
+      "hip": -132,
+      "knee": 150,
+      "ankle": -35,
+      "hipAbd": 30,
+      "shoulder": -57,
+      "shoulderAbd": -16,
+      "elbow": -40,
+      "wrist": -20
+    }
+  },
+  "cp3-ledge-knee-drape": {
+    "label": "Ledge Sit, Foot Up, Arm Draped on Knee",
+    "section": "Cool Pose v3",
+    "spineBend": -6,
+    "spineTwist": -10,
+    "spineSide": 4,
+    "right": {
+      "hip": -98,
+      "knee": 132,
+      "ankle": -20,
+      "hipAbd": 18,
+      "hipTurn": 6,
+      "shoulder": -35,
+      "shoulderAbd": 8,
+      "elbow": -35,
+      "wrist": 25
+    },
+    "left": {
+      "hip": -72,
+      "knee": 75,
+      "ankle": -15,
+      "hipAbd": 4,
+      "shoulder": 45,
+      "shoulderAbd": 10,
+      "elbow": -15,
+      "wrist": 60
+    }
+  },
+  "cp3-floor-knee-up-lean": {
+    "label": "Floor, One Knee Up, Leaning Back on Hand",
+    "section": "Cool Pose v3",
+    "spineBend": -15,
+    "spineSide": -12,
+    "spineTwist": 10,
+    "right": {
+      "hip": -105,
+      "knee": 135,
+      "ankle": -15,
+      "hipAbd": 12,
+      "shoulder": -40,
+      "shoulderAbd": 5,
+      "elbow": -50,
+      "wrist": -20
+    },
+    "left": {
+      "hip": -90,
+      "knee": 15,
+      "ankle": -60,
+      "hipAbd": 8,
+      "shoulder": 55,
+      "shoulderAbd": 18,
+      "elbow": -10,
+      "wrist": 60
+    }
+  },
+  "cp3-lie-back-propped-cross": {
+    "label": "Propped on Elbows, Ankles Crossed, Head Back",
+    "section": "Cool Pose v3",
+    "root": -90,
+    "spineBend": 28,
+    "spineTwist": 6,
+    "right": {
+      "hip": -8,
+      "knee": 14,
+      "ankle": 18,
+      "hipAbd": 8,
+      "hipTurn": 8,
+      "shoulder": 30,
+      "shoulderAbd": 10,
+      "elbow": -90,
+      "wrist": 20
+    },
+    "left": {
+      "hip": -4,
+      "knee": 6,
+      "ankle": 15,
+      "hipAbd": -8,
+      "shoulder": 30,
+      "shoulderAbd": 10,
+      "elbow": -90,
+      "wrist": 20
+    }
+  },
+  "cp3-lie-side-hand-hip": {
+    "label": "On Side, Head on Hand, Hand on Hip",
+    "section": "Cool Pose v3",
+    "rootZ": 88,
+    "spineBend": 6,
+    "right": {
+      "hip": -70,
+      "knee": 85,
+      "ankle": -10,
+      "hipAbd": 6,
+      "shoulder": 15,
+      "shoulderAbd": 20,
+      "shoulderRoll": -30,
+      "elbow": -90,
+      "wrist": 20,
+      "wristTurnEdit": -70
+    },
+    "left": {
+      "hip": -10,
+      "knee": 20,
+      "ankle": -10,
+      "shoulder": -60,
+      "elbow": -110,
+      "wrist": -30
+    }
+  },
+  "_jointEdits": {
+    "pose": "cp3-squat-shades-tip",
+    "manualJointEdits": {}
+  },
+  "_handWristOverrides": {
+    "byPose": {}
+  },
+  "_wristPins": {
+    "cp3-squat-shades-tip": {
+      "left": {
+        "x": -9.19,
+        "y": 27.92,
+        "z": 5.7,
+        "turn": 116,
+        "bend": -53,
+        "swing": 20,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -30.01,
+        "ey": 20.48,
+        "ez": -14.67,
+        "dox": -10.213436112729802,
+        "doy": 35.434054110853246,
+        "doz": 13.369767723637738,
+        "r": 10.787163667989839,
+        "upperLen": 40.40134774979667,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.2854,
+          0.362,
+          -0.1312,
+          0.8776
+        ],
+        "eq": [
+          -0.9425,
+          0,
+          0,
+          0.3343
+        ]
+      },
+      "right": {
+        "x": 12.93,
+        "y": 71.67,
+        "z": 22.12,
+        "turn": -40,
+        "bend": -20,
+        "swing": 0,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 33.21,
+        "ey": 52.66,
+        "ez": 33.56,
+        "dox": 7.49,
+        "doy": 77.12,
+        "doz": 11.76,
+        "r": 12.905,
+        "upperLen": 40.4013,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.5591,
+          -0.0909,
+          0.3529,
+          0.7448
+        ],
+        "eq": [
+          0.9239,
+          0.0,
+          0.0,
+          -0.3827
+        ]
+      }
+    },
+    "cp3-ledge-knee-drape": {
+      "left": null,
+      "right": {
+        "x": 9.19,
+        "y": 27.92,
+        "z": 5.7,
+        "turn": 116,
+        "bend": -53,
+        "swing": 20,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 30.01,
+        "ey": 20.48,
+        "ez": -14.67,
+        "dox": 10.213436112729802,
+        "doy": 35.434054110853246,
+        "doz": 13.369767723637738,
+        "r": 10.78716366798984,
+        "upperLen": 40.40134774979667,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.2854,
+          -0.362,
+          0.1312,
+          0.8776
+        ],
+        "eq": [
+          -0.9425,
+          0,
+          0,
+          0.3343
+        ]
+      }
+    },
+    "cp3-floor-knee-up-lean": {
+      "left": null,
+      "right": {
+        "x": 22.19,
+        "y": 11.75,
+        "z": 54.42,
+        "turn": -83,
+        "bend": -80,
+        "swing": -2,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 23.99,
+        "ey": 29.58,
+        "ez": 30.28,
+        "dox": 11.689909768071937,
+        "doy": 10.865056013821755,
+        "doz": 52.69305749468667,
+        "r": 10.680319484137861,
+        "upperLen": 40.401347749796656,
+        "foreLen": 30.059999999999995,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.2259,
+          -0.5132,
+          0.3713,
+          0.7401
+        ],
+        "eq": [
+          -0.1943,
+          0,
+          0,
+          0.981
+        ]
+      }
+    },
+    "cp3-lie-side-hand-hip": {
+      "left": {
+        "x": -5,
+        "y": 54.16,
+        "z": 13.05,
+        "turn": -135,
+        "bend": 57,
+        "swing": 19,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 2.3,
+        "ey": 32.22,
+        "ez": 32.25,
+        "dox": -10.695,
+        "doy": 69.03800000000001,
+        "doz": 0,
+        "r": 20.590525052844804,
+        "upperLen": 40.401347749796656,
+        "foreLen": 30.05999999999999,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.486,
+          0.2864,
+          0.0566,
+          0.8238
+        ],
+        "eq": [
+          -0.9903,
+          0,
+          0,
+          0.1388
+        ]
+      },
+      "right": {
+        "x": 18.41,
+        "y": -5.62,
+        "z": -1.07,
+        "turn": -86,
+        "bend": 31,
+        "swing": 13,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 26.42,
+        "ey": 19.2,
+        "ez": -16.04,
+        "dox": 15.71,
+        "doy": -46.931959621906294,
+        "doz": 0,
+        "r": 41.41409627566172,
+        "upperLen": 40.406535362488086,
+        "foreLen": 30.071471530339185,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0.2057,
+          0.0127,
+          0.1749,
+          0.9628
+        ],
+        "eq": [
+          -0.4473,
+          0,
+          -0.3021,
+          0.8418
+        ]
+      }
+    }
+  },
+  "_wristAttachments": {
+    "cp3-squat-shades-tip": {
+      "left": {
+        "group": "leftLeg",
+        "face": "front",
+        "h": 50,
+        "v": 25
+      },
+      "right": {
+        "group": "head",
+        "face": "front",
+        "h": 85,
+        "v": 38
+      }
+    },
+    "cp3-ledge-knee-drape": {
+      "left": null,
+      "right": {
+        "group": "rightLeg",
+        "face": "front",
+        "h": 50,
+        "v": 90
+      }
+    },
+    "cp3-floor-knee-up-lean": {
+      "left": null,
+      "right": {
+        "group": "rightLeg",
+        "face": "front",
+        "h": 50,
+        "v": 90
+      }
+    },
+    "cp3-lie-side-hand-hip": {
+      "left": {
+        "group": "head",
+        "face": "left",
+        "h": 50,
+        "v": 70
+      },
+      "right": {
+        "group": "waistbox",
+        "face": "right",
+        "h": 50,
+        "v": 50
+      }
+    }
+  }
+}
