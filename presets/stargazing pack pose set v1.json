@@ -45,9 +45,9 @@
         "z": -11.51
       },
       "leftWrist": {
-        "x": -10.91,
+        "x": -10.9,
         "y": 78.34,
-        "z": -15.86
+        "z": -15.85
       },
       "leftHandTurn": {
         "x": -0.65,
@@ -70,9 +70,9 @@
         "z": 69.56
       },
       "rightHandTurn": {
-        "x": 21.58,
-        "y": 54.73,
-        "z": 79.77
+        "x": 22.19,
+        "y": 56.26,
+        "z": 79.54
       },
       "leftHip": {
         "x": -7.81,
@@ -235,7 +235,12 @@
         },
         "right": {
           "shoulderQuat": null,
-          "elbowQuat": null,
+          "elbowQuat": [
+            -0.0265,
+            -0.9226,
+            0.0645,
+            0.3793
+          ],
           "wristQuat": null,
           "handTurnQuat": null,
           "hipQuat": null,
