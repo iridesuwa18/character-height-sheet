@@ -233,6 +233,83 @@
       "shoulderAbd": 12,
       "elbow": -10,
       "wrist": 60
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -21.53,
+        "y": 23.86,
+        "z": -26.05
+      },
+      "leftWrist": {
+        "x": -27.69,
+        "y": -1.15,
+        "z": -41.55
+      },
+      "leftHandTurn": {
+        "x": -29.06,
+        "y": -0.69,
+        "z": -51.71
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 18.79,
+        "y": 22.46,
+        "z": -25.45
+      },
+      "rightWrist": {
+        "x": 22.91,
+        "y": -3.35,
+        "z": -40.3
+      },
+      "rightHandTurn": {
+        "x": 23.83,
+        "y": -3.3,
+        "z": -50.52
+      },
+      "leftHip": {
+        "x": -7.99,
+        "y": -4.64,
+        "z": -3.29
+      },
+      "leftKnee": {
+        "x": -7.71,
+        "y": -23.2,
+        "z": 33.34
+      },
+      "leftAnkle": {
+        "x": -7.51,
+        "y": -44.26,
+        "z": 68.59
+      },
+      "rightHip": {
+        "x": 7.57,
+        "y": -6,
+        "z": -1.65
+      },
+      "rightKnee": {
+        "x": 7.9,
+        "y": -23.28,
+        "z": 35.6
+      },
+      "rightAnkle": {
+        "x": 8.12,
+        "y": -43.12,
+        "z": 71.56
+      }
     }
   },
   "sg1-squat-visor-look-up": {
@@ -288,7 +365,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "sg1-sit-hug-knees-gaze",
+    "pose": "sg1-lean-back-crossed-ankles",
     "manualJointEdits": {
       "sg1-lie-back-point-sky": {
         "left": {
@@ -363,6 +440,36 @@
           "hipQuat": null,
           "kneeQuat": null,
           "ankleQuat": null
+        }
+      },
+      "sg1-lean-back-crossed-ankles": {
+        "left": {
+          "shoulderQuat": null,
+          "elbowQuat": null,
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": [
+            0.262,
+            0,
+            0,
+            0.9651
+          ]
+        },
+        "right": {
+          "shoulderQuat": null,
+          "elbowQuat": null,
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": [
+            0.2996,
+            0,
+            0,
+            0.9541
+          ]
         }
       }
     }
@@ -623,6 +730,10 @@
           0.1523
         ]
       }
+    },
+    "sg1-lean-back-crossed-ankles": {
+      "left": null,
+      "right": null
     }
   },
   "_wristAttachments": {
