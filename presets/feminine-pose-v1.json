@@ -561,6 +561,83 @@
       "wrist": 30,
       "wristSwing": -15,
       "wristTurnEdit": -41
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -27.64,
+        "y": 20.27,
+        "z": -16.98
+      },
+      "leftWrist": {
+        "x": -17.61,
+        "y": -0.02,
+        "z": 2.81
+      },
+      "leftHandTurn": {
+        "x": -19.07,
+        "y": -10.12,
+        "z": 4
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 36.04,
+        "y": 31.39,
+        "z": 23.08
+      },
+      "rightWrist": {
+        "x": 19.23,
+        "y": 56.3,
+        "z": 23.81
+      },
+      "rightHandTurn": {
+        "x": 16.21,
+        "y": 64.87,
+        "z": 19.03
+      },
+      "leftHip": {
+        "x": -8.38,
+        "y": -5.02,
+        "z": 0.82
+      },
+      "leftKnee": {
+        "x": -14.09,
+        "y": -45.68,
+        "z": 0.97
+      },
+      "leftAnkle": {
+        "x": -19.8,
+        "y": -86.35,
+        "z": 1.12
+      },
+      "rightHip": {
+        "x": 7.15,
+        "y": -6.65,
+        "z": -0.82
+      },
+      "rightKnee": {
+        "x": 6.28,
+        "y": -42.25,
+        "z": 19.63
+      },
+      "rightAnkle": {
+        "x": 7.16,
+        "y": -74.56,
+        "z": -5.7
+      }
     }
   },
   "fp1-heart-hands": {
@@ -767,7 +844,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "fp1-giggle-mouth",
+    "pose": "fp1-hair-twirl",
     "manualJointEdits": {
       "fp1-cat-paws": {
         "left": {
@@ -878,6 +955,46 @@
           "kneeQuat": null,
           "ankleQuat": null
         }
+      },
+      "fp1-hair-twirl": {
+        "left": {
+          "shoulderQuat": [
+            0.2843,
+            0.2684,
+            -0.1183,
+            0.9128
+          ],
+          "elbowQuat": [
+            -0.6615,
+            -0.0161,
+            -0.0178,
+            0.7496
+          ],
+          "wristQuat": [
+            0.3904,
+            0.017,
+            -0.0402,
+            0.9196
+          ],
+          "handTurnQuat": [
+            0,
+            0.4305,
+            0,
+            0.9026
+          ],
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": null,
+          "elbowQuat": null,
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
       }
     }
   },
@@ -939,6 +1056,28 @@
         "swing": {
           "left": null,
           "right": -5
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "fp1-hair-twirl": {
+        "hand": {
+          "left": null,
+          "right": null
+        },
+        "wrist": {
+          "left": 46,
+          "right": null
+        },
+        "swing": {
+          "left": 5,
+          "right": null
         },
         "elbowBend": {
           "left": null,
@@ -1261,8 +1400,72 @@
       }
     },
     "fp1-hair-twirl": {
-      "left": null,
-      "right": null
+      "left": {
+        "x": -17.62,
+        "y": -0.02,
+        "z": 2.81,
+        "turn": -51,
+        "bend": 46,
+        "swing": 5,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -27.64,
+        "ey": 20.27,
+        "ez": -16.98,
+        "dox": -21.827360738162184,
+        "doy": -44.73253531948816,
+        "doz": 8.376429557800293,
+        "r": 45.25370523061572,
+        "upperLen": 40.408345672645396,
+        "foreLen": 30.062079103082674,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0.2843,
+          0.2684,
+          -0.1183,
+          0.9128
+        ],
+        "eq": [
+          -0.6615,
+          -0.0161,
+          -0.0178,
+          0.7496
+        ]
+      },
+      "right": {
+        "x": 19.23,
+        "y": 56.3,
+        "z": 23.81,
+        "turn": -82,
+        "bend": -26,
+        "swing": 20,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 36.04,
+        "ey": 31.39,
+        "ez": 23.08,
+        "dox": 10.685380127131937,
+        "doy": 87.00332000672816,
+        "doz": 11.76321154022217,
+        "r": 34.07094804084562,
+        "upperLen": 40.40744980817275,
+        "foreLen": 30.0602245500595,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          -0.3416,
+          0.0246,
+          0.3179,
+          0.8841
+        ],
+        "eq": [
+          -0.9426,
+          0,
+          0,
+          0.3338
+        ]
+      }
     },
     "fp1-heart-hands": {
       "left": null,
@@ -1345,6 +1548,20 @@
         "face": "front",
         "h": 100,
         "v": 100
+      }
+    },
+    "fp1-hair-twirl": {
+      "left": {
+        "group": "leftLeg",
+        "face": "left",
+        "h": 100,
+        "v": 50
+      },
+      "right": {
+        "group": "head",
+        "face": "front",
+        "h": 100,
+        "v": 0
       }
     }
   }
