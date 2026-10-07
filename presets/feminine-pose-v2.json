@@ -1,0 +1,479 @@
+{
+  "_name": "Feminine Pose v2",
+  "fp2-seiza-hands-thighs": {
+    "label": "Kneeling on Heels, Hands on Thighs",
+    "section": "Feminine Pose v2",
+    "spineBend": 5,
+    "spineTwist": -6,
+    "spineSide": 3,
+    "right": {
+      "hip": -25,
+      "knee": 165,
+      "ankle": -80,
+      "hipAbd": -3,
+      "shoulder": -18,
+      "shoulderAbd": 6,
+      "elbow": -38,
+      "wrist": -15
+    },
+    "left": {
+      "hip": -28,
+      "knee": 165,
+      "ankle": -80,
+      "hipAbd": -3,
+      "shoulder": -18,
+      "shoulderAbd": 6,
+      "elbow": -38,
+      "wrist": -15
+    }
+  },
+  "fp2-side-sit-lean-hand": {
+    "label": "Side Sit, Leaning on One Hand",
+    "section": "Feminine Pose v2",
+    "spineBend": 8,
+    "spineTwist": 8,
+    "spineSide": -14,
+    "right": {
+      "hip": -95,
+      "knee": 130,
+      "hipAbd": 10,
+      "ankle": -10,
+      "shoulder": -25,
+      "shoulderAbd": 4,
+      "elbow": -60,
+      "wrist": -15
+    },
+    "left": {
+      "hip": -90,
+      "knee": 132,
+      "hipAbd": 55,
+      "ankle": -10,
+      "shoulder": 35,
+      "shoulderAbd": 22,
+      "elbow": -12,
+      "wrist": 60
+    }
+  },
+  "fp2-squat-knees-chin-hand": {
+    "label": "Squat, Knees Together, Chin on Hand",
+    "section": "Feminine Pose v2",
+    "spineBend": 20,
+    "spineSide": -4,
+    "right": {
+      "hip": -122,
+      "knee": 140,
+      "ankle": -30,
+      "hipAbd": -6,
+      "shoulder": -40,
+      "shoulderRoll": -22,
+      "elbow": -155,
+      "wrist": 10,
+      "wristTurnEdit": 65
+    },
+    "left": {
+      "hip": -116,
+      "knee": 138,
+      "ankle": -30,
+      "hipAbd": -8,
+      "shoulder": -50,
+      "elbow": -60,
+      "wrist": -20
+    }
+  },
+  "fp2-lie-side-head-on-hand": {
+    "label": "On Side, Head Resting on Hand",
+    "section": "Feminine Pose v2",
+    "rootZ": 88,
+    "spineBend": 8,
+    "right": {
+      "hip": -50,
+      "knee": 60,
+      "ankle": -10,
+      "hipAbd": 4,
+      "shoulder": -60,
+      "elbow": -110,
+      "wrist": -30
+    },
+    "left": {
+      "hip": -15,
+      "knee": 25,
+      "ankle": -10,
+      "shoulder": -60,
+      "elbow": -110,
+      "wrist": -30
+    }
+  },
+  "fp2-lie-back-knees-drop": {
+    "label": "On Back, Knees Dropped to One Side",
+    "section": "Feminine Pose v2",
+    "root": -90,
+    "spineTwist": 10,
+    "right": {
+      "hip": -85,
+      "knee": 105,
+      "ankle": -10,
+      "hipAbd": -12,
+      "shoulder": 35,
+      "elbow": -130,
+      "wrist": -30,
+      "wristTurnEdit": -66
+    },
+    "left": {
+      "hip": -70,
+      "knee": 95,
+      "ankle": -10,
+      "hipAbd": 10,
+      "shoulder": -140,
+      "shoulderAbd": 25,
+      "elbow": -45,
+      "wrist": -10
+    }
+  },
+  "_jointEdits": {
+    "pose": "fp2-seiza-hands-thighs",
+    "manualJointEdits": {}
+  },
+  "_handWristOverrides": {
+    "byPose": {}
+  },
+  "_wristPins": {
+    "fp2-seiza-hands-thighs": {
+      "left": {
+        "x": -8.93,
+        "y": 6.1,
+        "z": 25.54,
+        "turn": -172,
+        "bend": -13,
+        "swing": 20,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -20.54,
+        "ey": 13.62,
+        "ez": -1.15,
+        "dox": -7.7006726829268555,
+        "doy": 3.1446429557448186,
+        "doz": 36.36267778281565,
+        "r": 11.284239429496175,
+        "upperLen": 40.40134774979666,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.0474,
+          0.2169,
+          -0.0878,
+          0.9711
+        ],
+        "eq": [
+          -0.662,
+          0,
+          0,
+          0.7495
+        ]
+      },
+      "right": {
+        "x": 9.76,
+        "y": 5.4,
+        "z": 25.81,
+        "turn": -169,
+        "bend": -13,
+        "swing": 20,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 21.05,
+        "ey": 13.74,
+        "ez": -0.78,
+        "dox": 8.66452896788164,
+        "doy": 2.1975780065923036,
+        "doz": 36.57747329441907,
+        "r": 11.288964180388037,
+        "upperLen": 40.40134774979666,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.0443,
+          -0.2166,
+          0.0951,
+          0.9706
+        ],
+        "eq": [
+          -0.6499,
+          0,
+          0,
+          0.76
+        ]
+      }
+    },
+    "fp2-side-sit-lean-hand": {
+      "left": null,
+      "right": {
+        "x": 9.76,
+        "y": 5.4,
+        "z": 25.81,
+        "turn": -169,
+        "bend": -13,
+        "swing": 20,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 21.05,
+        "ey": 13.74,
+        "ez": -0.78,
+        "dox": 8.66452896788164,
+        "doy": 2.1975780065923036,
+        "doz": 36.57747329441907,
+        "r": 11.288964180388037,
+        "upperLen": 40.40134774979666,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.0443,
+          -0.2166,
+          0.0951,
+          0.9706
+        ],
+        "eq": [
+          -0.6499,
+          0,
+          0,
+          0.76
+        ]
+      }
+    },
+    "fp2-squat-knees-chin-hand": {
+      "left": {
+        "x": -21.86,
+        "y": -4.62,
+        "z": 25.39,
+        "turn": 22,
+        "bend": 12,
+        "swing": 20,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -29.3,
+        "ey": 24.28,
+        "ez": 21.76,
+        "dox": -15.786357317823867,
+        "doy": -12.370294592354643,
+        "doz": 31.147283506961355,
+        "r": 11.404299443521827,
+        "upperLen": 40.40134774979666,
+        "foreLen": 30.059999999999995,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.0823,
+          0.7838,
+          -0.3645,
+          0.496
+        ],
+        "eq": [
+          -0.4297,
+          0,
+          0,
+          0.903
+        ]
+      },
+      "right": {
+        "x": 5.49,
+        "y": 52.04,
+        "z": 14,
+        "turn": -30,
+        "bend": 36,
+        "swing": 7,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 5.65,
+        "ey": 27.08,
+        "ez": 30.75,
+        "dox": 3.208500000000001,
+        "doy": 61.34,
+        "doz": 11.763,
+        "r": 9.836961970985024,
+        "upperLen": 40.40134774979667,
+        "foreLen": 30.060000000000006,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.4112,
+          -0.308,
+          0.0467,
+          0.8567
+        ],
+        "eq": [
+          -0.9883,
+          0,
+          0,
+          0.1523
+        ]
+      }
+    },
+    "fp2-lie-side-head-on-hand": {
+      "left": {
+        "x": -5,
+        "y": 54.16,
+        "z": 13.05,
+        "turn": -135,
+        "bend": 57,
+        "swing": 19,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 2.3,
+        "ey": 32.22,
+        "ez": 32.25,
+        "dox": -10.695,
+        "doy": 69.03800000000001,
+        "doz": 0,
+        "r": 20.590525052844804,
+        "upperLen": 40.401347749796656,
+        "foreLen": 30.05999999999999,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.486,
+          0.2864,
+          0.0566,
+          0.8238
+        ],
+        "eq": [
+          -0.9903,
+          0,
+          0,
+          0.1388
+        ]
+      },
+      "right": {
+        "x": 11.08,
+        "y": 5.8,
+        "z": 14.8,
+        "turn": -177,
+        "bend": -19,
+        "swing": 11,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 23.31,
+        "ey": 15.93,
+        "ez": -10.72,
+        "dox": 8.292882946387605,
+        "doy": 2.499610597917619,
+        "doz": 24.63555092006315,
+        "r": 10.736905366288639,
+        "upperLen": 40.40134774979667,
+        "foreLen": 30.060000000000006,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.1761,
+          -0.225,
+          0.0949,
+          0.9536
+        ],
+        "eq": [
+          -0.7227,
+          0,
+          0,
+          0.6912
+        ]
+      }
+    },
+    "fp2-lie-back-knees-drop": {
+      "left": null,
+      "right": {
+        "x": 14.22,
+        "y": 16,
+        "z": 8.98,
+        "turn": -66,
+        "bend": -22,
+        "swing": -40,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 13.99,
+        "ey": 18.42,
+        "ez": -20.98,
+        "dox": 0,
+        "doy": 0,
+        "doz": 9.093,
+        "r": 21.40546827689386,
+        "upperLen": 40.40134774979666,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          0.27,
+          0.0065,
+          0.0133,
+          0.9628
+        ],
+        "eq": [
+          -0.8513,
+          0,
+          0,
+          0.5247
+        ]
+      }
+    }
+  },
+  "_wristAttachments": {
+    "fp2-seiza-hands-thighs": {
+      "left": {
+        "group": "leftLeg",
+        "face": "front",
+        "h": 50,
+        "v": 30
+      },
+      "right": {
+        "group": "rightLeg",
+        "face": "front",
+        "h": 50,
+        "v": 30
+      }
+    },
+    "fp2-side-sit-lean-hand": {
+      "left": null,
+      "right": {
+        "group": "rightLeg",
+        "face": "front",
+        "h": 50,
+        "v": 40
+      }
+    },
+    "fp2-squat-knees-chin-hand": {
+      "left": {
+        "group": "leftLeg",
+        "face": "front",
+        "h": 50,
+        "v": 25
+      },
+      "right": {
+        "group": "head",
+        "face": "front",
+        "h": 65,
+        "v": 100
+      }
+    },
+    "fp2-lie-side-head-on-hand": {
+      "left": {
+        "group": "head",
+        "face": "left",
+        "h": 50,
+        "v": 70
+      },
+      "right": {
+        "group": "rightLeg",
+        "face": "front",
+        "h": 50,
+        "v": 30
+      }
+    },
+    "fp2-lie-back-knees-drop": {
+      "left": null,
+      "right": {
+        "group": "waistbox",
+        "face": "front",
+        "h": 50,
+        "v": 50
+      }
+    }
+  }
+}
