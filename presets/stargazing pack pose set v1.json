@@ -129,6 +129,83 @@
       "shoulder": -60,
       "elbow": -140,
       "wrist": -30
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -18.18,
+        "y": 15.06,
+        "z": 12.38
+      },
+      "leftWrist": {
+        "x": -19.59,
+        "y": -13.62,
+        "z": 21.27
+      },
+      "leftHandTurn": {
+        "x": -13.23,
+        "y": -13.31,
+        "z": 29.32
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 24.99,
+        "y": 17.62,
+        "z": 13.83
+      },
+      "rightWrist": {
+        "x": 20.12,
+        "y": -11.4,
+        "z": 20.03
+      },
+      "rightHandTurn": {
+        "x": 10.57,
+        "y": -14.23,
+        "z": 22.48
+      },
+      "leftHip": {
+        "x": -8.28,
+        "y": -4.9,
+        "z": 1.9
+      },
+      "leftKnee": {
+        "x": -7.04,
+        "y": 22.44,
+        "z": 32.51
+      },
+      "leftAnkle": {
+        "x": -8.51,
+        "y": -16.07,
+        "z": 18.33
+      },
+      "rightHip": {
+        "x": 7.28,
+        "y": -6.54,
+        "z": 0.53
+      },
+      "rightKnee": {
+        "x": 17.07,
+        "y": 22.46,
+        "z": 27.9
+      },
+      "rightAnkle": {
+        "x": 8.06,
+        "y": -15.71,
+        "z": 15.74
+      }
     }
   },
   "sg1-lean-back-crossed-ankles": {
@@ -211,7 +288,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "sg1-lie-back-point-sky",
+    "pose": "sg1-sit-hug-knees-gaze",
     "manualJointEdits": {
       "sg1-lie-back-point-sky": {
         "left": {
@@ -247,6 +324,46 @@
           "kneeQuat": null,
           "ankleQuat": null
         }
+      },
+      "sg1-sit-hug-knees-gaze": {
+        "left": {
+          "shoulderQuat": [
+            -0.0915,
+            0.4035,
+            -0.1215,
+            0.9022
+          ],
+          "elbowQuat": [
+            -0.0459,
+            -0.0855,
+            0.0243,
+            0.995
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": [
+            -0.0915,
+            -0.4035,
+            0.1215,
+            0.9022
+          ],
+          "elbowQuat": [
+            -0.0459,
+            0.0855,
+            -0.0243,
+            0.995
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
       }
     }
   },
@@ -264,6 +381,28 @@
         "swing": {
           "left": -6,
           "right": null
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "sg1-sit-hug-knees-gaze": {
+        "hand": {
+          "left": 122,
+          "right": 122
+        },
+        "wrist": {
+          "left": -80,
+          "right": -80
+        },
+        "swing": {
+          "left": null,
+          "right": 0
         },
         "elbowBend": {
           "left": null,
@@ -315,69 +454,69 @@
     },
     "sg1-sit-hug-knees-gaze": {
       "left": {
-        "x": -9.19,
-        "y": 27.92,
-        "z": 5.7,
-        "turn": 116,
-        "bend": -53,
-        "swing": 20,
+        "x": -19.59,
+        "y": -13.62,
+        "z": 21.28,
+        "turn": 122,
+        "bend": -80,
+        "swing": 0,
         "sx": -10.7,
         "sy": 52.79,
         "sz": 0,
-        "ex": -30.01,
-        "ey": 20.48,
-        "ez": -14.67,
-        "dox": -10.213436112729802,
-        "doy": 35.434054110853246,
-        "doz": 13.369767723637738,
-        "r": 10.787163667989839,
-        "upperLen": 40.40134774979667,
-        "foreLen": 30.06,
-        "torsoHalfWidth": 10.7,
+        "ex": -18.18,
+        "ey": 15.06,
+        "ez": 12.38,
+        "dox": -0.6937392464013259,
+        "doy": -19.233354161362698,
+        "doz": 26.125005326585374,
+        "r": 20.29907613719211,
+        "upperLen": 40.40752033965954,
+        "foreLen": 30.062277026200128,
+        "torsoHalfWidth": 10.699814289689066,
         "sq": [
-          0.2854,
-          0.362,
-          -0.1312,
-          0.8776
+          -0.0915,
+          0.4035,
+          -0.1215,
+          0.9022
         ],
         "eq": [
-          -0.9425,
-          0,
-          0,
-          0.3343
+          -0.0459,
+          -0.0855,
+          0.0243,
+          0.995
         ]
       },
       "right": {
-        "x": 22.19,
-        "y": 11.75,
-        "z": 54.42,
-        "turn": -83,
+        "x": 19.59,
+        "y": -13.62,
+        "z": 21.28,
+        "turn": 122,
         "bend": -80,
-        "swing": -2,
+        "swing": 0,
         "sx": 10.7,
         "sy": 52.79,
         "sz": 0,
-        "ex": 23.99,
-        "ey": 29.58,
-        "ez": 30.28,
-        "dox": 11.689909768071937,
-        "doy": 10.865056013821755,
-        "doz": 52.69305749468667,
-        "r": 10.680319484137861,
-        "upperLen": 40.401347749796656,
-        "foreLen": 30.059999999999995,
-        "torsoHalfWidth": 10.7,
+        "ex": 18.18,
+        "ey": 15.06,
+        "ez": 12.38,
+        "dox": 0.69,
+        "doy": -19.233354161362698,
+        "doz": 26.125005326585374,
+        "r": 20.29907613719211,
+        "upperLen": 40.40752033965954,
+        "foreLen": 30.062277026200128,
+        "torsoHalfWidth": 10.699814289689066,
         "sq": [
-          -0.2259,
-          -0.5132,
-          0.3713,
-          0.7401
+          -0.0915,
+          -0.4035,
+          0.1215,
+          0.9022
         ],
         "eq": [
-          -0.1943,
-          0,
-          0,
-          0.981
+          -0.0459,
+          0.0855,
+          -0.0243,
+          0.995
         ]
       }
     },
@@ -500,14 +639,14 @@
       "left": {
         "group": "leftLeg",
         "face": "front",
-        "h": 50,
-        "v": 90
+        "h": 100,
+        "v": 100
       },
       "right": {
         "group": "rightLeg",
         "face": "front",
-        "h": 50,
-        "v": 90
+        "h": 0,
+        "v": 100
       }
     },
     "sg1-squat-visor-look-up": {
