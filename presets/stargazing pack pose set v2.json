@@ -1,0 +1,453 @@
+{
+  "_name": "Stargazing Pack v2",
+  "sg2-stand-hands-back-gaze": {
+    "label": "Standing, Hands Behind Back, Head Back",
+    "section": "Stargazing Pack v2",
+    "spineBend": -10,
+    "spineSide": 4,
+    "spineTwist": -4,
+    "right": {
+      "hip": -3,
+      "knee": 6,
+      "hipAbd": 6,
+      "shoulder": 50,
+      "elbow": -90,
+      "wrist": -15,
+      "wristTurnEdit": -90
+    },
+    "left": {
+      "hip": 2,
+      "knee": 4,
+      "hipAbd": 0,
+      "shoulder": 50,
+      "elbow": -90,
+      "wrist": -15,
+      "wristTurnEdit": -90
+    }
+  },
+  "sg2-stand-point-up-hip": {
+    "label": "Standing, Pointing Up, Hand on Hip",
+    "section": "Stargazing Pack v2",
+    "spineBend": -8,
+    "spineTwist": 12,
+    "spineSide": -5,
+    "right": {
+      "hip": 0,
+      "knee": 4,
+      "hipAbd": 8,
+      "shoulder": -140,
+      "shoulderAbd": 20,
+      "elbow": -8,
+      "wrist": 5
+    },
+    "left": {
+      "hip": 0,
+      "knee": 6,
+      "hipAbd": 2,
+      "shoulder": 40,
+      "shoulderAbd": 25,
+      "shoulderRoll": -30,
+      "elbow": -80,
+      "wrist": -25,
+      "wristTurnEdit": 35
+    }
+  },
+  "sg2-stand-self-hug-gaze": {
+    "label": "Standing, Hugging Self, Toe Tap",
+    "section": "Stargazing Pack v2",
+    "spineBend": -6,
+    "spineSide": -4,
+    "right": {
+      "hip": -8,
+      "knee": 8,
+      "ankle": 6,
+      "hipAbd": 4,
+      "shoulder": -5,
+      "shoulderAbd": 30,
+      "shoulderRoll": -70,
+      "elbow": -105,
+      "wrist": -70,
+      "wristTurnEdit": 80
+    },
+    "left": {
+      "hip": 6,
+      "knee": 12,
+      "ankle": -20,
+      "hipAbd": -8,
+      "shoulder": -5,
+      "shoulderAbd": 30,
+      "shoulderRoll": -70,
+      "elbow": -105,
+      "wrist": -70,
+      "wristTurnEdit": 80
+    }
+  },
+  "sg2-stand-hands-head-lookup": {
+    "label": "Standing, Hands Behind Head, Looking Up",
+    "section": "Stargazing Pack v2",
+    "spineBend": -14,
+    "spineSide": 3,
+    "right": {
+      "hip": 0,
+      "knee": 6,
+      "hipAbd": 6,
+      "shoulder": -121,
+      "shoulderAbd": 74,
+      "shoulderRoll": -41,
+      "elbow": -135,
+      "wrist": 0,
+      "wristTurnEdit": 30
+    },
+    "left": {
+      "hip": -6,
+      "knee": 10,
+      "hipAbd": 10,
+      "shoulder": -121,
+      "shoulderAbd": 74,
+      "shoulderRoll": -41,
+      "elbow": -135,
+      "wrist": 0,
+      "wristTurnEdit": 30
+    }
+  },
+  "sg2-step-visor-scan": {
+    "label": "Stepping Forward, Hand Shading Eyes",
+    "section": "Stargazing Pack v2",
+    "spineBend": -6,
+    "spineTwist": -8,
+    "right": {
+      "hip": -35,
+      "knee": 15,
+      "ankle": -10,
+      "shoulder": -85,
+      "shoulderAbd": 25,
+      "shoulderRoll": -20,
+      "elbow": -135,
+      "wrist": -10,
+      "wristTurnEdit": -40
+    },
+    "left": {
+      "hip": 25,
+      "knee": 5,
+      "shoulder": 20,
+      "shoulderAbd": 8,
+      "elbow": -20,
+      "wrist": 0
+    }
+  },
+  "_jointEdits": {
+    "pose": "sg2-stand-hands-back-gaze",
+    "manualJointEdits": {}
+  },
+  "_handWristOverrides": {
+    "byPose": {}
+  },
+  "_wristPins": {
+    "sg2-stand-hands-back-gaze": {
+      "left": {
+        "x": -7.15,
+        "y": 9.63,
+        "z": -18.73,
+        "turn": 1,
+        "bend": 35,
+        "swing": 0,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -24.3,
+        "ey": 30.97,
+        "ez": -31.17,
+        "dox": -0.0048098931312559046,
+        "doy": -17.59888314837218,
+        "doz": -9.093069366455078,
+        "r": 29.75460050490946,
+        "upperLen": 40.40595624409847,
+        "foreLen": 30.0711107210891,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0.4359,
+          -0.027,
+          -0.1712,
+          0.8831
+        ],
+        "eq": [
+          -0.5046,
+          0,
+          0.5356,
+          0.6771
+        ]
+      },
+      "right": {
+        "x": 10.41,
+        "y": 9.54,
+        "z": -17.41,
+        "turn": 0,
+        "bend": 13,
+        "swing": 0,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 26.32,
+        "ey": 31.42,
+        "ez": -30.53,
+        "dox": -0.0048098931312559046,
+        "doy": -17.59888314837218,
+        "doz": -9.093069366455078,
+        "r": 30.23505546239765,
+        "upperLen": 40.40720480310411,
+        "foreLen": 30.066541204468468,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0.428,
+          0.0265,
+          0.2004,
+          0.8809
+        ],
+        "eq": [
+          -0.5245,
+          0,
+          -0.5271,
+          0.6686
+        ]
+      }
+    },
+    "sg2-stand-point-up-hip": {
+      "left": {
+        "x": -18.41,
+        "y": -5.62,
+        "z": -1.07,
+        "turn": -86,
+        "bend": 31,
+        "swing": 13,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -26.42,
+        "ey": 19.2,
+        "ez": -16.04,
+        "dox": -15.70732308113575,
+        "doy": -46.931959621906294,
+        "doz": 0,
+        "r": 41.41409627566172,
+        "upperLen": 40.406535362488086,
+        "foreLen": 30.071471530339185,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          0.2057,
+          -0.0127,
+          -0.1749,
+          0.9628
+        ],
+        "eq": [
+          -0.4473,
+          0,
+          0.3021,
+          0.8418
+        ]
+      },
+      "right": null
+    },
+    "sg2-stand-self-hug-gaze": {
+      "left": {
+        "x": 4.04,
+        "y": 23.32,
+        "z": 19.93,
+        "turn": -46,
+        "bend": -6,
+        "swing": 20,
+        "sx": -10.7,
+        "sy": 52.8,
+        "sz": 0,
+        "ex": -25.37,
+        "ey": 18.62,
+        "ez": 15.79,
+        "dox": 23.607603628354898,
+        "doy": 29.158389116846237,
+        "doz": 17.404536213759904,
+        "r": 20.575613394786714,
+        "upperLen": 40.40798683428809,
+        "foreLen": 30.06954771858067,
+        "torsoHalfWidth": 10.69861181640625,
+        "sq": [
+          -0.2,
+          0.0202,
+          -0.162,
+          0.9661
+        ],
+        "eq": [
+          -0.8253,
+          0.5066,
+          0.093,
+          0.2313
+        ]
+      },
+      "right": null
+    },
+    "sg2-stand-hands-head-lookup": {
+      "left": {
+        "x": -12.86,
+        "y": 76.25,
+        "z": -17.28,
+        "turn": 30,
+        "bend": -16,
+        "swing": 0,
+        "sx": -10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": -40.48,
+        "ey": 79.47,
+        "ez": -5.86,
+        "dox": 10.685380127131939,
+        "doy": 73.91803426682947,
+        "doz": -11.763211540222168,
+        "r": 24.29522472466059,
+        "upperLen": 40.4105233819113,
+        "foreLen": 30.060758473465032,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          -0.7549,
+          -0.3529,
+          -0.521,
+          0.1849
+        ],
+        "eq": [
+          -0.5912,
+          0.2163,
+          -0.7096,
+          0.3165
+        ]
+      },
+      "right": {
+        "x": 8.95,
+        "y": 76.81,
+        "z": -14.11,
+        "turn": 113,
+        "bend": 0,
+        "swing": 0,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 38.98,
+        "ey": 78.13,
+        "ez": -13.81,
+        "dox": -10.69500431805849,
+        "doy": 74.17460849702357,
+        "doz": -11.763211540222168,
+        "r": 19.959431332215942,
+        "upperLen": 40.40532266917318,
+        "foreLen": 30.060494007916766,
+        "torsoHalfWidth": 10.699814289689066,
+        "sq": [
+          -0.7241,
+          0.4003,
+          0.5515,
+          0.1062
+        ],
+        "eq": [
+          -0.9279,
+          -0.0195,
+          -0.0081,
+          0.3723
+        ]
+      }
+    },
+    "sg2-step-visor-scan": {
+      "left": null,
+      "right": {
+        "x": 12.93,
+        "y": 71.67,
+        "z": 22.12,
+        "turn": -40,
+        "bend": -20,
+        "swing": 0,
+        "sx": 10.7,
+        "sy": 52.79,
+        "sz": 0,
+        "ex": 33.21,
+        "ey": 52.66,
+        "ez": 33.56,
+        "dox": 7.49,
+        "doy": 77.12,
+        "doz": 11.76,
+        "r": 12.905,
+        "upperLen": 40.4013,
+        "foreLen": 30.06,
+        "torsoHalfWidth": 10.7,
+        "sq": [
+          -0.5591,
+          -0.0909,
+          0.3529,
+          0.7448
+        ],
+        "eq": [
+          0.9239,
+          0.0,
+          0.0,
+          -0.3827
+        ]
+      }
+    }
+  },
+  "_wristAttachments": {
+    "sg2-stand-hands-back-gaze": {
+      "left": {
+        "group": "waistbox",
+        "face": "back",
+        "h": 50,
+        "v": 100
+      },
+      "right": {
+        "group": "waistbox",
+        "face": "back",
+        "h": 50,
+        "v": 100
+      }
+    },
+    "sg2-stand-point-up-hip": {
+      "left": {
+        "group": "leftLeg",
+        "face": "left",
+        "h": 50,
+        "v": 50
+      },
+      "right": null
+    },
+    "sg2-stand-self-hug-gaze": {
+      "left": {
+        "group": "rightArm",
+        "face": "right",
+        "h": 50,
+        "v": 45
+      },
+      "right": {
+        "group": "leftArm",
+        "face": "left",
+        "h": 50,
+        "v": 45
+      }
+    },
+    "sg2-stand-hands-head-lookup": {
+      "left": {
+        "group": "head",
+        "face": "back",
+        "h": 100,
+        "v": 51
+      },
+      "right": {
+        "group": "head",
+        "face": "back",
+        "h": 0,
+        "v": 50
+      }
+    },
+    "sg2-step-visor-scan": {
+      "left": null,
+      "right": {
+        "group": "head",
+        "face": "front",
+        "h": 50,
+        "v": 85
+      }
+    }
+  }
+}
