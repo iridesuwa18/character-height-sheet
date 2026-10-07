@@ -669,6 +669,83 @@
       "wrist": -44,
       "wristSwing": -30,
       "wristTurnEdit": -156
+    },
+    "jointXYZ": {
+      "spine": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "leftShoulder": {
+        "x": -10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "leftElbow": {
+        "x": -25.79,
+        "y": 16.04,
+        "z": 7.36
+      },
+      "leftWrist": {
+        "x": -1.51,
+        "y": 29.14,
+        "z": 19.31
+      },
+      "leftHandTurn": {
+        "x": -5.17,
+        "y": 38.73,
+        "z": 19.66
+      },
+      "rightShoulder": {
+        "x": 10.7,
+        "y": 52.79,
+        "z": 0
+      },
+      "rightElbow": {
+        "x": 25.79,
+        "y": 16.04,
+        "z": 7.36
+      },
+      "rightWrist": {
+        "x": 1.51,
+        "y": 29.14,
+        "z": 19.31
+      },
+      "rightHandTurn": {
+        "x": 5.16,
+        "y": 38.73,
+        "z": 19.66
+      },
+      "leftHip": {
+        "x": -8.42,
+        "y": -5.01,
+        "z": 0.2
+      },
+      "leftKnee": {
+        "x": -14.84,
+        "y": -45.54,
+        "z": 1.79
+      },
+      "leftAnkle": {
+        "x": -21.25,
+        "y": -86.07,
+        "z": 3.37
+      },
+      "rightHip": {
+        "x": 7.19,
+        "y": -6.65,
+        "z": 0.2
+      },
+      "rightKnee": {
+        "x": 5.1,
+        "y": -47,
+        "z": 7.55
+      },
+      "rightAnkle": {
+        "x": 3.65,
+        "y": -88.04,
+        "z": 7.79
+      }
     }
   },
   "fp1-heel-pop-plead": {
@@ -844,7 +921,7 @@
     }
   },
   "_jointEdits": {
-    "pose": "fp1-hair-twirl",
+    "pose": "fp1-heart-hands",
     "manualJointEdits": {
       "fp1-cat-paws": {
         "left": {
@@ -995,6 +1072,41 @@
           "kneeQuat": null,
           "ankleQuat": null
         }
+      },
+      "fp1-heart-hands": {
+        "left": {
+          "shoulderQuat": null,
+          "elbowQuat": [
+            0.6808,
+            -0.4102,
+            0.582,
+            -0.1717
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        },
+        "right": {
+          "shoulderQuat": [
+            -0.041,
+            -0.2212,
+            0.1776,
+            0.9581
+          ],
+          "elbowQuat": [
+            0.6808,
+            0.4102,
+            -0.582,
+            -0.1717
+          ],
+          "wristQuat": null,
+          "handTurnQuat": null,
+          "hipQuat": null,
+          "kneeQuat": null,
+          "ankleQuat": null
+        }
       }
     }
   },
@@ -1078,6 +1190,28 @@
         "swing": {
           "left": 5,
           "right": null
+        },
+        "elbowBend": {
+          "left": null,
+          "right": null
+        },
+        "elbowLift": {
+          "left": null,
+          "right": null
+        }
+      },
+      "fp1-heart-hands": {
+        "hand": {
+          "left": 180,
+          "right": 180
+        },
+        "wrist": {
+          "left": 80,
+          "right": 80
+        },
+        "swing": {
+          "left": 40,
+          "right": 40
         },
         "elbowBend": {
           "left": null,
