@@ -253,6 +253,7 @@ function openJointEditorMode3D() {
   setTimeout(resizeBody3D, 0);
 }
 function closeJointEditorModeUI3D() {
+  if (typeof closeCompositionPanel3D === 'function') closeCompositionPanel3D(); // leaving the editor also leaves Composition
   jointEditorModeActive3D = false;
   jointEditorModeSnapshot3D = null;
   jointEditorFacingSnapshot3D = null;

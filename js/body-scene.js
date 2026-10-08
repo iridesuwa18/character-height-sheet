@@ -167,7 +167,8 @@ function animate3D() {
   requestAnimationFrame(animate3D);
   if (!sceneInited3D) return;
   if (document.getElementById('preview3D').style.display === 'none') { _lastFp3D = null; return; }
-  controls3D.update();
+  // Composition maker drives the camera itself (incl. roll); OrbitControls.update() would re-aim it every frame.
+  if (!(typeof compActive3D !== 'undefined' && compActive3D)) controls3D.update();
   const fp = sceneFingerprint3D();
   if (fp === _lastFp3D && _forceFrames3D <= 0) return; // nothing changed — skip all the work
   if (_forceFrames3D > 0) _forceFrames3D--;
@@ -176,7 +177,8 @@ function animate3D() {
   updateWristSliderOverlay3D();
   updateFacesDotOverlayFrame3D();
   updatePuppetLines3D();
-  renderer3D.render(scene3D, camera3D);
+  // Composition maker renders into its own letterboxed canvas frame instead of the full view.
+  if (!(typeof compositionRender3D === 'function' && compositionRender3D())) renderer3D.render(scene3D, camera3D);
   _lastFp3D = sceneFingerprint3D();
 }
 
