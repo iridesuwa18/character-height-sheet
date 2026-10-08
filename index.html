@@ -249,6 +249,60 @@
   #jeFacesPopup.open { display: flex; }
   #jeFacesPopup .je-select:disabled { opacity: 0.5; }
 
+  /* Composition button: icon button directly under the Faces button (right end of the joint row). */
+  #jeCompBtnWrap {
+    display: none; position: absolute; top: calc(74px + env(safe-area-inset-top, 0px)); right: 6px;
+    width: 34px; z-index: 9012;
+  }
+  body.je-fullscreen-active #jeCompBtnWrap { display: block; }
+  #jeCompBtnWrap .jp-btn { width: 34px; height: 30px; min-height: 0; padding: 0; border-radius: 7px; display: flex; align-items: center; justify-content: center; }
+
+  /* Composition maker: while open the editor chrome is hidden, the model is drawn only inside #jeCompFrame
+     and a transparent blocker stops the canvas/gizmo/toolbars from being touched. */
+  body.je-comp-active #jointEditorTopBar, body.je-comp-active #jointToggleBar, body.je-comp-active #jeCopyBar,
+  body.je-comp-active #jePoseBar, body.je-comp-active #jointEditorBottomBar, body.je-comp-active #jointEditorPanel,
+  body.je-comp-active #jeCompBtnWrap, body.je-comp-active #jeMirrorStatus, body.je-comp-active #jeQoMenu,
+  body.je-comp-active #jeQoTools, body.je-comp-active #body3DHint { display: none !important; }
+  body.je-comp-active #preview3D { background: #08080a !important; }
+  #jeCompFrame {
+    position: absolute; z-index: 9016; pointer-events: none; box-sizing: border-box;
+    outline: 1px solid rgba(240,192,64,0.85); outline-offset: 0;
+  }
+  #jeCompFrame span {
+    position: absolute; left: 0; top: -13px; font-family: 'Space Mono', monospace; font-size: 8px;
+    color: var(--accent-gold); white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  }
+  #jeCompBlocker { position: absolute; inset: 0; z-index: 9020; background: transparent; touch-action: none; }
+  #jeCompSheet {
+    position: absolute; left: 6px; right: 6px; bottom: calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 9030;
+    max-height: 52%; max-height: min(52%, 460px); display: flex; flex-direction: column;
+    background: rgba(20,20,24,0.98); border: 1px solid var(--accent-gold); border-radius: 12px;
+    padding: 8px 10px; font-family: 'Space Mono', monospace; color: var(--text);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.6); max-width: 560px; margin: 0 auto;
+  }
+  #jeCompSheet.collapsed .cp-scroll { display: none; }
+  .cp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .cp-head-btns { display: flex; gap: 2px; }
+  .cp-scroll { overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; padding-right: 2px; min-height: 0; }
+  .cp-row { margin-bottom: 8px; }
+  .cp-row.dim { opacity: 0.45; }
+  .cp-lab { display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 3px; }
+  .cp-lock { background: none; border: 1px solid transparent; border-radius: 6px; font-size: 13px; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0.7; }
+  .cp-lock.on { opacity: 1; border-color: var(--accent-gold); background: rgba(240,192,64,0.15); }
+  .cp-ctl { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
+  .cp-ctl select, .cp-ctl input[type=number] {
+    min-width: 0; height: 32px; padding: 0 6px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: 'Space Mono', monospace; font-size: 11px;
+  }
+  .cp-ctl select { flex: 1 1 0; width: auto; }
+  .cp-ctl input[type=number] { flex: 0 0 62px; width: 62px; }
+  .cp-ctl input[type=range] { flex: 1 1 0; min-width: 0; width: auto; }
+  .cp-ctl input:disabled, .cp-ctl select:disabled { opacity: 0.5; }
+  .cp-mini { font-size: 10px; color: var(--muted); flex: 0 0 auto; }
+  .cp-seg .je-mode-btn { min-height: 32px; padding: 4px; }
+  .cp-pose { font-size: 9px; color: var(--accent-gold); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cp-actions { display: flex; gap: 6px; margin-top: 6px; }
+
   /* Copy row: one small button (+ a status chip once something was copied). */
   #jeCopyBar {
     position: absolute; top: calc(74px + env(safe-area-inset-top, 0px)); left: 6px; right: 6px; z-index: 9010;
@@ -1210,6 +1264,13 @@
         </div>
       </div>
       <button type="button" class="jt-btn jp-btn jt-icon" onclick="openFacesPopup3D()" title="Faces">▦</button>
+    </div>
+
+    <!-- Composition: icon button directly under Faces. Opens the composition maker (js/composition-panel.js). -->
+    <div id="jeCompBtnWrap">
+      <button type="button" class="jt-btn jp-btn" onclick="openCompositionPanel3D()" title="Composition" aria-label="Composition">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><circle cx="12" cy="9.5" r="2"/><path d="M8.5 17c.4-2.4 1.8-3.5 3.5-3.5s3.1 1.1 3.5 3.5"/></svg>
+      </button>
     </div>
 
     <!-- Faces popup: pick a mesh (highlights it saturated yellow), then one
@@ -5434,6 +5495,7 @@ function importFaceExcel(event) {
   'js/joint-mirror.js',
   'js/joint-panel-sliders.js',
   'js/joint-faces-panel.js',
+  'js/composition-panel.js',
   'js/joint-github-sync.js',
   'js/button-feedback.js',
   'js/3d-init.js',
