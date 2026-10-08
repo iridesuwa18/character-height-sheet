@@ -290,12 +290,16 @@
   .cp-lock { background: none; border: 1px solid transparent; border-radius: 6px; font-size: 13px; line-height: 1; padding: 2px 5px; cursor: pointer; opacity: 0.7; }
   .cp-lock.on { opacity: 1; border-color: var(--accent-gold); background: rgba(240,192,64,0.15); }
   .cp-ctl { display: flex; gap: 6px; align-items: center; margin-bottom: 4px; }
-  .cp-ctl select, .cp-ctl input[type=number] {
+  .cp-ctl select, .cp-ctl input[type=number], .cp-ctl input[type=text] {
     min-width: 0; height: 32px; padding: 0 6px; background: var(--surface); border: 1px solid var(--border);
     border-radius: 6px; color: var(--text); font-family: 'Space Mono', monospace; font-size: 11px;
   }
   .cp-ctl select { flex: 1 1 0; width: auto; }
   .cp-ctl input[type=number] { flex: 0 0 62px; width: 62px; }
+  .cp-ctl input[type=text] { flex: 1 1 0; width: auto; }
+  .cp-small { flex: 0 0 auto; width: auto; min-width: 44px; padding: 0 10px; height: 32px; }
+  .cp-presets { border-top: 1px solid var(--border); padding-top: 8px; }
+  .cp-status { font-size: 9px; min-height: 12px; line-height: 1.4; word-break: break-word; }
   .cp-ctl input[type=range] { flex: 1 1 0; min-width: 0; width: auto; }
   .cp-ctl input:disabled, .cp-ctl select:disabled { opacity: 0.5; }
   .cp-mini { font-size: 10px; color: var(--muted); flex: 0 0 auto; }
