@@ -24,6 +24,7 @@
 //  • Zoom: 0% = the fitted framing; +N% dollies the camera closer (÷ 1+N/100).
 //  • Pan: moves the view across the framed area (aim region, or the full body
 //    if no aim). Travel grows with zoom: none at 0%, the whole region by ~100%.
+//  • Presets: Save/Load a named .json (all options + locks) in presets/composition on GitHub, like Height/Faces.
 //  • Closing keeps whatever pose Randomise Pose picked (it is a real pose
 //    change, not just a preview). The editor camera is restored if the pose
 //    did not change, otherwise re-framed to the new pose like a normal pose pick.
@@ -351,10 +352,10 @@ function compClean3D() {
   if (s.aim[0] && s.aim[0] === s.aim[1]) s.aim[1] = '';
 }
 
-function generateComposition3D() {
+function generateComposition3D(opts) {
   if (!compActive3D) return;
   compClean3D();
-  if (compState3D.randPose) compRandomPose3D();
+  if (compState3D.randPose && !(opts && opts.skipPose)) compRandomPose3D();
   compApplied3D = JSON.parse(JSON.stringify(compState3D));
   compSyncUI3D();
   compPositionCamera3D(compApplied3D);
@@ -490,6 +491,13 @@ function compBuildUI3D() {
       <div class="cp-row"><div class="cp-lab"><span>Randomise pose</span></div>
         <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpPoseYes" onclick="compSet3D('randPose', true)">Yes</button><button type="button" class="je-mode-btn" id="cpPoseNo" onclick="compSet3D('randPose', false)">No</button></div>
         <div class="cp-pose" id="cpPoseName"></div></div>
+      <div class="cp-row cp-presets"><div class="cp-lab"><span>Presets (GitHub · presets/composition)</span></div>
+        <div class="cp-ctl"><input type="text" id="cpPresetName" placeholder="Preset name, e.g. hero-closeup" maxlength="80">
+          <button type="button" class="je-bottom-btn je-apply cp-small" id="cpSaveBtn" onclick="saveCompositionPreset3D()">⬆ Save</button></div>
+        <div class="cp-ctl"><select id="cpPresetList" onfocus="refreshCompositionPresets3D()"><option value="">— Choose preset —</option></select>
+          <button type="button" class="je-bottom-btn cp-small" onclick="refreshCompositionPresets3D()" aria-label="Refresh list" title="Refresh list">⟳</button>
+          <button type="button" class="je-bottom-btn cp-small" onclick="loadCompositionPreset3D()">⬇ Load</button></div>
+        <div class="cp-status" id="cpPresetStatus"></div></div>
     </div>
     <div class="cp-actions">
       <button type="button" class="je-bottom-btn je-apply" onclick="generateComposition3D()">Generate</button>
@@ -497,6 +505,119 @@ function compBuildUI3D() {
     </div>`;
   cont.appendChild(frame); cont.appendChild(blocker); cont.appendChild(sheet);
   compUIBuilt3D = true;
+}
+
+// ── Presets (saved as separate .json files, like Height / Faces) ───────────
+// Same GitHub settings (token / owner / repo / branch) as the Height + Faces presets; files live in
+// presets/composition/<name>.json (override with localStorage 'ghCompFolder'). Saving needs a token;
+// loading works without one on a public repo. A preset stores every option + its lock state, but not
+// the pose itself (only the Randomise Pose yes/no).
+
+function compGh3D() {
+  if (typeof ghGetSettings !== 'function') return null;
+  const s = ghGetSettings();
+  s.folder = localStorage.getItem('ghCompFolder') || 'presets/composition';
+  return s;
+}
+const compApiUrl3D = (s, path) =>
+  `https://api.github.com/repos/${s.owner}/${s.repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+function compStatus3D(msg, kind) {
+  const el = document.getElementById('cpPresetStatus'); if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = kind === 'err' ? '#ff4d4d' : kind === 'ok' ? '#4cd964' : 'var(--muted)';
+}
+function compPresetData3D(name) {
+  return {
+    _type: 'composition', _name: name, version: 1,
+    settings: JSON.parse(JSON.stringify(compState3D)),
+    locks: JSON.parse(JSON.stringify(compLocks3D)),
+  };
+}
+
+async function refreshCompositionPresets3D(selectName) {
+  const sel = document.getElementById('cpPresetList'); const s = compGh3D();
+  if (!sel || !s) return;
+  if (!s.owner || !s.repo) { sel.innerHTML = '<option value="">(enter GitHub settings)</option>'; return; }
+  const keep = selectName || sel.value;
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const resp = await fetch(`${compApiUrl3D(s, s.folder)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+    if (resp.status === 404) { sel.innerHTML = '<option value="">(no presets yet)</option>'; return; }
+    if (!resp.ok) throw new Error(resp.statusText);
+    const files = (await resp.json());
+    const jf = (Array.isArray(files) ? files : []).filter(f => f.type === 'file' && /\.json$/i.test(f.name));
+    if (!jf.length) { sel.innerHTML = '<option value="">(no presets yet)</option>'; return; }
+    sel.innerHTML = '<option value="">— Choose preset —</option>' +
+      jf.map(f => `<option value="${f.path}">${f.name.replace(/\.json$/i, '')}</option>`).join('');
+    if (keep) sel.value = keep;
+  } catch (err) {
+    sel.innerHTML = '<option value="">(error loading — check settings)</option>';
+    console.error(err);
+  }
+}
+
+async function saveCompositionPreset3D() {
+  const s = compGh3D();
+  if (!s || !s.token || !s.owner || !s.repo) { compStatus3D('Enter your GitHub token, owner and repo first (Height / Faces tab → GitHub Presets).', 'err'); return; }
+  let name = (document.getElementById('cpPresetName').value || '').trim().replace(/[\\/:*?"<>|]/g, '_');
+  if (!name) { compStatus3D('Enter a preset name.', 'err'); return; }
+  compClean3D();
+  const path = `${s.folder}/${name}.json`;
+  const btn = document.getElementById('cpSaveBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const url = compApiUrl3D(s, path);
+    let sha;
+    const g = await fetch(`${url}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+    if (g.ok) {
+      sha = (await g.json()).sha;
+      if (!confirm(`A composition preset named "${name}" already exists. Overwrite it?`)) { compStatus3D('Save cancelled.'); return; }
+    }
+    const body = { message: `Save composition preset: ${name}`, content: ghUtf8ToB64(JSON.stringify(compPresetData3D(name), null, 2)), branch: s.branch };
+    if (sha) body.sha = sha;
+    const put = await fetch(url, { method: 'PUT', headers: ghHeaders(s.token), body: JSON.stringify(body) });
+    if (!put.ok) { const ej = await put.json().catch(() => ({})); throw new Error(ej.message || put.statusText); }
+    compStatus3D(`Saved "${name}" to ${s.folder}.`, 'ok');
+    await refreshCompositionPresets3D(path);
+  } catch (err) {
+    compStatus3D('GitHub save failed: ' + err.message, 'err');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '⬆ Save'; }
+  }
+}
+
+// Copies a loaded preset into the draft settings + locks (ignoring anything unknown/invalid) and applies it.
+function compApplyPreset3D(data) {
+  const src = (data && data.settings) || data || {};
+  const S = compState3D;
+  ['h', 'b', 'rot', 'zoom', 'panX', 'panY', 'mrx', 'mry', 'mrz'].forEach(k => { if (isFinite(Number(src[k])) && src[k] !== '' && src[k] !== null) S[k] = Number(src[k]); });
+  if (typeof src.fits === 'boolean') S.fits = src.fits;
+  if (typeof src.randPose === 'boolean') S.randPose = src.randPose;
+  if (Array.isArray(src.aim)) {
+    const ok = id => COMP_AIM_PARTS_3D.some(p => p.id === id);
+    S.aim = [ok(src.aim[0]) ? src.aim[0] : '', ok(src.aim[1]) ? src.aim[1] : ''];
+  }
+  if (data && data.locks) Object.keys(compLocks3D).forEach(k => { if (typeof data.locks[k] === 'boolean') compLocks3D[k] = data.locks[k]; });
+  // Applied as-is: a preset never randomises the pose on load (Randomise Pose only acts on Generate/Randomise).
+  generateComposition3D({ skipPose: true });
+}
+
+async function loadCompositionPreset3D() {
+  const s = compGh3D(); const sel = document.getElementById('cpPresetList');
+  const path = sel && sel.value;
+  if (!path) { compStatus3D('Choose a preset to load.', 'err'); return; }
+  if (!s || !s.owner || !s.repo) { compStatus3D('Enter your GitHub owner and repo first.', 'err'); return; }
+  try {
+    const resp = await fetch(`${compApiUrl3D(s, path)}?ref=${encodeURIComponent(s.branch)}`, { headers: ghHeaders(s.token) });
+    if (!resp.ok) throw new Error(resp.statusText);
+    const data = JSON.parse(ghB64ToUtf8((await resp.json()).content));
+    compApplyPreset3D(data);
+    const nm = (sel.options[sel.selectedIndex] || {}).text || '';
+    document.getElementById('cpPresetName').value = data._name || nm;
+    compStatus3D(`Loaded "${data._name || nm}".`, 'ok');
+  } catch (err) {
+    compStatus3D('GitHub load failed: ' + err.message, 'err');
+  }
 }
 
 // ── Open / close ────────────────────────────────────────────────────────────
@@ -518,6 +639,8 @@ function openCompositionPanel3D() {
   ['jeCompFrame', 'jeCompBlocker', 'jeCompSheet'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
   document.getElementById('jeCompSheet').classList.remove('collapsed');
   compSyncUI3D();
+  compStatus3D('');
+  refreshCompositionPresets3D();
   // Show the default canvas right away, framed with the current (default) settings.
   compClean3D();
   compApplied3D = JSON.parse(JSON.stringify(compState3D));
