@@ -297,26 +297,28 @@ function compFrameRect3D() {
   const aspect = (compApplied3D ? compApplied3D.b / compApplied3D.h : compState3D.b / compState3D.h) || 1;
   let w = aw, h = w / aspect;
   if (h > ah) { h = ah; w = h * aspect; }
-  return { W, H, x: (W - w) / 2, y: topPad + (ah - h) / 2, w, h };
+  w = Math.max(1, Math.floor(w)); h = Math.max(1, Math.floor(h));
+  return { W, H, x: Math.round((W - w) / 2), y: Math.round(topPad + (ah - h) / 2), w, h };
 }
 
 // Called from animate3D() instead of the normal full-canvas render while composition is open.
+// The WebGL <canvas> element itself is resized + moved to become the composition canvas, so nothing can
+// ever be drawn outside it (no scissor / viewport maths that could disagree with the DOM frame).
 function compositionRender3D() {
   if (!compActive3D || !compApplied3D) return false;
+  const cont = document.getElementById('preview3D');
+  const cv = renderer3D.domElement;
+  // An overflow:hidden box can still be scrolled by focus / selection, which would shove everything down.
+  if (cont.scrollTop || cont.scrollLeft) { cont.scrollTop = 0; cont.scrollLeft = 0; }
   const r = compFrameRect3D();
+  if (cv.style.position !== 'absolute') cv.style.position = 'absolute';
+  cv.style.left = r.x + 'px'; cv.style.top = r.y + 'px';
+  const cur = renderer3D.getSize(new THREE.Vector2());
+  if (cur.x !== r.w || cur.y !== r.h) renderer3D.setSize(r.w, r.h); // also sets the canvas CSS size
   const aspect = r.w / r.h;
   if (Math.abs(camera3D.aspect - aspect) > 1e-6) { camera3D.aspect = aspect; camera3D.updateProjectionMatrix(); }
   renderer3D.setScissorTest(false);
-  renderer3D.setViewport(0, 0, r.W, r.H);
-  renderer3D.setClearColor(0x08080a, 1); // outside the canvas frame (scene.background re-sets this inside it)
-  renderer3D.clear();
-  const glY = r.H - r.y - r.h;
-  renderer3D.setViewport(r.x, glY, r.w, r.h);
-  renderer3D.setScissor(r.x, glY, r.w, r.h);
-  renderer3D.setScissorTest(true);
   renderer3D.render(scene3D, camera3D);
-  renderer3D.setScissorTest(false);
-  renderer3D.setViewport(0, 0, r.W, r.H);
 
   const fr = document.getElementById('jeCompFrame');
   if (fr) {
@@ -402,7 +404,7 @@ function compSet3D(key, value) {
   else if (key === 'aim0') S.aim[0] = value;
   else if (key === 'aim1') S.aim[1] = value;
   else S[key] = (value === '' ? '' : Number(value));
-  compSyncUI3D(key);
+  compSyncUI3D();
 }
 function compSetPreset3D(id) {
   const p = COMP_SIZE_PRESETS_3D.find(x => x.id === id);
@@ -416,14 +418,15 @@ function compToggleCollapse3D() {
   if (sh) sh.classList.toggle('collapsed', compCollapsed3D);
   compSyncUI3D();
   requestRender3D(6);
+  requestAnimationFrame(() => requestRender3D(6));
 }
 
 // Keeps every input in step with compState3D (skipping the one currently being typed in).
-function compSyncUI3D(skipKey) {
+function compSyncUI3D() {
   if (!compUIBuilt3D) return;
   const S = compState3D;
   const $ = (id) => document.getElementById(id);
-  const setVal = (id, v, key) => { const el = $(id); if (el && key !== skipKey && document.activeElement !== el) el.value = v; };
+  const setVal = (id, v) => { const el = $(id); if (el && document.activeElement !== el) el.value = v; };
   setVal('cpH', S.h, 'h'); setVal('cpB', S.b, 'b');
   const pre = COMP_SIZE_PRESETS_3D.find(p => p.h === S.h && p.b === S.b);
   if ($('cpPreset')) $('cpPreset').value = pre ? pre.id : 'custom';
@@ -541,7 +544,8 @@ function compBuildUI3D() {
   cont.appendChild(frame); cont.appendChild(blocker); cont.appendChild(sheet);
   // The canvas frame is laid out around the sheet's real height, so redraw whenever the sheet resizes
   // (expand / collapse, wrapped status text, rotating the phone).
-  if (typeof ResizeObserver === 'function') new ResizeObserver(() => requestRender3D(4)).observe(sheet);
+  if (typeof ResizeObserver === 'function') { const ro = new ResizeObserver(() => requestRender3D(4)); ro.observe(sheet); ro.observe(cont); }
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', () => requestRender3D(4));
   compUIBuilt3D = true;
 }
 
@@ -804,7 +808,10 @@ function closeCompositionPanel3D() {
   document.body.classList.remove('je-comp-active');
   ['jeCompFrame', 'jeCompBlocker', 'jeCompSheet'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   const cont = document.getElementById('preview3D');
-  if (renderer3D) { renderer3D.setScissorTest(false); renderer3D.setViewport(0, 0, cont.clientWidth, cont.clientHeight); }
+  if (renderer3D) {
+    renderer3D.setScissorTest(false);
+    const cv = renderer3D.domElement; cv.style.position = ''; cv.style.left = ''; cv.style.top = '';
+  }
 
   // Normal editor camera is back in charge.
   camera3D.aspect = cont.clientWidth / Math.max(1, cont.clientHeight);

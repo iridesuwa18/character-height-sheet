@@ -111,6 +111,8 @@ function resizeBody3D() {
   if (!sceneInited3D) return;
   const container = document.getElementById('preview3D');
   if (container.style.display === 'none') return;
+  // Composition sizes the canvas to its own frame every frame; a full-size resize here would fight it.
+  if (typeof compActive3D !== 'undefined' && compActive3D) { requestRender3D(3); return; }
   const w = container.clientWidth, h = container.clientHeight;
   if (!w || !h) return;
   camera3D.aspect = w/h; camera3D.updateProjectionMatrix();
