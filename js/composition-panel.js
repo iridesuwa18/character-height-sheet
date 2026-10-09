@@ -65,6 +65,7 @@ let compCollapsed3D = false;
 let compPoseChanged3D = false;
 let compSaved3D = null;      // editor camera saved while composition is open
 let compApplied3D = null;    // settings snapshot the camera is currently framed with
+const compExport3D = { fmt: 'png', transparent: true }; // image export options (png | jpg; transparent applies to png only)
 
 // Draft settings (what the panel shows). Only Generate/Randomise apply them.
 const compState3D = {
@@ -282,10 +283,17 @@ function compPositionCamera3D(s) {
 function compFrameRect3D() {
   const cont = document.getElementById('preview3D');
   const W = cont.clientWidth, H = cont.clientHeight;
+  const cr = cont.getBoundingClientRect();
+  // Bottom edge of the usable area: the real top of the settings sheet (so the canvas can never slip under it,
+  // whatever its height / bottom offset), and never lower than what a mobile browser actually shows
+  // (visualViewport excludes the collapsing URL bar / on-screen toolbars that 100dvh can still overlap).
+  let limit = H;
+  const vv = window.visualViewport;
+  if (vv) limit = Math.min(limit, vv.offsetTop + vv.height - cr.top);
   const sheet = document.getElementById('jeCompSheet');
-  const sheetH = sheet && sheet.offsetHeight ? sheet.offsetHeight + 8 : 0;
-  const pad = 12, topPad = 14;
-  const aw = Math.max(40, W - pad * 2), ah = Math.max(40, H - topPad - sheetH - pad);
+  if (sheet && sheet.offsetParent !== null) limit = Math.min(limit, sheet.getBoundingClientRect().top - cr.top);
+  const pad = 12, gap = 12, topPad = 24; // topPad leaves room for the size label above the frame
+  const aw = Math.max(40, W - pad * 2), ah = Math.max(40, limit - topPad - gap);
   const aspect = (compApplied3D ? compApplied3D.b / compApplied3D.h : compState3D.b / compState3D.h) || 1;
   let w = aw, h = w / aspect;
   if (h > ah) { h = ah; w = h * aspect; }
@@ -429,23 +437,45 @@ function compSyncUI3D(skipKey) {
   $('cpPoseYes').classList.toggle('active', S.randPose);
   $('cpPoseNo').classList.toggle('active', !S.randPose);
   $('cpAim0').value = S.aim[0]; $('cpAim1').value = S.aim[1];
+  const E = compExport3D;
+  $('cpFmtPng').classList.toggle('active', E.fmt === 'png'); $('cpFmtJpg').classList.toggle('active', E.fmt === 'jpg');
+  $('cpTranYes').classList.toggle('active', E.transparent); $('cpTranNo').classList.toggle('active', !E.transparent);
+  document.querySelectorAll('#jeCompSheet [data-dep="png"]').forEach(r => r.classList.toggle('dim', E.fmt !== 'png'));
+  ['cpTranYes', 'cpTranNo'].forEach(id => { $(id).disabled = E.fmt !== 'png'; });
   // Aim / Zoom / Pan only apply when the model is NOT forced to fit the canvas.
   ['cpAim0', 'cpAim1', 'cpZoom', 'cpZoomN', 'cpPanX', 'cpPanXN', 'cpPanY', 'cpPanYN'].forEach(id => { $(id).disabled = S.fits; });
   document.querySelectorAll('#jeCompSheet .cp-row[data-dep="nofit"]').forEach(r => r.classList.toggle('dim', S.fits));
   Object.keys(compLocks3D).forEach(k => {
     const b = $('cpLock_' + k); if (!b) return;
-    b.textContent = compLocks3D[k] ? '🔒' : '🔓';
     b.classList.toggle('on', compLocks3D[k]);
+    b.setAttribute('aria-pressed', compLocks3D[k] ? 'true' : 'false');
   });
-  const col = $('cpCollapse'); if (col) col.textContent = compCollapsed3D ? '▴' : '▾';
   compUpdatePoseLabel3D();
 }
+
+// Inline SVG icons (stroke = currentColor, so CSS colours them). Replaces the emoji/default glyphs.
+const COMP_ICONS_3D = {
+  locked:   '<svg class="ic-locked" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><circle cx="12" cy="16" r="1.3" fill="currentColor" stroke="none"/></svg>',
+  unlocked: '<svg class="ic-open" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V8a4 4 0 0 1 7.4-2.1"/><circle cx="12" cy="16" r="1.3" fill="currentColor" stroke="none"/></svg>',
+  chevron:  '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
+  close:    '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  dice:     '<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3.5"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="9" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/></svg>',
+  sparkle:  '<svg viewBox="0 0 24 24"><path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z"/></svg>',
+  upload:   '<svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>',
+  image:    '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M5 17l4.5-4.5 3 3 2.5-2.5L19 16"/></svg>',
+  refresh:  '<svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>',
+};
 
 function compBuildUI3D() {
   if (compUIBuilt3D) return;
   const cont = document.getElementById('preview3D');
   if (!cont) return;
-  const lock = (k) => `<button type="button" class="cp-lock" id="cpLock_${k}" onclick="compToggleLock3D('${k}')" aria-label="Lock ${k}" title="Lock (stops Randomise changing this)">🔓</button>`;
+  const IC = COMP_ICONS_3D;
+  // A square lock tile (own grid column, right side of its row). Both icons are in the markup; CSS shows the right one.
+  const lock = (k) => `<button type="button" class="cp-lock" id="cpLock_${k}" onclick="compToggleLock3D('${k}')" aria-pressed="false" aria-label="Lock ${k}" title="Lock (stops Randomise changing this)">${IC.unlocked}${IC.locked}</button>`;
+  const row = (label, lockKey, body, attrs) =>
+    `<div class="cp-row${lockKey ? '' : ' cp-wide'}" ${attrs || ''}><div class="cp-body"><div class="cp-lab">${label}</div>${body}</div>${lockKey ? lock(lockKey) : ''}</div>`;
   const slider = (id, key, min, max) =>
     `<input type="range" id="${id}" min="${min}" max="${max}" step="1" oninput="compSet3D('${key}', this.value)">` +
     `<input type="number" id="${id}N" min="${min}" max="${max}" step="1" oninput="compSet3D('${key}', this.value)">`;
@@ -462,49 +492,169 @@ function compBuildUI3D() {
     <div class="cp-head">
       <span class="jec-title">Composition</span>
       <span class="cp-head-btns">
-        <button type="button" class="je-close-btn" id="cpCollapse" onclick="compToggleCollapse3D()" aria-label="Show or hide settings">▾</button>
-        <button type="button" class="je-close-btn" onclick="closeCompositionPanel3D()" aria-label="Close">✕</button>
+        <button type="button" class="cp-icon-btn" id="cpCollapse" onclick="compToggleCollapse3D()" aria-label="Show or hide settings" title="Show / hide settings">${IC.chevron}</button>
+        <button type="button" class="cp-icon-btn" onclick="closeCompositionPanel3D()" aria-label="Close" title="Close">${IC.close}</button>
       </span>
     </div>
     <div class="cp-scroll">
-      <div class="cp-row"><div class="cp-lab"><span>Canvas size (px)</span>${lock('size')}</div>
+      ${row('Canvas size (px)', 'size', `
         <div class="cp-ctl">
           <select id="cpPreset" onchange="compSetPreset3D(this.value)">${presetOpts}</select>
           <span class="cp-mini">H</span><input type="number" id="cpH" min="64" max="10000" oninput="compSet3D('h', this.value)">
           <span class="cp-mini">B</span><input type="number" id="cpB" min="64" max="10000" oninput="compSet3D('b', this.value)">
-        </div></div>
-      <div class="cp-row"><div class="cp-lab"><span>Canvas rotation (0–360°)</span>${lock('rot')}</div>
-        <div class="cp-ctl">${slider('cpRot', 'rot', 0, 360)}</div></div>
-      <div class="cp-row"><div class="cp-lab"><span>Model fits to canvas</span>${lock('fits')}</div>
-        <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpFitsYes" onclick="compSet3D('fits', true)">Yes</button><button type="button" class="je-mode-btn" id="cpFitsNo" onclick="compSet3D('fits', false)">No</button></div></div>
-      <div class="cp-row" data-dep="nofit"><div class="cp-lab"><span>Body part aim (up to 2)</span>${lock('aim')}</div>
-        <div class="cp-ctl"><select id="cpAim0" onchange="compSet3D('aim0', this.value)">${aimOpts}</select><select id="cpAim1" onchange="compSet3D('aim1', this.value)">${aimOpts}</select></div></div>
-      <div class="cp-row" data-dep="nofit"><div class="cp-lab"><span>Zoom (%)</span>${lock('zoom')}</div>
-        <div class="cp-ctl">${slider('cpZoom', 'zoom', 0, 500)}</div></div>
-      <div class="cp-row" data-dep="nofit"><div class="cp-lab"><span>Pan X / Y</span>${lock('pan')}</div>
+        </div>`)}
+      ${row('Canvas rotation (0–360°)', 'rot', `<div class="cp-ctl">${slider('cpRot', 'rot', 0, 360)}</div>`)}
+      ${row('Model fits to canvas', 'fits', `
+        <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpFitsYes" onclick="compSet3D('fits', true)">Yes</button><button type="button" class="je-mode-btn" id="cpFitsNo" onclick="compSet3D('fits', false)">No</button></div>`)}
+      ${row('Body part aim (up to 2)', 'aim', `
+        <div class="cp-ctl"><select id="cpAim0" onchange="compSet3D('aim0', this.value)">${aimOpts}</select><select id="cpAim1" onchange="compSet3D('aim1', this.value)">${aimOpts}</select></div>`, 'data-dep="nofit"')}
+      ${row('Zoom (%)', 'zoom', `<div class="cp-ctl">${slider('cpZoom', 'zoom', 0, 500)}</div>`, 'data-dep="nofit"')}
+      ${row('Pan X / Y', 'pan', `
         <div class="cp-ctl">${slider('cpPanX', 'panX', -100, 100)}</div>
-        <div class="cp-ctl">${slider('cpPanY', 'panY', -100, 100)}</div></div>
-      <div class="cp-row"><div class="cp-lab"><span>Model rotation X / Y / Z (°)</span>${lock('mrot')}</div>
+        <div class="cp-ctl">${slider('cpPanY', 'panY', -100, 100)}</div>`, 'data-dep="nofit"')}
+      ${row('Model rotation X / Y / Z (°)', 'mrot', `
         <div class="cp-ctl"><span class="cp-mini">X</span>${slider('cpMx', 'mrx', -180, 180)}</div>
         <div class="cp-ctl"><span class="cp-mini">Y</span>${slider('cpMy', 'mry', -180, 180)}</div>
-        <div class="cp-ctl"><span class="cp-mini">Z</span>${slider('cpMz', 'mrz', -180, 180)}</div></div>
-      <div class="cp-row"><div class="cp-lab"><span>Randomise pose</span></div>
+        <div class="cp-ctl"><span class="cp-mini">Z</span>${slider('cpMz', 'mrz', -180, 180)}</div>`)}
+      ${row('Randomise pose', null, `
         <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpPoseYes" onclick="compSet3D('randPose', true)">Yes</button><button type="button" class="je-mode-btn" id="cpPoseNo" onclick="compSet3D('randPose', false)">No</button></div>
-        <div class="cp-pose" id="cpPoseName"></div></div>
-      <div class="cp-row cp-presets"><div class="cp-lab"><span>Presets (GitHub · presets/composition)</span></div>
+        <div class="cp-pose" id="cpPoseName"></div>`)}
+      ${row('Save image', null, `
+        <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpFmtPng" onclick="compSetExport3D('fmt', 'png')">PNG</button><button type="button" class="je-mode-btn" id="cpFmtJpg" onclick="compSetExport3D('fmt', 'jpg')">JPG</button></div>
+        <div class="cp-lab" data-dep="png" style="margin:6px 0 4px">Transparent background (PNG only)</div>
+        <div class="cp-ctl cp-seg" data-dep="png"><button type="button" class="je-mode-btn" id="cpTranYes" onclick="compSetExport3D('transparent', true)">Yes</button><button type="button" class="je-mode-btn" id="cpTranNo" onclick="compSetExport3D('transparent', false)">No</button></div>
+        <div class="cp-ctl"><button type="button" class="je-bottom-btn je-apply cp-wide-btn" onclick="exportCompositionImage3D(this)">${IC.image}<span>Save image</span></button></div>
+        <div class="cp-status" id="cpExportStatus"></div>`)}
+      <div class="cp-row cp-wide cp-presets"><div class="cp-body"><div class="cp-lab">Presets (GitHub · presets/composition)</div>
         <div class="cp-ctl"><input type="text" id="cpPresetName" placeholder="Preset name, e.g. hero-closeup" maxlength="80">
-          <button type="button" class="je-bottom-btn je-apply cp-small" id="cpSaveBtn" onclick="saveCompositionPreset3D()">⬆ Save</button></div>
+          <button type="button" class="je-bottom-btn je-apply cp-small" id="cpSaveBtn" onclick="saveCompositionPreset3D()" title="Save preset">${IC.upload}<span>Save</span></button></div>
         <div class="cp-ctl"><select id="cpPresetList" onfocus="refreshCompositionPresets3D()"><option value="">— Choose preset —</option></select>
-          <button type="button" class="je-bottom-btn cp-small" onclick="refreshCompositionPresets3D()" aria-label="Refresh list" title="Refresh list">⟳</button>
-          <button type="button" class="je-bottom-btn cp-small" onclick="loadCompositionPreset3D()">⬇ Load</button></div>
-        <div class="cp-status" id="cpPresetStatus"></div></div>
+          <button type="button" class="je-bottom-btn cp-small cp-sq" onclick="refreshCompositionPresets3D()" aria-label="Refresh list" title="Refresh list">${IC.refresh}</button>
+          <button type="button" class="je-bottom-btn cp-small" onclick="loadCompositionPreset3D()" title="Load preset">${IC.download}<span>Load</span></button></div>
+        <div class="cp-status" id="cpPresetStatus"></div></div></div>
     </div>
     <div class="cp-actions">
-      <button type="button" class="je-bottom-btn je-apply" onclick="generateComposition3D()">Generate</button>
-      <button type="button" class="je-bottom-btn" onclick="randomiseComposition3D()">🎲 Randomise</button>
+      <button type="button" class="je-bottom-btn je-apply" onclick="generateComposition3D()">${IC.sparkle}<span>Generate</span></button>
+      <button type="button" class="je-bottom-btn" onclick="randomiseComposition3D()">${IC.dice}<span>Randomise</span></button>
+      <button type="button" class="je-bottom-btn cp-act-save" onclick="exportCompositionImage3D(this)" aria-label="Save image" title="Save image (uses the format chosen in Save image)">${IC.image}<span>Save</span></button>
     </div>`;
   cont.appendChild(frame); cont.appendChild(blocker); cont.appendChild(sheet);
+  // The canvas frame is laid out around the sheet's real height, so redraw whenever the sheet resizes
+  // (expand / collapse, wrapped status text, rotating the phone).
+  if (typeof ResizeObserver === 'function') new ResizeObserver(() => requestRender3D(4)).observe(sheet);
   compUIBuilt3D = true;
+}
+
+// ── Image export (PNG / JPG) ────────────────────────────────────────────────
+// Re-renders the CURRENT framing (compApplied3D = what is on screen) off-screen at the canvas size
+// (B × H px, scaled down only if the device can't allocate that big a buffer), so the file is exactly the
+// framed canvas without the dark letterbox, the gold frame outline or any editor overlay.
+// PNG + transparent: scene background is removed and the alpha channel is kept. JPG: the normal dark
+// background (JPG has no alpha).
+
+const COMP_EXPORT_MAX_PIXELS_3D = 16777216; // 4096²: safe on phones
+
+function compSetExport3D(key, value) {
+  if (key === 'fmt') compExport3D.fmt = value === 'jpg' ? 'jpg' : 'png';
+  else if (key === 'transparent') compExport3D.transparent = !!value;
+  compSyncUI3D();
+}
+
+function compExportStatus3D(msg, kind) {
+  const el = document.getElementById('cpExportStatus'); if (!el) return;
+  el.textContent = msg || '';
+  el.style.color = kind === 'err' ? '#ff4d4d' : kind === 'ok' ? '#4cd964' : 'var(--muted)';
+}
+
+// Renders the framed composition into an RGBA ImageData (top-down). Returns {imageData, w, h, scaled}.
+function compRenderToImageData3D(transparent) {
+  const ap = compApplied3D;
+  const maxTex = renderer3D.capabilities.maxTextureSize || 4096;
+  let w = ap.b, h = ap.h, k = 1;
+  k = Math.min(1, maxTex / Math.max(w, h), Math.sqrt(COMP_EXPORT_MAX_PIXELS_3D / (w * h)));
+  const scaled = k < 1;
+  if (scaled) { w = Math.max(1, Math.floor(w * k)); h = Math.max(1, Math.floor(h * k)); }
+
+  const useMS = renderer3D.capabilities.isWebGL2 && typeof THREE.WebGLMultisampleRenderTarget === 'function';
+  const rt = useMS ? new THREE.WebGLMultisampleRenderTarget(w, h, { format: THREE.RGBAFormat }) : new THREE.WebGLRenderTarget(w, h, { format: THREE.RGBAFormat });
+  const prevBg = scene3D.background, prevAspect = camera3D.aspect;
+  const prevClear = new THREE.Color(); renderer3D.getClearColor(prevClear);
+  const prevAlpha = renderer3D.getClearAlpha();
+  // Hide everything that is not the posed body or a light (gizmo, puppet lines, markers…).
+  const hidden = [];
+  scene3D.children.forEach(o => {
+    if (o === poseRootGroup3D || o.isLight || !o.visible) return;
+    o.visible = false; hidden.push(o);
+  });
+  let pixels;
+  try {
+    camera3D.aspect = w / h; camera3D.updateProjectionMatrix();
+    if (transparent) scene3D.background = null;
+    renderer3D.setScissorTest(false);
+    renderer3D.setRenderTarget(rt);
+    renderer3D.setClearColor(0x000000, 0);
+    renderer3D.clear();
+    renderer3D.render(scene3D, camera3D);
+    pixels = new Uint8Array(w * h * 4);
+    renderer3D.readRenderTargetPixels(rt, 0, 0, w, h, pixels);
+  } finally {
+    renderer3D.setRenderTarget(null);
+    scene3D.background = prevBg;
+    renderer3D.setClearColor(prevClear, prevAlpha);
+    camera3D.aspect = prevAspect; camera3D.updateProjectionMatrix();
+    hidden.forEach(o => { o.visible = true; });
+    rt.dispose();
+    requestRender3D(4);
+  }
+  // GL rows are bottom-up; flip. Colour comes out premultiplied by alpha (blending onto a transparent
+  // clear), so un-premultiply for a normal straight-alpha PNG.
+  const out = new Uint8ClampedArray(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    let si = (h - 1 - y) * w * 4, di = y * w * 4;
+    for (let x = 0; x < w; x++, si += 4, di += 4) {
+      const a = pixels[si + 3];
+      if (a === 0) { out[di] = out[di + 1] = out[di + 2] = 0; out[di + 3] = 0; continue; }
+      if (a === 255) { out[di] = pixels[si]; out[di + 1] = pixels[si + 1]; out[di + 2] = pixels[si + 2]; out[di + 3] = 255; continue; }
+      const f = 255 / a;
+      out[di] = Math.min(255, pixels[si] * f + 0.5); out[di + 1] = Math.min(255, pixels[si + 1] * f + 0.5);
+      out[di + 2] = Math.min(255, pixels[si + 2] * f + 0.5); out[di + 3] = a;
+    }
+  }
+  return { imageData: new ImageData(out, w, h), w, h, scaled };
+}
+
+function exportCompositionImage3D(btn) {
+  if (!compActive3D || !compApplied3D) return;
+  const label = btn && btn.querySelector('span');
+  const origLabel = label ? label.textContent : '';
+  const flash = (t) => { if (label) { label.textContent = t; setTimeout(() => { label.textContent = origLabel; if (btn) btn.disabled = false; }, 1600); } };
+  const isPng = compExport3D.fmt === 'png';
+  if (btn) btn.disabled = true;
+  if (label) label.textContent = 'Saving…';
+  compExportStatus3D('Rendering…');
+  // Let the "Saving…" label paint before the heavy render.
+  setTimeout(() => {
+    try {
+      const r = compRenderToImageData3D(isPng && compExport3D.transparent);
+      const cv = document.createElement('canvas'); cv.width = r.w; cv.height = r.h;
+      cv.getContext('2d').putImageData(r.imageData, 0, 0);
+      cv.toBlob(blob => {
+        if (!blob) { compExportStatus3D('Could not create the image (too large for this device?).', 'err'); flash('Failed'); return; }
+        const pose = String(typeof currentPose3D === 'string' ? currentPose3D : 'pose').replace(/[^\w\-]+/g, '_');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'composition_' + pose + '_' + r.w + 'x' + r.h + (isPng ? '.png' : '.jpg');
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+        compExportStatus3D('Saved ' + r.w + ' × ' + r.h + ' px ' + (isPng ? 'PNG' + (compExport3D.transparent ? ' (transparent)' : '') : 'JPG') + (r.scaled ? ' — scaled down to fit this device' : ''), 'ok');
+        flash('Saved');
+      }, isPng ? 'image/png' : 'image/jpeg', 0.95);
+    } catch (e) {
+      console.error('Composition export failed', e);
+      compExportStatus3D('Export failed: ' + (e && e.message ? e.message : e), 'err');
+      flash('Failed');
+    }
+  }, 60);
 }
 
 // ── Presets (saved as separate .json files, like Height / Faces) ───────────
@@ -564,7 +714,7 @@ async function saveCompositionPreset3D() {
   compClean3D();
   const path = `${s.folder}/${name}.json`;
   const btn = document.getElementById('cpSaveBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  if (btn) { btn.disabled = true; const t = btn.querySelector('span'); if (t) t.textContent = 'Saving…'; }
   try {
     const url = compApiUrl3D(s, path);
     let sha;
@@ -582,7 +732,7 @@ async function saveCompositionPreset3D() {
   } catch (err) {
     compStatus3D('GitHub save failed: ' + err.message, 'err');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '⬆ Save'; }
+    if (btn) { btn.disabled = false; const t = btn.querySelector('span'); if (t) t.textContent = 'Save'; }
   }
 }
 
