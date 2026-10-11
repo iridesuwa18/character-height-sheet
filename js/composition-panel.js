@@ -340,8 +340,10 @@ function compGridUpdate3D(showGrid, showHorizon) {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera3D.quaternion);
   g.visible = true;
 
-  // ── Horizon: the eye-level plane always projects onto the horizon, so a long vertical ribbon at the camera's
-  // height, far ahead and square to the view, draws it (it tilts with the canvas rotation automatically).
+  // ── Horizon = eye level. On the picture it is always a straight horizontal line; it only tilts when the
+  // canvas itself is rotated. Its height on the canvas comes from how far the camera looks up / down
+  // (looking down pushes it up the canvas, off the top when steep; looking up pulls it down). It is drawn as a
+  // ribbon fixed to the camera, far behind the model, so it can't be roll-tilted by the model rotation X / Z.
   if (!compHorizonMesh3D) {
     const hg = new THREE.BufferGeometry();
     hg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
@@ -350,15 +352,25 @@ function compGridUpdate3D(showGrid, showHorizon) {
     compHorizonMesh3D.frustumCulled = false;
     g.add(compHorizonMesh3D);
   }
-  const fh = new THREE.Vector3(fwd.x, 0, fwd.z);
-  if (showHorizon && fh.lengthSq() > 1e-6) {
-    fh.normalize();
-    const D = 3000, L = D * 4, hw = (w * (D / Math.max(1, dist)) * 1.5) / 2, camY = camera3D.position.y;
-    const c = new THREE.Vector3(camera3D.position.x + fh.x * D, camY, camera3D.position.z + fh.z * D);
-    const rx = fh.z, rz = -fh.x; // horizontal, square to the view
+  if (showHorizon) {
+    camera3D.updateMatrixWorld(true);
+    const tanH = Math.tan(THREE.MathUtils.degToRad(camera3D.fov) / 2);
+    const pitch = Math.asin(Math.max(-1, Math.min(1, fwd.y)));            // + = looking up
+    const v0 = Math.max(-50, Math.min(50, -Math.tan(pitch) / tanH));       // horizon height, in half-canvas-heights
+    const rot = THREE.MathUtils.degToRad(compApplied3D ? compApplied3D.rot : 0);
+    const al = -rot;                                                        // canvas rotates clockwise
+    const dx = Math.cos(al), dy = Math.sin(al), nx = -Math.sin(al), ny = Math.cos(al);
+    const cxs = v0 * nx, cys = v0 * ny;                                     // closest point of the line to the centre
+    const Lh = (camera3D.aspect + 1) * 4;
+    const ht = COMP_GRID_THICKNESS_3D * 1.5;                                // half thickness, same units
+    const D = 3000, hh = D * tanH;
+    const corner = (u, v) => new THREE.Vector3(u * hh, v * hh, -D).applyMatrix4(camera3D.matrixWorld);
+    const q = [
+      corner(cxs - dx * Lh - nx * ht, cys - dy * Lh - ny * ht), corner(cxs + dx * Lh - nx * ht, cys + dy * Lh - ny * ht),
+      corner(cxs + dx * Lh + nx * ht, cys + dy * Lh + ny * ht), corner(cxs - dx * Lh + nx * ht, cys - dy * Lh + ny * ht),
+    ];
     const pa = compHorizonMesh3D.geometry.attributes.position;
-    pa.setXYZ(0, c.x - rx * L, camY - hw, c.z - rz * L); pa.setXYZ(1, c.x + rx * L, camY - hw, c.z + rz * L);
-    pa.setXYZ(2, c.x + rx * L, camY + hw, c.z + rz * L); pa.setXYZ(3, c.x - rx * L, camY + hw, c.z - rz * L);
+    q.forEach((p, i) => pa.setXYZ(i, p.x, p.y, p.z));
     pa.needsUpdate = true;
     compHorizonMesh3D.visible = true;
   } else compHorizonMesh3D.visible = false;
