@@ -342,48 +342,55 @@ function compGridUpdate3D(showGrid, showHorizon) {
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera3D.quaternion);
   g.visible = true;
 
-  // ── Horizon = eye level. On the picture it is always a straight horizontal line; it only tilts when the
-  // canvas itself is rotated. Its height on the canvas comes from how far the camera looks up / down
-  // (looking down pushes it up the canvas, off the top when steep; looking up pulls it down). It is drawn as a
-  // ribbon fixed to the camera and drawn on top of everything (like a guide laid over the picture), so it can't be roll-tilted by the model rotation X / Z.
+  // ── Horizon = eye level, drawn in front of the picture. It is the line of view directions that are exactly
+  // level with the camera, so it is always perpendicular to how "up" (the model's / world's vertical) appears
+  // on the canvas: level when the picture is upright, tilting with the canvas rotation and the model's roll.
+  // Its height comes from how far the camera looks up / down (looking down pushes it up the canvas, off the top
+  // when steep). It is a ribbon fixed to the camera, drawn on top of everything like a guide over the picture.
   if (!compHorizonMesh3D) {
     const hg = new THREE.BufferGeometry();
     hg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
     hg.setIndex([0, 1, 2, 0, 2, 3]);
-    compHorizonMesh3D = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: 0xff2d2d, side: THREE.DoubleSide, fog: false, toneMapped: false, depthTest: false, depthWrite: false }));
+    // transparent:true puts it in the last render pass (the body is semi-transparent), so renderOrder can really put it on top
+    compHorizonMesh3D = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: 0xff2d2d, side: THREE.DoubleSide, fog: false, toneMapped: false, transparent: true, depthTest: false, depthWrite: false }));
     compHorizonMesh3D.frustumCulled = false;
-    compHorizonMesh3D.renderOrder = 1000; // always drawn last, in front of the model (it is a guide over the picture)
+    compHorizonMesh3D.renderOrder = 1000;
     g.add(compHorizonMesh3D);
   }
   if (showHorizon) {
     camera3D.updateMatrixWorld(true);
     const tanH = Math.tan(THREE.MathUtils.degToRad(camera3D.fov) / 2);
-    const pitch = Math.asin(Math.max(-1, Math.min(1, fwd.y)));            // + = looking up
-    const v0 = Math.max(-50, Math.min(50, -Math.tan(pitch) / tanH));       // horizon height, in half-canvas-heights
-    const rot = THREE.MathUtils.degToRad(compApplied3D ? compApplied3D.rot : 0);
-    const al = -rot;                                                        // canvas rotates clockwise
-    const dx = Math.cos(al), dy = Math.sin(al), nx = -Math.sin(al), ny = Math.cos(al);
-    const cxs = v0 * nx, cys = v0 * ny;                                     // closest point of the line to the centre
-    // Is the line off the canvas? It misses the canvas rectangle when its offset exceeds the rectangle's reach
-    // along the line's normal. dist = how far past the edge, in canvas heights.
-    const reach = camera3D.aspect * Math.abs(nx) + Math.abs(ny);
-    compHorizonInfo3D = {
-      outside: Math.abs(v0) > reach + 1e-4,
-      dir: Math.abs(cys) >= Math.abs(cxs) ? (cys > 0 ? 'up' : 'down') : (cxs > 0 ? 'right' : 'left'),
-      dist: Math.max(0, (Math.abs(v0) - reach) / 2),
-    };
-    const Lh = (camera3D.aspect + 1) * 4;
-    const ht = COMP_GRID_THICKNESS_3D * 1.5;                                // half thickness, same units
-    const D = 3000, hh = D * tanH;
-    const corner = (u, v) => new THREE.Vector3(u * hh, v * hh, -D).applyMatrix4(camera3D.matrixWorld);
-    const q = [
-      corner(cxs - dx * Lh - nx * ht, cys - dy * Lh - ny * ht), corner(cxs + dx * Lh - nx * ht, cys + dy * Lh - ny * ht),
-      corner(cxs + dx * Lh + nx * ht, cys + dy * Lh + ny * ht), corner(cxs - dx * Lh + nx * ht, cys - dy * Lh + ny * ht),
-    ];
-    const pa = compHorizonMesh3D.geometry.attributes.position;
-    q.forEach((p, i) => pa.setXYZ(i, p.x, p.y, p.z));
-    pa.needsUpdate = true;
-    compHorizonMesh3D.visible = true;
+    // World "up" in camera space (x right, y up, z back). A view ray (u*tanH, v*tanH, -1) is level when
+    // ray · up = 0  →  u·ux + v·uy = uz / tanH   (u, v in half-canvas-heights).
+    const uc = new THREE.Vector3(0, 1, 0).applyQuaternion(camera3D.quaternion.clone().invert());
+    const nl = Math.hypot(uc.x, uc.y);
+    if (nl < 1e-4) { // looking straight up / down: the horizon is not on the picture
+      compHorizonInfo3D = { outside: true, dir: uc.z > 0 ? 'up' : 'down', dist: 99 };
+      compHorizonMesh3D.visible = false;
+    } else {
+      const nx = uc.x / nl, ny = uc.y / nl;                                 // line normal (points toward "up" on the canvas)
+      const v0 = Math.max(-50, Math.min(50, uc.z / tanH / nl));             // signed offset of the line from the centre
+      const dx = -ny, dy = nx;                                              // line direction
+      const cxs = v0 * nx, cys = v0 * ny;                                   // closest point of the line to the centre
+      const reach = camera3D.aspect * Math.abs(nx) + Math.abs(ny);          // canvas rectangle's reach along the normal
+      compHorizonInfo3D = {
+        outside: Math.abs(v0) > reach + 1e-4,
+        dir: Math.abs(cys) >= Math.abs(cxs) ? (cys > 0 ? 'up' : 'down') : (cxs > 0 ? 'right' : 'left'),
+        dist: Math.max(0, (Math.abs(v0) - reach) / 2),                      // how far past the edge, in canvas heights
+      };
+      const Lh = (camera3D.aspect + 1) * 4;
+      const ht = COMP_GRID_THICKNESS_3D * 1.5;                              // half thickness, same units
+      const D = 3000, hh = D * tanH;
+      const corner = (u, v) => new THREE.Vector3(u * hh, v * hh, -D).applyMatrix4(camera3D.matrixWorld);
+      const q = [
+        corner(cxs - dx * Lh - nx * ht, cys - dy * Lh - ny * ht), corner(cxs + dx * Lh - nx * ht, cys + dy * Lh - ny * ht),
+        corner(cxs + dx * Lh + nx * ht, cys + dy * Lh + ny * ht), corner(cxs - dx * Lh + nx * ht, cys - dy * Lh + ny * ht),
+      ];
+      const pa = compHorizonMesh3D.geometry.attributes.position;
+      q.forEach((p, i) => pa.setXYZ(i, p.x, p.y, p.z));
+      pa.needsUpdate = true;
+      compHorizonMesh3D.visible = true;
+    }
   } else compHorizonMesh3D.visible = false;
 
   // ── Grid
