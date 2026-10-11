@@ -65,7 +65,7 @@ let compCollapsed3D = false;
 let compPoseChanged3D = false;
 let compSaved3D = null;      // editor camera saved while composition is open
 let compApplied3D = null;    // settings snapshot the camera is currently framed with
-const compExport3D = { fmt: 'png', transparent: true }; // image export options (png | jpg; transparent applies to png only)
+const compExport3D = { fmt: 'png', transparent: true, grid: false }; // image export options (png | jpg; transparent applies to png only; grid = draw the perspective grid into the saved image)
 
 // Draft settings (what the panel shows). Only Generate/Randomise apply them.
 const compState3D = {
@@ -77,6 +77,10 @@ const compState3D = {
   panX: 0, panY: 0,          // -100..100 across the available travel
   mrx: 0, mry: 0, mrz: 0,    // model rotation X/Y/Z, degrees
   randPose: false,           // Randomise Pose on Generate/Randomise
+  gridShow: false,           // perspective grid visible while composing
+  horizonShow: false,        // red horizon (eye-level) line
+  gridLines: 12,             // gridlines per direction on each plane (2..60)
+  gridFloor: true, gridBack: true, gridSide: true, // which planes of the grid "room" are drawn
 };
 // Locks stop Randomise from changing an option. Canvas size starts locked so
 // the A4 default isn't thrown away on the first Randomise — unlock it to
@@ -301,6 +305,109 @@ function compFrameRect3D() {
   return { W, H, x: Math.round((W - w) / 2), y: Math.round(topPad + (ah - h) / 2), w, h };
 }
 
+// ── Perspective grid ────────────────────────────────────────────────────────
+// A "room" of grid-paper lines in WORLD space (floor + the two walls behind the model), drawn with the same
+// camera as the model, so the lines converge exactly like the character's own perspective. Lines are thin flat
+// ribbons (a plain GL line is always 1px, which vanishes at print resolution); their width is a fixed fraction
+// of the visible height at the model, so a screen preview and a 3508px export look alike.
+// Back / Side only draw the wall on the far side of the model from the camera (never in front of it).
+
+const COMP_GRID_COLOR_3D = 0x7aa2ff;
+const COMP_GRID_THICKNESS_3D = 0.002; // line width as a fraction of the visible height at the model
+let compGridGroup3D = null;
+let compGridKey3D = '';
+
+let compGridMesh3D = null, compHorizonMesh3D = null;
+
+function compGridUpdate3D(showGrid, showHorizon) {
+  if (!compGridGroup3D) {
+    compGridGroup3D = new THREE.Group();
+    compGridGroup3D.name = 'compPerspectiveGrid';
+    scene3D.add(compGridGroup3D);
+  }
+  const g = compGridGroup3D;
+  if (!bodyGroup3D || (!showGrid && !showHorizon)) { g.visible = false; return; }
+  const S = compState3D;
+  poseRootGroup3D.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(bodyGroup3D);
+  if (!isFinite(box.min.y) || !isFinite(box.max.y)) { g.visible = false; return; }
+  const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
+  const Hm = Math.max(10, box.max.y);   // character height (cm); the floor is y = 0
+  const E = Hm * 2;                      // half size of the room
+  const mid = box.getCenter(new THREE.Vector3());
+  const dist = camera3D.position.distanceTo(mid);
+  const w = 2 * dist * Math.tan(THREE.MathUtils.degToRad(camera3D.fov) / 2) * COMP_GRID_THICKNESS_3D;
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera3D.quaternion);
+  g.visible = true;
+
+  // ── Horizon: the eye-level plane always projects onto the horizon, so a long vertical ribbon at the camera's
+  // height, far ahead and square to the view, draws it (it tilts with the canvas rotation automatically).
+  if (!compHorizonMesh3D) {
+    const hg = new THREE.BufferGeometry();
+    hg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
+    hg.setIndex([0, 1, 2, 0, 2, 3]);
+    compHorizonMesh3D = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: 0xff2d2d, side: THREE.DoubleSide, fog: false, toneMapped: false }));
+    compHorizonMesh3D.frustumCulled = false;
+    g.add(compHorizonMesh3D);
+  }
+  const fh = new THREE.Vector3(fwd.x, 0, fwd.z);
+  if (showHorizon && fh.lengthSq() > 1e-6) {
+    fh.normalize();
+    const D = 3000, L = D * 4, hw = (w * (D / Math.max(1, dist)) * 1.5) / 2, camY = camera3D.position.y;
+    const c = new THREE.Vector3(camera3D.position.x + fh.x * D, camY, camera3D.position.z + fh.z * D);
+    const rx = fh.z, rz = -fh.x; // horizontal, square to the view
+    const pa = compHorizonMesh3D.geometry.attributes.position;
+    pa.setXYZ(0, c.x - rx * L, camY - hw, c.z - rz * L); pa.setXYZ(1, c.x + rx * L, camY - hw, c.z + rz * L);
+    pa.setXYZ(2, c.x + rx * L, camY + hw, c.z + rz * L); pa.setXYZ(3, c.x - rx * L, camY + hw, c.z - rz * L);
+    pa.needsUpdate = true;
+    compHorizonMesh3D.visible = true;
+  } else compHorizonMesh3D.visible = false;
+
+  // ── Grid
+  if (!showGrid) { if (compGridMesh3D) compGridMesh3D.visible = false; return; }
+  const N = Math.min(60, Math.max(2, Math.round(Number(S.gridLines) || 12)));
+  const zw = cz + (fwd.z < 0 ? -E : E);   // wall behind the model, as seen from the camera
+  const xw = cx + (fwd.x < 0 ? -E : E);
+  const key = [N, S.gridFloor, S.gridBack, S.gridSide, zw.toFixed(1), xw.toFixed(1), E.toFixed(1), w.toFixed(3), cx.toFixed(1), cz.toFixed(1)].join('|');
+  if (key === compGridKey3D && compGridMesh3D) { compGridMesh3D.visible = true; return; }
+  compGridKey3D = key;
+
+  const pos = [], idx = [];
+  // A flat ribbon from a to b, widened by `wd` (unit vector in the plane, perpendicular to the line).
+  const ribbon = (ax, ay, az, bx, by, bz, wx, wy, wz) => {
+    const h = w / 2, i = pos.length / 3;
+    pos.push(ax - wx * h, ay - wy * h, az - wz * h, ax + wx * h, ay + wy * h, az + wz * h,
+             bx + wx * h, by + wy * h, bz + wz * h, bx - wx * h, by - wy * h, bz - wz * h);
+    idx.push(i, i + 1, i + 2, i, i + 2, i + 3);
+  };
+  const t = (i) => -E + (2 * E * i) / (N - 1);
+  const up = (i) => (2 * E * i) / (N - 1);
+  for (let i = 0; i < N; i++) {
+    if (S.gridFloor) {
+      ribbon(cx - E, 0, cz + t(i), cx + E, 0, cz + t(i), 0, 0, 1);
+      ribbon(cx + t(i), 0, cz - E, cx + t(i), 0, cz + E, 1, 0, 0);
+    }
+    if (S.gridBack) {
+      ribbon(cx + t(i), 0, zw, cx + t(i), 2 * E, zw, 1, 0, 0);
+      ribbon(cx - E, up(i), zw, cx + E, up(i), zw, 0, 1, 0);
+    }
+    if (S.gridSide) {
+      ribbon(xw, 0, cz + t(i), xw, 2 * E, cz + t(i), 0, 0, 1);
+      ribbon(xw, up(i), cz - E, xw, up(i), cz + E, 0, 1, 0);
+    }
+  }
+  if (compGridMesh3D) { g.remove(compGridMesh3D); compGridMesh3D.geometry.dispose(); compGridMesh3D.material.dispose(); compGridMesh3D = null; }
+  if (!pos.length) return;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  compGridMesh3D = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    color: COMP_GRID_COLOR_3D, side: THREE.DoubleSide, fog: false, toneMapped: false,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, // sit just behind the model, no z-fighting at the feet
+  }));
+  g.add(compGridMesh3D);
+}
+
 // Called from animate3D() instead of the normal full-canvas render while composition is open.
 // The WebGL <canvas> element itself is resized + moved to become the composition canvas, so nothing can
 // ever be drawn outside it (no scissor / viewport maths that could disagree with the DOM frame).
@@ -318,6 +425,7 @@ function compositionRender3D() {
   const aspect = r.w / r.h;
   if (Math.abs(camera3D.aspect - aspect) > 1e-6) { camera3D.aspect = aspect; camera3D.updateProjectionMatrix(); }
   renderer3D.setScissorTest(false);
+  compGridUpdate3D(compState3D.gridShow, compState3D.horizonShow);
   renderer3D.render(scene3D, camera3D);
 
   const fr = document.getElementById('jeCompFrame');
@@ -359,6 +467,7 @@ function compClean3D() {
   s.zoom = Math.round(num(s.zoom, 0, 1000, 0));
   s.panX = Math.round(num(s.panX, -100, 100, 0)); s.panY = Math.round(num(s.panY, -100, 100, 0));
   s.mrx = Math.round(num(s.mrx, -180, 180, 0)); s.mry = Math.round(num(s.mry, -180, 180, 0)); s.mrz = Math.round(num(s.mrz, -180, 180, 0));
+  s.gridLines = Math.round(num(s.gridLines, 2, 60, 12));
   if (s.aim[0] && s.aim[0] === s.aim[1]) s.aim[1] = '';
 }
 
@@ -401,6 +510,7 @@ function compSet3D(key, value) {
   const S = compState3D;
   if (key === 'fits') S.fits = !!value;
   else if (key === 'randPose') S.randPose = !!value;
+  else if (key === 'gridShow' || key === 'horizonShow' || key === 'gridFloor' || key === 'gridBack' || key === 'gridSide') S[key] = !!value;
   else if (key === 'aim0') S.aim[0] = value;
   else if (key === 'aim1') S.aim[1] = value;
   else S[key] = (value === '' ? '' : Number(value));
@@ -440,6 +550,13 @@ function compSyncUI3D() {
   $('cpPoseYes').classList.toggle('active', S.randPose);
   $('cpPoseNo').classList.toggle('active', !S.randPose);
   $('cpAim0').value = S.aim[0]; $('cpAim1').value = S.aim[1];
+  setVal('cpGrid', S.gridLines); setVal('cpGridN', S.gridLines);
+  $('cpGridOn').classList.toggle('active', S.gridShow); $('cpGridOff').classList.toggle('active', !S.gridShow);
+  $('cpHorizOn').classList.toggle('active', S.horizonShow); $('cpHorizOff').classList.toggle('active', !S.horizonShow);
+  $('cpGridFloor').classList.toggle('active', S.gridFloor);
+  $('cpGridBack').classList.toggle('active', S.gridBack);
+  $('cpGridSide').classList.toggle('active', S.gridSide);
+  $('cpGridImgYes').classList.toggle('active', compExport3D.grid); $('cpGridImgNo').classList.toggle('active', !compExport3D.grid);
   const E = compExport3D;
   $('cpFmtPng').classList.toggle('active', E.fmt === 'png'); $('cpFmtJpg').classList.toggle('active', E.fmt === 'jpg');
   $('cpTranYes').classList.toggle('active', E.transparent); $('cpTranNo').classList.toggle('active', !E.transparent);
@@ -454,6 +571,7 @@ function compSyncUI3D() {
     b.setAttribute('aria-pressed', compLocks3D[k] ? 'true' : 'false');
   });
   compUpdatePoseLabel3D();
+  requestRender3D(3); // grid options redraw immediately
 }
 
 // Inline SVG icons (stroke = currentColor, so CSS colours them). Replaces the emoji/default glyphs.
@@ -519,6 +637,17 @@ function compBuildUI3D() {
         <div class="cp-ctl"><span class="cp-mini">X</span>${slider('cpMx', 'mrx', -180, 180)}</div>
         <div class="cp-ctl"><span class="cp-mini">Y</span>${slider('cpMy', 'mry', -180, 180)}</div>
         <div class="cp-ctl"><span class="cp-mini">Z</span>${slider('cpMz', 'mrz', -180, 180)}</div>`)}
+      ${row('Perspective grid', null, `
+        <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpGridOn" onclick="compSet3D('gridShow', true)">Show</button><button type="button" class="je-mode-btn" id="cpGridOff" onclick="compSet3D('gridShow', false)">Hide</button></div>
+        <div class="cp-lab" style="margin:6px 0 4px">Horizon line (red, eye level)</div>
+        <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpHorizOn" onclick="compSet3D('horizonShow', true)">Show</button><button type="button" class="je-mode-btn" id="cpHorizOff" onclick="compSet3D('horizonShow', false)">Hide</button></div>
+        <div class="cp-lab" style="margin:6px 0 4px">Gridlines per side (2–60)</div>
+        <div class="cp-ctl">${slider('cpGrid', 'gridLines', 2, 60)}</div>
+        <div class="cp-lab" style="margin:6px 0 4px">Planes (back / side = the walls behind the model)</div>
+        <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpGridFloor" onclick="compSet3D('gridFloor', !compState3D.gridFloor)">Floor</button><button type="button" class="je-mode-btn" id="cpGridBack" onclick="compSet3D('gridBack', !compState3D.gridBack)">Back</button><button type="button" class="je-mode-btn" id="cpGridSide" onclick="compSet3D('gridSide', !compState3D.gridSide)">Side</button></div>
+        <div class="cp-lab" style="margin:6px 0 4px">Grid + horizon in saved image</div>
+        <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpGridImgYes" onclick="compSetExport3D('grid', true)">Yes</button><button type="button" class="je-mode-btn" id="cpGridImgNo" onclick="compSetExport3D('grid', false)">No</button></div>
+        <div class="cp-ctl"><button type="button" class="je-bottom-btn cp-wide-btn" onclick="exportCompositionImage3D(this, 'grid')">${IC.image}<span>Save grid + horizon only (transparent PNG)</span></button></div>`)}
       ${row('Randomise pose', null, `
         <div class="cp-ctl cp-seg"><button type="button" class="je-mode-btn" id="cpPoseYes" onclick="compSet3D('randPose', true)">Yes</button><button type="button" class="je-mode-btn" id="cpPoseNo" onclick="compSet3D('randPose', false)">No</button></div>
         <div class="cp-pose" id="cpPoseName"></div>`)}
@@ -561,6 +690,7 @@ const COMP_EXPORT_MAX_PIXELS_3D = 16777216; // 4096²: safe on phones
 function compSetExport3D(key, value) {
   if (key === 'fmt') compExport3D.fmt = value === 'jpg' ? 'jpg' : 'png';
   else if (key === 'transparent') compExport3D.transparent = !!value;
+  else if (key === 'grid') compExport3D.grid = !!value;
   compSyncUI3D();
 }
 
@@ -571,7 +701,8 @@ function compExportStatus3D(msg, kind) {
 }
 
 // Renders the framed composition into an RGBA ImageData (top-down). Returns {imageData, w, h, scaled}.
-function compRenderToImageData3D(transparent) {
+function compRenderToImageData3D(transparent, mode) {
+  mode = mode || 'model'; // 'model' (posed body, grid optional) | 'grid' (perspective grid only)
   const ap = compApplied3D;
   const maxTex = renderer3D.capabilities.maxTextureSize || 4096;
   let w = ap.b, h = ap.h, k = 1;
@@ -587,14 +718,19 @@ function compRenderToImageData3D(transparent) {
   // Hide everything that is not the posed body or a light (gizmo, puppet lines, markers…).
   const hidden = [];
   scene3D.children.forEach(o => {
-    if (o === poseRootGroup3D || o.isLight || !o.visible) return;
+    if (o === poseRootGroup3D || o === compGridGroup3D || o.isLight || !o.visible) return;
     o.visible = false; hidden.push(o);
   });
+  const wantGrid = mode === 'grid' || compExport3D.grid;
+  const prevGridVis = compGridGroup3D ? compGridGroup3D.visible : false;
+  const prevPoseVis = poseRootGroup3D.visible;
+  if (mode === 'grid') { poseRootGroup3D.visible = false; transparent = true; }
   let pixels;
   try {
     camera3D.aspect = w / h; camera3D.updateProjectionMatrix();
     if (transparent) scene3D.background = null;
     renderer3D.setScissorTest(false);
+    compGridUpdate3D(wantGrid, wantGrid && compState3D.horizonShow);
     renderer3D.setRenderTarget(rt);
     renderer3D.setClearColor(0x000000, 0);
     renderer3D.clear();
@@ -607,6 +743,8 @@ function compRenderToImageData3D(transparent) {
     renderer3D.setClearColor(prevClear, prevAlpha);
     camera3D.aspect = prevAspect; camera3D.updateProjectionMatrix();
     hidden.forEach(o => { o.visible = true; });
+    poseRootGroup3D.visible = prevPoseVis;
+    if (compGridGroup3D) compGridGroup3D.visible = prevGridVis;
     rt.dispose();
     requestRender3D(4);
   }
@@ -627,19 +765,21 @@ function compRenderToImageData3D(transparent) {
   return { imageData: new ImageData(out, w, h), w, h, scaled };
 }
 
-function exportCompositionImage3D(btn) {
+function exportCompositionImage3D(btn, mode) {
+  mode = mode === 'grid' ? 'grid' : 'model';
   if (!compActive3D || !compApplied3D) return;
   const label = btn && btn.querySelector('span');
   const origLabel = label ? label.textContent : '';
   const flash = (t) => { if (label) { label.textContent = t; setTimeout(() => { label.textContent = origLabel; if (btn) btn.disabled = false; }, 1600); } };
-  const isPng = compExport3D.fmt === 'png';
+  const isPng = mode === 'grid' ? true : compExport3D.fmt === 'png';
+  const wantTransparent = mode === 'grid' ? true : (isPng && compExport3D.transparent);
   if (btn) btn.disabled = true;
   if (label) label.textContent = 'Saving…';
   compExportStatus3D('Rendering…');
   // Let the "Saving…" label paint before the heavy render.
   setTimeout(() => {
     try {
-      const r = compRenderToImageData3D(isPng && compExport3D.transparent);
+      const r = compRenderToImageData3D(wantTransparent, mode);
       const cv = document.createElement('canvas'); cv.width = r.w; cv.height = r.h;
       cv.getContext('2d').putImageData(r.imageData, 0, 0);
       cv.toBlob(blob => {
@@ -647,10 +787,10 @@ function exportCompositionImage3D(btn) {
         const pose = String(typeof currentPose3D === 'string' ? currentPose3D : 'pose').replace(/[^\w\-]+/g, '_');
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'composition_' + pose + '_' + r.w + 'x' + r.h + (isPng ? '.png' : '.jpg');
+        a.download = (mode === 'grid' ? 'perspective-grid_' + pose : 'composition_' + pose) + '_' + r.w + 'x' + r.h + (isPng ? '.png' : '.jpg');
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-        compExportStatus3D('Saved ' + r.w + ' × ' + r.h + ' px ' + (isPng ? 'PNG' + (compExport3D.transparent ? ' (transparent)' : '') : 'JPG') + (r.scaled ? ' — scaled down to fit this device' : ''), 'ok');
+        compExportStatus3D('Saved ' + r.w + ' × ' + r.h + ' px ' + (mode === 'grid' ? 'grid PNG (transparent)' : isPng ? 'PNG' + (compExport3D.transparent ? ' (transparent)' : '') : 'JPG') + (r.scaled ? ' — scaled down to fit this device' : ''), 'ok');
         flash('Saved');
       }, isPng ? 'image/png' : 'image/jpeg', 0.95);
     } catch (e) {
@@ -744,9 +884,10 @@ async function saveCompositionPreset3D() {
 function compApplyPreset3D(data) {
   const src = (data && data.settings) || data || {};
   const S = compState3D;
-  ['h', 'b', 'rot', 'zoom', 'panX', 'panY', 'mrx', 'mry', 'mrz'].forEach(k => { if (isFinite(Number(src[k])) && src[k] !== '' && src[k] !== null) S[k] = Number(src[k]); });
+  ['h', 'b', 'rot', 'zoom', 'panX', 'panY', 'mrx', 'mry', 'mrz', 'gridLines'].forEach(k => { if (isFinite(Number(src[k])) && src[k] !== '' && src[k] !== null) S[k] = Number(src[k]); });
   if (typeof src.fits === 'boolean') S.fits = src.fits;
   if (typeof src.randPose === 'boolean') S.randPose = src.randPose;
+  ['gridShow', 'horizonShow', 'gridFloor', 'gridBack', 'gridSide'].forEach(k => { if (typeof src[k] === 'boolean') S[k] = src[k]; });
   if (Array.isArray(src.aim)) {
     const ok = id => COMP_AIM_PARTS_3D.some(p => p.id === id);
     S.aim = [ok(src.aim[0]) ? src.aim[0] : '', ok(src.aim[1]) ? src.aim[1] : ''];
@@ -808,6 +949,7 @@ function closeCompositionPanel3D() {
   document.body.classList.remove('je-comp-active');
   ['jeCompFrame', 'jeCompBlocker', 'jeCompSheet'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   const cont = document.getElementById('preview3D');
+  if (compGridGroup3D) compGridGroup3D.visible = false;
   if (renderer3D) {
     renderer3D.setScissorTest(false);
     const cv = renderer3D.domElement; cv.style.position = ''; cv.style.left = ''; cv.style.top = '';
