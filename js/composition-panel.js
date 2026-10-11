@@ -318,8 +318,10 @@ let compGridGroup3D = null;
 let compGridKey3D = '';
 
 let compGridMesh3D = null, compHorizonMesh3D = null;
+let compHorizonInfo3D = null; // { outside, dir: up|down|left|right, dist } while the horizon is shown; else null
 
 function compGridUpdate3D(showGrid, showHorizon) {
+  compHorizonInfo3D = null;
   if (!compGridGroup3D) {
     compGridGroup3D = new THREE.Group();
     compGridGroup3D.name = 'compPerspectiveGrid';
@@ -343,13 +345,14 @@ function compGridUpdate3D(showGrid, showHorizon) {
   // ── Horizon = eye level. On the picture it is always a straight horizontal line; it only tilts when the
   // canvas itself is rotated. Its height on the canvas comes from how far the camera looks up / down
   // (looking down pushes it up the canvas, off the top when steep; looking up pulls it down). It is drawn as a
-  // ribbon fixed to the camera, far behind the model, so it can't be roll-tilted by the model rotation X / Z.
+  // ribbon fixed to the camera and drawn on top of everything (like a guide laid over the picture), so it can't be roll-tilted by the model rotation X / Z.
   if (!compHorizonMesh3D) {
     const hg = new THREE.BufferGeometry();
     hg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3));
     hg.setIndex([0, 1, 2, 0, 2, 3]);
-    compHorizonMesh3D = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: 0xff2d2d, side: THREE.DoubleSide, fog: false, toneMapped: false }));
+    compHorizonMesh3D = new THREE.Mesh(hg, new THREE.MeshBasicMaterial({ color: 0xff2d2d, side: THREE.DoubleSide, fog: false, toneMapped: false, depthTest: false, depthWrite: false }));
     compHorizonMesh3D.frustumCulled = false;
+    compHorizonMesh3D.renderOrder = 1000; // always drawn last, in front of the model (it is a guide over the picture)
     g.add(compHorizonMesh3D);
   }
   if (showHorizon) {
@@ -361,6 +364,14 @@ function compGridUpdate3D(showGrid, showHorizon) {
     const al = -rot;                                                        // canvas rotates clockwise
     const dx = Math.cos(al), dy = Math.sin(al), nx = -Math.sin(al), ny = Math.cos(al);
     const cxs = v0 * nx, cys = v0 * ny;                                     // closest point of the line to the centre
+    // Is the line off the canvas? It misses the canvas rectangle when its offset exceeds the rectangle's reach
+    // along the line's normal. dist = how far past the edge, in canvas heights.
+    const reach = camera3D.aspect * Math.abs(nx) + Math.abs(ny);
+    compHorizonInfo3D = {
+      outside: Math.abs(v0) > reach + 1e-4,
+      dir: Math.abs(cys) >= Math.abs(cxs) ? (cys > 0 ? 'up' : 'down') : (cxs > 0 ? 'right' : 'left'),
+      dist: Math.max(0, (Math.abs(v0) - reach) / 2),
+    };
     const Lh = (camera3D.aspect + 1) * 4;
     const ht = COMP_GRID_THICKNESS_3D * 1.5;                                // half thickness, same units
     const D = 3000, hh = D * tanH;
@@ -420,6 +431,22 @@ function compGridUpdate3D(showGrid, showHorizon) {
   g.add(compGridMesh3D);
 }
 
+// Small on-screen hint (not part of any export) shown inside the canvas edge when the horizon is outside it.
+function compHorizonTagUpdate3D() {
+  const tag = document.getElementById('cpHorizonTag'); if (!tag) return;
+  const info = compHorizonInfo3D;
+  if (!compState3D.horizonShow || !info || !info.outside) { tag.style.display = 'none'; return; }
+  const D = { up: ['▲', 'above'], down: ['▼', 'below'], left: ['◀', 'left of'], right: ['▶', 'right of'] }[info.dir];
+  tag.textContent = D[0] + ' Horizon ' + D[1] + ' canvas · ' + info.dist.toFixed(1) + '× canvas height away';
+  const st = tag.style;
+  st.cssText = 'position:absolute;display:block;padding:3px 8px;border-radius:10px;background:rgba(0,0,0,0.65);' +
+    'border:1px solid #ff2d2d;color:#ff6b6b;font:600 10px "Space Mono",monospace;white-space:nowrap;pointer-events:none;z-index:2;';
+  if (info.dir === 'up') { st.top = '6px'; st.left = '50%'; st.transform = 'translateX(-50%)'; }
+  else if (info.dir === 'down') { st.bottom = '6px'; st.left = '50%'; st.transform = 'translateX(-50%)'; }
+  else if (info.dir === 'left') { st.left = '6px'; st.top = '50%'; st.transform = 'translateY(-50%)'; }
+  else { st.right = '6px'; st.top = '50%'; st.transform = 'translateY(-50%)'; }
+}
+
 // Called from animate3D() instead of the normal full-canvas render while composition is open.
 // The WebGL <canvas> element itself is resized + moved to become the composition canvas, so nothing can
 // ever be drawn outside it (no scissor / viewport maths that could disagree with the DOM frame).
@@ -439,6 +466,7 @@ function compositionRender3D() {
   renderer3D.setScissorTest(false);
   compGridUpdate3D(compState3D.gridShow, compState3D.horizonShow);
   renderer3D.render(scene3D, camera3D);
+  compHorizonTagUpdate3D();
 
   const fr = document.getElementById('jeCompFrame');
   if (fr) {
@@ -616,7 +644,7 @@ function compBuildUI3D() {
   const presetOpts = COMP_SIZE_PRESETS_3D.map(p => `<option value="${p.id}">${p.label}</option>`).join('') + '<option value="custom">Custom</option>';
 
   const frame = document.createElement('div');
-  frame.id = 'jeCompFrame'; frame.innerHTML = '<span></span>'; frame.style.display = 'none';
+  frame.id = 'jeCompFrame'; frame.innerHTML = '<span></span><div id="cpHorizonTag"></div>'; frame.style.display = 'none';
   const blocker = document.createElement('div');
   blocker.id = 'jeCompBlocker'; blocker.style.display = 'none';
   const sheet = document.createElement('div');
