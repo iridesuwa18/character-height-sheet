@@ -297,12 +297,17 @@ function compFrameRect3D() {
   const sheet = document.getElementById('jeCompSheet');
   if (sheet && sheet.offsetParent !== null) limit = Math.min(limit, sheet.getBoundingClientRect().top - cr.top);
   const pad = 12, gap = 12, topPad = 24; // topPad leaves room for the size label above the frame
-  const aw = Math.max(40, W - pad * 2), ah = Math.max(40, limit - topPad - gap);
+  // When the horizon is off the canvas, an arrow button sits OUTSIDE that edge, so that side of the available
+  // area is reduced and the canvas is pushed away from it (down for an arrow above, up for an arrow below...).
+  const hDir = (compState3D.horizonShow && compHorizonInfo3D && compHorizonInfo3D.outside) ? compHorizonInfo3D.dir : '';
+  const bandU = hDir === 'up' ? COMP_HORIZON_BAND_3D : 0, bandD = hDir === 'down' ? COMP_HORIZON_BAND_3D : 0;
+  const bandL = hDir === 'left' ? COMP_HORIZON_BAND_3D : 0, bandR = hDir === 'right' ? COMP_HORIZON_BAND_3D : 0;
+  const aw = Math.max(40, W - pad * 2 - bandL - bandR), ah = Math.max(40, limit - topPad - gap - bandU - bandD);
   const aspect = (compApplied3D ? compApplied3D.b / compApplied3D.h : compState3D.b / compState3D.h) || 1;
   let w = aw, h = w / aspect;
   if (h > ah) { h = ah; w = h * aspect; }
   w = Math.max(1, Math.floor(w)); h = Math.max(1, Math.floor(h));
-  return { W, H, x: Math.round((W - w) / 2), y: Math.round(topPad + (ah - h) / 2), w, h };
+  return { W, H, x: Math.round(pad + bandL + (aw - w) / 2), y: Math.round(topPad + bandU + (ah - h) / 2), w, h };
 }
 
 // ── Perspective grid ────────────────────────────────────────────────────────
@@ -318,6 +323,7 @@ let compGridGroup3D = null;
 let compGridKey3D = '';
 
 let compGridMesh3D = null, compHorizonMesh3D = null;
+const COMP_HORIZON_BAND_3D = 46; // px reserved beside the canvas for the off-canvas horizon arrow
 let compHorizonPopOpen3D = false; // description popup open
 let compHorizonInfo3D = null; // { outside, dir: up|down|left|right, dist } while the horizon is shown; else null
 
@@ -450,12 +456,13 @@ function compHorizonTagUpdate3D(r) {
   }
   const M = { up: ['▲', 'above the top of'], down: ['▼', 'below the bottom of'], left: ['◀', 'past the left side of'], right: ['▶', 'past the right side of'] }[info.dir];
   tag.textContent = M[0];
-  const st = tag.style, pad = 8, sz = 34;
+  const st = tag.style, gap = 6, sz = 34;
   st.display = 'block'; st.left = st.top = st.right = st.bottom = 'auto';
-  if (info.dir === 'up') { st.left = Math.round(r.x + r.w / 2 - sz / 2) + 'px'; st.top = (r.y + pad) + 'px'; }
-  else if (info.dir === 'down') { st.left = Math.round(r.x + r.w / 2 - sz / 2) + 'px'; st.top = Math.round(r.y + r.h - pad - sz) + 'px'; }
-  else if (info.dir === 'left') { st.left = (r.x + pad) + 'px'; st.top = Math.round(r.y + r.h / 2 - sz / 2) + 'px'; }
-  else { st.left = Math.round(r.x + r.w - pad - sz) + 'px'; st.top = Math.round(r.y + r.h / 2 - sz / 2) + 'px'; }
+  // Just outside the edge the horizon is past (up: right end, clear of the size label; others: centred).
+  if (info.dir === 'up') { st.left = Math.round(r.x + r.w - sz) + 'px'; st.top = Math.round(r.y - gap - sz) + 'px'; }
+  else if (info.dir === 'down') { st.left = Math.round(r.x + r.w / 2 - sz / 2) + 'px'; st.top = Math.round(r.y + r.h + gap) + 'px'; }
+  else if (info.dir === 'left') { st.left = Math.round(r.x - gap - sz) + 'px'; st.top = Math.round(r.y + r.h / 2 - sz / 2) + 'px'; }
+  else { st.left = Math.round(r.x + r.w + gap) + 'px'; st.top = Math.round(r.y + r.h / 2 - sz / 2) + 'px'; }
 
   if (!compHorizonPopOpen3D) { pop.style.display = 'none'; return; }
   const view = info.dir === 'up' ? ' You are looking down on everything in the picture.' : info.dir === 'down' ? ' You are looking up at everything in the picture.' : '';
@@ -475,6 +482,9 @@ function compositionRender3D() {
   const cv = renderer3D.domElement;
   // An overflow:hidden box can still be scrolled by focus / selection, which would shove everything down.
   if (cont.scrollTop || cont.scrollLeft) { cont.scrollTop = 0; cont.scrollLeft = 0; }
+  // The canvas aspect is fixed by the composition, so the horizon can be evaluated before the frame is placed.
+  camera3D.aspect = compApplied3D.b / compApplied3D.h; camera3D.updateProjectionMatrix();
+  compGridUpdate3D(compState3D.gridShow, compState3D.horizonShow);
   const r = compFrameRect3D();
   if (cv.style.position !== 'absolute') cv.style.position = 'absolute';
   cv.style.left = r.x + 'px'; cv.style.top = r.y + 'px';
@@ -483,7 +493,6 @@ function compositionRender3D() {
   const aspect = r.w / r.h;
   if (Math.abs(camera3D.aspect - aspect) > 1e-6) { camera3D.aspect = aspect; camera3D.updateProjectionMatrix(); }
   renderer3D.setScissorTest(false);
-  compGridUpdate3D(compState3D.gridShow, compState3D.horizonShow);
   renderer3D.render(scene3D, camera3D);
   compHorizonTagUpdate3D(r);
 
