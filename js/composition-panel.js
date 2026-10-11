@@ -318,6 +318,7 @@ let compGridGroup3D = null;
 let compGridKey3D = '';
 
 let compGridMesh3D = null, compHorizonMesh3D = null;
+let compHorizonPopOpen3D = false; // description popup open
 let compHorizonInfo3D = null; // { outside, dir: up|down|left|right, dist } while the horizon is shown; else null
 
 function compGridUpdate3D(showGrid, showHorizon) {
@@ -438,20 +439,31 @@ function compGridUpdate3D(showGrid, showHorizon) {
   g.add(compGridMesh3D);
 }
 
-// Small on-screen hint (not part of any export) shown inside the canvas edge when the horizon is outside it.
-function compHorizonTagUpdate3D() {
-  const tag = document.getElementById('cpHorizonTag'); if (!tag) return;
+// On-screen hint (not part of any export): when the horizon is off the canvas, a small arrow button sits on the
+// canvas edge it is past; tapping it opens a short description in the middle of the canvas (with a Close button).
+function compHorizonTagUpdate3D(r) {
+  const tag = document.getElementById('cpHorizonTag'), pop = document.getElementById('cpHorizonPop');
+  if (!tag || !pop) return;
   const info = compHorizonInfo3D;
-  if (!compState3D.horizonShow || !info || !info.outside) { tag.style.display = 'none'; return; }
-  const D = { up: ['▲', 'above'], down: ['▼', 'below'], left: ['◀', 'left of'], right: ['▶', 'right of'] }[info.dir];
-  tag.textContent = D[0] + ' Horizon ' + D[1] + ' canvas · ' + info.dist.toFixed(1) + '× canvas height away';
-  const st = tag.style;
-  st.cssText = 'position:absolute;display:block;padding:3px 8px;border-radius:10px;background:rgba(0,0,0,0.65);' +
-    'border:1px solid #ff2d2d;color:#ff6b6b;font:600 10px "Space Mono",monospace;white-space:nowrap;pointer-events:none;z-index:2;';
-  if (info.dir === 'up') { st.top = '6px'; st.left = '50%'; st.transform = 'translateX(-50%)'; }
-  else if (info.dir === 'down') { st.bottom = '6px'; st.left = '50%'; st.transform = 'translateX(-50%)'; }
-  else if (info.dir === 'left') { st.left = '6px'; st.top = '50%'; st.transform = 'translateY(-50%)'; }
-  else { st.right = '6px'; st.top = '50%'; st.transform = 'translateY(-50%)'; }
+  if (!compActive3D || !compState3D.horizonShow || !info || !info.outside) {
+    tag.style.display = 'none'; pop.style.display = 'none'; compHorizonPopOpen3D = false; return;
+  }
+  const M = { up: ['▲', 'above the top of'], down: ['▼', 'below the bottom of'], left: ['◀', 'past the left side of'], right: ['▶', 'past the right side of'] }[info.dir];
+  tag.textContent = M[0];
+  const st = tag.style, pad = 8, sz = 34;
+  st.display = 'block'; st.left = st.top = st.right = st.bottom = 'auto';
+  if (info.dir === 'up') { st.left = Math.round(r.x + r.w / 2 - sz / 2) + 'px'; st.top = (r.y + pad) + 'px'; }
+  else if (info.dir === 'down') { st.left = Math.round(r.x + r.w / 2 - sz / 2) + 'px'; st.top = Math.round(r.y + r.h - pad - sz) + 'px'; }
+  else if (info.dir === 'left') { st.left = (r.x + pad) + 'px'; st.top = Math.round(r.y + r.h / 2 - sz / 2) + 'px'; }
+  else { st.left = Math.round(r.x + r.w - pad - sz) + 'px'; st.top = Math.round(r.y + r.h / 2 - sz / 2) + 'px'; }
+
+  if (!compHorizonPopOpen3D) { pop.style.display = 'none'; return; }
+  const view = info.dir === 'up' ? ' You are looking down on everything in the picture.' : info.dir === 'down' ? ' You are looking up at everything in the picture.' : '';
+  document.getElementById('cpHorizonPopText').textContent =
+    'The horizon line (eye level) is ' + M[1] + ' the canvas, about ' + info.dist.toFixed(1) + '× the canvas height away.' + view;
+  const ps = pop.style;
+  ps.display = 'block'; ps.width = Math.max(120, Math.min(260, r.w - 24)) + 'px';
+  ps.left = Math.round(r.x + r.w / 2) + 'px'; ps.top = Math.round(r.y + r.h / 2) + 'px'; ps.transform = 'translate(-50%,-50%)';
 }
 
 // Called from animate3D() instead of the normal full-canvas render while composition is open.
@@ -473,7 +485,7 @@ function compositionRender3D() {
   renderer3D.setScissorTest(false);
   compGridUpdate3D(compState3D.gridShow, compState3D.horizonShow);
   renderer3D.render(scene3D, camera3D);
-  compHorizonTagUpdate3D();
+  compHorizonTagUpdate3D(r);
 
   const fr = document.getElementById('jeCompFrame');
   if (fr) {
@@ -651,7 +663,7 @@ function compBuildUI3D() {
   const presetOpts = COMP_SIZE_PRESETS_3D.map(p => `<option value="${p.id}">${p.label}</option>`).join('') + '<option value="custom">Custom</option>';
 
   const frame = document.createElement('div');
-  frame.id = 'jeCompFrame'; frame.innerHTML = '<span></span><div id="cpHorizonTag"></div>'; frame.style.display = 'none';
+  frame.id = 'jeCompFrame'; frame.innerHTML = '<span></span>'; frame.style.display = 'none';
   const blocker = document.createElement('div');
   blocker.id = 'jeCompBlocker'; blocker.style.display = 'none';
   const sheet = document.createElement('div');
@@ -718,6 +730,22 @@ function compBuildUI3D() {
       <button type="button" class="je-bottom-btn cp-act-save" onclick="exportCompositionImage3D(this)" aria-label="Save image" title="Save image (uses the format chosen in Save image)">${IC.image}<span>Save</span></button>
     </div>`;
   cont.appendChild(frame); cont.appendChild(blocker); cont.appendChild(sheet);
+  // Off-canvas horizon hint: a small arrow button on the canvas edge + a tap-to-open description popup.
+  // They live in the container (not the frame) so they sit above the touch blocker and can be tapped.
+  const hTag = document.createElement('button');
+  hTag.type = 'button'; hTag.id = 'cpHorizonTag'; hTag.setAttribute('aria-label', 'Horizon line is off the canvas — tap for details');
+  hTag.style.cssText = 'position:absolute;display:none;width:34px;height:34px;padding:0;border-radius:50%;z-index:9025;' +
+    'background:rgba(0,0,0,0.75);border:2px solid #ff2d2d;color:#ff6b6b;font:700 15px/1 "Space Mono",monospace;cursor:pointer;touch-action:manipulation;';
+  hTag.onclick = () => { compHorizonPopOpen3D = !compHorizonPopOpen3D; requestRender3D(2); };
+  const hPop = document.createElement('div');
+  hPop.id = 'cpHorizonPop';
+  hPop.style.cssText = 'position:absolute;display:none;z-index:9026;box-sizing:border-box;padding:12px 14px;border-radius:12px;' +
+    'background:rgba(12,12,14,0.94);border:1px solid #ff2d2d;color:#f2f2f2;font:11px/1.5 "Space Mono",monospace;text-align:center;' +
+    'overflow-wrap:anywhere;word-wrap:break-word;white-space:normal;box-shadow:0 6px 20px rgba(0,0,0,0.6);';
+  hPop.innerHTML = '<div id="cpHorizonPopText"></div><button type="button" id="cpHorizonPopClose" style="margin-top:10px;padding:6px 16px;border-radius:8px;' +
+    'background:transparent;border:1px solid #ff2d2d;color:#ff6b6b;font:600 11px \'Space Mono\',monospace;cursor:pointer;">Close</button>';
+  hPop.querySelector('#cpHorizonPopClose').onclick = () => { compHorizonPopOpen3D = false; requestRender3D(2); };
+  cont.appendChild(hTag); cont.appendChild(hPop);
   // The canvas frame is laid out around the sheet's real height, so redraw whenever the sheet resizes
   // (expand / collapse, wrapped status text, rotating the phone).
   if (typeof ResizeObserver === 'function') { const ro = new ResizeObserver(() => requestRender3D(4)); ro.observe(sheet); ro.observe(cont); }
@@ -997,6 +1025,8 @@ function closeCompositionPanel3D() {
   ['jeCompFrame', 'jeCompBlocker', 'jeCompSheet'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   const cont = document.getElementById('preview3D');
   if (compGridGroup3D) compGridGroup3D.visible = false;
+  compHorizonPopOpen3D = false;
+  ['cpHorizonTag', 'cpHorizonPop'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
   if (renderer3D) {
     renderer3D.setScissorTest(false);
     const cv = renderer3D.domElement; cv.style.position = ''; cv.style.left = ''; cv.style.top = '';
