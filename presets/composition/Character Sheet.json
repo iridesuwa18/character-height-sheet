@@ -1,0 +1,37 @@
+{
+  "_type": "composition",
+  "_name": "Character Sheet",
+  "version": 1,
+  "settings": {
+    "h": 3508,
+    "b": 2480,
+    "rot": 0,
+    "fits": true,
+    "aim": [
+      "",
+      ""
+    ],
+    "zoom": 0,
+    "panX": 0,
+    "panY": 0,
+    "mrx": 0,
+    "mry": 0,
+    "mrz": 0,
+    "randPose": false,
+    "gridShow": true,
+    "horizonShow": true,
+    "gridLines": 15,
+    "gridFloor": true,
+    "gridBack": true,
+    "gridSide": true
+  },
+  "locks": {
+    "size": true,
+    "rot": true,
+    "fits": false,
+    "aim": false,
+    "zoom": false,
+    "pan": false,
+    "mrot": false
+  }
+}
