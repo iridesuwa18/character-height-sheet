@@ -725,7 +725,7 @@ function compBuildUI3D() {
         <div class="cp-ctl cp-seg" data-dep="png"><button type="button" class="je-mode-btn" id="cpTranYes" onclick="compSetExport3D('transparent', true)">Yes</button><button type="button" class="je-mode-btn" id="cpTranNo" onclick="compSetExport3D('transparent', false)">No</button></div>
         <div class="cp-ctl"><button type="button" class="je-bottom-btn je-apply cp-wide-btn" onclick="exportCompositionImage3D(this)">${IC.image}<span>Save image</span></button></div>
         <div class="cp-lab" style="margin:6px 0 4px">Turntable: Front, Side Left, Side Right, Back (turns Model rotation Y only)</div>
-        <div class="cp-ctl"><button type="button" class="je-bottom-btn cp-wide-btn" id="cpTurnBtn" onclick="compTurntableExport3D(this)">${IC.image}<span>Save 4 turntable images</span></button></div>
+        <div class="cp-ctl"><button type="button" class="je-bottom-btn cp-wide-btn" id="cpTurnBtn" onclick="compTurntableExport3D(this)">${IC.image}<span>Save 4 turntable images (.zip)</span></button></div>
         <div class="cp-status" id="cpExportStatus"></div>`)}
       <div class="cp-row cp-wide cp-presets"><div class="cp-body"><div class="cp-lab">Presets (GitHub · presets/composition)</div>
         <div class="cp-ctl"><input type="text" id="cpPresetName" placeholder="Preset name, e.g. hero-closeup" maxlength="80">
@@ -887,8 +887,50 @@ function exportCompositionImage3D(btn, mode) {
   }, 60);
 }
 
+// ── Minimal ZIP writer (store-only, no library) ─────────────────────────────
+// PNG/JPG are already compressed, so files are stored uncompressed. Returns a Blob (application/zip).
+let _compCrcTable3D = null;
+function compCrc32_3D(u8) {
+  if (!_compCrcTable3D) {
+    _compCrcTable3D = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); _compCrcTable3D[n] = c >>> 0; }
+  }
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < u8.length; i++) crc = _compCrcTable3D[(crc ^ u8[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function compZipBlob3D(files) { // files: [{ name, data: Uint8Array }]
+  const enc = new TextEncoder();
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+  const dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  const parts = [], central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = compCrc32_3D(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); // UTF-8 names
+    lh.setUint16(8, 0, true); lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true);
+    lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(lh.buffer, name, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true);
+    ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
+    central.push(ch.buffer, name);
+    offset += 30 + name.length + size;
+  }
+  let cdSize = 0; for (let i = 0; i < central.length; i++) cdSize += central[i].byteLength !== undefined ? central[i].byteLength : central[i].length;
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+}
+
 // ── Turntable export: 4 images in one tap ───────────────────────────────────
-// Saves Front / Side Left / Side Right / Back using the CURRENT framing and the format + transparency chosen in
+// Saves Front / Side Left / Side Right / Back (bundled into ONE .zip so iPad/Safari doesn't drop multiple downloads) using the CURRENT framing and the format + transparency chosen in
 // "Save image". Only Model rotation Y changes (same view directions as the Joint Editor's view buttons:
 // Side Left = camera on the model's left = rotY +90, Side Right = -90, Back = -180). The panel's own settings
 // and the on-screen framing are put back afterwards. Files are named "<Height preset name> Front.png" etc., or
@@ -922,6 +964,7 @@ function compTurntableExport3D(btn) {
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
   (async () => {
     let done = 0, scaled = false;
+    const zipFiles = [];
     try {
       for (const v of COMP_TURNTABLE_VIEWS_3D) {
         if (label) label.textContent = 'Saving ' + (done + 1) + '/4…';
@@ -937,15 +980,21 @@ function compTurntableExport3D(btn) {
         cv.getContext('2d').putImageData(r.imageData, 0, 0);
         const blob = await new Promise(res => cv.toBlob(res, isPng ? 'image/png' : 'image/jpeg', 0.95));
         if (!blob) throw new Error('Could not create the ' + v.label + ' image (too large for this device?).');
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = (base ? base + ' ' + v.label : v.label.toLowerCase()) + (isPng ? '.png' : '.jpg');
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+        zipFiles.push({
+          name: (base ? base + ' ' + v.label : v.label.toLowerCase()) + (isPng ? '.png' : '.jpg'),
+          data: new Uint8Array(await blob.arrayBuffer()),
+        });
         done++;
-        await wait(450); // small gap so the browser accepts several downloads in a row
       }
-      compExportStatus3D('Saved 4 turntable images' + (base ? ' for "' + base + '"' : '') + ' — ' + (isPng ? 'PNG' + (wantTransparent ? ' (transparent)' : '') : 'JPG') + (scaled ? ' — scaled down to fit this device' : ''), 'ok');
+      if (label) label.textContent = 'Zipping…';
+      compExportStatus3D('Zipping…');
+      const zipBlob = compZipBlob3D(zipFiles);
+      const za = document.createElement('a');
+      za.href = URL.createObjectURL(zipBlob);
+      za.download = (base ? base + ' turntable' : 'turntable') + '.zip';
+      document.body.appendChild(za); za.click(); za.remove();
+      setTimeout(() => URL.revokeObjectURL(za.href), 60000);
+      compExportStatus3D('Saved turntable.zip (4 images)' + (base ? ' for "' + base + '"' : '') + ' — ' + (isPng ? 'PNG' + (wantTransparent ? ' (transparent)' : '') : 'JPG') + (scaled ? ' — scaled down to fit this device' : ''), 'ok');
       if (label) label.textContent = 'Saved';
     } catch (e) {
       console.error('Turntable export failed', e);
