@@ -724,6 +724,8 @@ function compBuildUI3D() {
         <div class="cp-lab" data-dep="png" style="margin:6px 0 4px">Transparent background (PNG only)</div>
         <div class="cp-ctl cp-seg" data-dep="png"><button type="button" class="je-mode-btn" id="cpTranYes" onclick="compSetExport3D('transparent', true)">Yes</button><button type="button" class="je-mode-btn" id="cpTranNo" onclick="compSetExport3D('transparent', false)">No</button></div>
         <div class="cp-ctl"><button type="button" class="je-bottom-btn je-apply cp-wide-btn" onclick="exportCompositionImage3D(this)">${IC.image}<span>Save image</span></button></div>
+        <div class="cp-lab" style="margin:6px 0 4px">Turntable: Front, Side Left, Side Right, Back (turns Model rotation Y only)</div>
+        <div class="cp-ctl"><button type="button" class="je-bottom-btn cp-wide-btn" id="cpTurnBtn" onclick="compTurntableExport3D(this)">${IC.image}<span>Save 4 turntable images</span></button></div>
         <div class="cp-status" id="cpExportStatus"></div>`)}
       <div class="cp-row cp-wide cp-presets"><div class="cp-body"><div class="cp-lab">Presets (GitHub · presets/composition)</div>
         <div class="cp-ctl"><input type="text" id="cpPresetName" placeholder="Preset name, e.g. hero-closeup" maxlength="80">
@@ -883,6 +885,80 @@ function exportCompositionImage3D(btn, mode) {
       flash('Failed');
     }
   }, 60);
+}
+
+// ── Turntable export: 4 images in one tap ───────────────────────────────────
+// Saves Front / Side Left / Side Right / Back using the CURRENT framing and the format + transparency chosen in
+// "Save image". Only Model rotation Y changes (same view directions as the Joint Editor's view buttons:
+// Side Left = camera on the model's left = rotY +90, Side Right = -90, Back = -180). The panel's own settings
+// and the on-screen framing are put back afterwards. Files are named "<Height preset name> Front.png" etc., or
+// just "front.png" etc. when no Height preset has been loaded/saved.
+const COMP_TURNTABLE_VIEWS_3D = [
+  { label: 'Front', mry: 0 },
+  { label: 'Side Left', mry: 90 },
+  { label: 'Side Right', mry: -90 },
+  { label: 'Back', mry: -180 },
+];
+let compTurntableBusy3D = false;
+
+function compTurntableBaseName3D() {
+  let n = '';
+  try { if (typeof ghLoadedBodyPresetName === 'string') n = ghLoadedBodyPresetName; } catch (e) { n = ''; }
+  return String(n || '').trim().replace(/[\\/:*?"<>|]/g, '_');
+}
+
+function compTurntableExport3D(btn) {
+  if (!compActive3D || compTurntableBusy3D) return;
+  if (!compApplied3D) generateComposition3D({ skipPose: true });
+  if (!compApplied3D) return;
+  compTurntableBusy3D = true;
+  const label = btn && btn.querySelector('span');
+  const origLabel = label ? label.textContent : '';
+  if (btn) btn.disabled = true;
+  const isPng = compExport3D.fmt === 'png';
+  const wantTransparent = isPng && compExport3D.transparent;
+  const base = compTurntableBaseName3D();
+  const prev = compApplied3D;
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  (async () => {
+    let done = 0, scaled = false;
+    try {
+      for (const v of COMP_TURNTABLE_VIEWS_3D) {
+        if (label) label.textContent = 'Saving ' + (done + 1) + '/4…';
+        compExportStatus3D('Rendering ' + v.label + '…');
+        await wait(60); // let the label paint before the heavy render
+        const ap = JSON.parse(JSON.stringify(prev));
+        ap.mry = v.mry;
+        compApplied3D = ap;
+        if (!compPositionCamera3D(ap)) throw new Error('Could not frame the ' + v.label + ' view.');
+        const r = compRenderToImageData3D(wantTransparent, 'model');
+        scaled = scaled || r.scaled;
+        const cv = document.createElement('canvas'); cv.width = r.w; cv.height = r.h;
+        cv.getContext('2d').putImageData(r.imageData, 0, 0);
+        const blob = await new Promise(res => cv.toBlob(res, isPng ? 'image/png' : 'image/jpeg', 0.95));
+        if (!blob) throw new Error('Could not create the ' + v.label + ' image (too large for this device?).');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (base ? base + ' ' + v.label : v.label.toLowerCase()) + (isPng ? '.png' : '.jpg');
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+        done++;
+        await wait(450); // small gap so the browser accepts several downloads in a row
+      }
+      compExportStatus3D('Saved 4 turntable images' + (base ? ' for "' + base + '"' : '') + ' — ' + (isPng ? 'PNG' + (wantTransparent ? ' (transparent)' : '') : 'JPG') + (scaled ? ' — scaled down to fit this device' : ''), 'ok');
+      if (label) label.textContent = 'Saved';
+    } catch (e) {
+      console.error('Turntable export failed', e);
+      compExportStatus3D('Turntable export failed after ' + done + '/4: ' + (e && e.message ? e.message : e), 'err');
+      if (label) label.textContent = 'Failed';
+    } finally {
+      compApplied3D = prev;
+      compPositionCamera3D(prev);
+      requestRender3D(6);
+      compTurntableBusy3D = false;
+      setTimeout(() => { if (label) label.textContent = origLabel; if (btn) btn.disabled = false; }, 1600);
+    }
+  })();
 }
 
 // ── Presets (saved as separate .json files, like Height / Faces) ───────────
