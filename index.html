@@ -1718,6 +1718,7 @@
   </div>
   <div style="width:100%; display:flex; gap:10px;">
     <button class="btn-secondary" id="excelExportBtn" style="flex:1;" onclick="exportExcel()">⬇ Excel</button>
+    <button class="btn-secondary" id="copy4Btn" style="flex:1;" onclick="copyCoreFields()" title="Copies Height, Gender, Shoulder Width, Waist Width as 4 tab-separated cells (no headers) for pasting into Sheets/Excel">⎘ Copy 4 Fields</button>
     <label class="btn-secondary" style="flex:1; text-align:center; cursor:pointer; padding:11px 16px; border-radius:6px; font-family:'Space Mono',monospace; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; border:1px solid var(--border); color:var(--muted);">
       ⬆ Load Excel<input type="file" id="excelUpload" accept=".xlsx" style="display:none;" onchange="importExcel(event)">
     </label>
@@ -2447,10 +2448,9 @@ const preview = document.getElementById("preview");
 let leftArmWrap = null, rightArmWrap = null, lastGenerated = null;
 const REAL_CANVAS_HEIGHT = 3200, HEADS_TOTAL = 9;
 const SCALE_FACTOR = 800 / REAL_CANVAS_HEIGHT, PADDING_PX = 30;
-const characters = [{height:173,heads:8},{height:190,heads:9},{height:162,heads:5},{height:220,heads:8}];
-let totalCmPerHead = 0;
-characters.forEach(c => { totalCmPerHead += c.height / c.heads; });
-const CM_PER_HEAD = totalCmPerHead / characters.length;
+// Head height is now fixed at 22 cm (was the average of 4 reference characters, ~25.7 cm).
+// The whole graph (grid lines, labels, box sizes) and the 3D model scale from this one value.
+const CM_PER_HEAD = 22;
 const PX_PER_CM = REAL_CANVAS_HEIGHT / (HEADS_TOTAL * CM_PER_HEAD);
 
 function createGrid() {
@@ -2657,6 +2657,23 @@ function exportExcel() {
   ws['!cols']=headers.map(()=>({wch:22}));
   XLSX.utils.book_append_sheet(wb,ws,'Character Data');
   XLSX.writeFile(wb,`${getBodyFilename()}.xlsx`);
+}
+function copyCoreFields() {
+  if (!lastGenerated) { alert('Generate a character first!'); return; }
+  const d = lastGenerated;
+  // Tab-separated = 4 cells side by side when pasted into Sheets/Excel. No header row, no trailing newline.
+  const text = [d.cm, d.gender, d.shoulderWidthCm, d.waistWidthCm].join('\t');
+  const btn = document.getElementById('copy4Btn'), orig = btn.textContent;
+  const done = (ok) => { btn.textContent = ok ? '✓ Copied!' : 'Copy failed'; setTimeout(() => btn.textContent = orig, 1500); };
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove(); done(ok);
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => done(true), fallback);
+  else fallback();
 }
 function importExcel(event) {
   const file=event.target.files[0]; if (!file) return;
