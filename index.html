@@ -2781,6 +2781,8 @@ function ghHeaders(token) {
 }
 function ghUtf8ToB64(str) { return btoa(unescape(encodeURIComponent(str))); }
 function ghB64ToUtf8(b64) { return decodeURIComponent(escape(atob((b64||'').replace(/\n/g,'')))); }
+// Name of the Height preset last loaded from / saved to GitHub (used to name Composition turntable images).
+let ghLoadedBodyPresetName = '';
 function ghFolderFor(kind) { const s=ghGetSettings(); return kind==='body'?s.bodyFolder:s.faceFolder; }
 async function ghSavePreset(kind) {
   const s=ghGetSettings();
@@ -2804,6 +2806,7 @@ async function ghSavePreset(kind) {
     const putResp=await fetch(apiUrl,{method:'PUT',headers:ghHeaders(s.token),body:JSON.stringify(body)});
     if (!putResp.ok) { const errj=await putResp.json().catch(()=>({})); throw new Error(errj.message||putResp.statusText); }
     await ghRefreshPresetList(kind);
+    if (kind==='body') ghLoadedBodyPresetName = name;
     alert(`Saved "${name}" to GitHub (${folder}).`);
   } catch(err) { alert('GitHub save failed: '+err.message); }
   if (btn){btn.disabled=false;btn.textContent='⬆ Save to GitHub';}
@@ -2839,7 +2842,11 @@ async function ghLoadPreset(kind) {
     const j=await resp.json();
     const text=ghB64ToUtf8(j.content);
     const state=JSON.parse(text);
-    if (kind==='body') applyBodyState(state); else applyFaceState(state);
+    if (kind==='body') {
+      applyBodyState(state);
+      const opt = sel && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+      ghLoadedBodyPresetName = (opt && opt.value === path ? opt.textContent : decodeURIComponent(path.split('/').pop()).replace(/\.json$/i,'')).trim();
+    } else applyFaceState(state);
     alert('Preset loaded.');
   } catch(err) { alert('GitHub load failed: '+err.message); }
 }
