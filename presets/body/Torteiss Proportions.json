@@ -1,0 +1,20 @@
+{
+  "heightCm": 170,
+  "gender": "male",
+  "shoulderWidthCm": 25,
+  "waistWidthCm": 20,
+  "visibility": {
+    "head": true,
+    "neck": true,
+    "torso": true,
+    "waistbox": true,
+    "arms": true,
+    "hands": true,
+    "legs": true,
+    "feet": true,
+    "lines": true,
+    "labels": true,
+    "grid": true
+  },
+  "armRotate": false
+}
