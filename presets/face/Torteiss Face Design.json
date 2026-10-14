@@ -10,9 +10,9 @@
     "offsetX": 0,
     "offsetY": 39,
     "shape": "hawk",
-    "sideWidthRatio": 1,
-    "sideTipX": 100,
-    "sideTipY": 55,
+    "sideWidthRatio": 0.5,
+    "sideTipX": 90,
+    "sideTipY": 65,
     "sideShape": "straight-bridge"
   },
   "brow": {
