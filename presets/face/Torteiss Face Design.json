@@ -1,0 +1,94 @@
+{
+  "prominentFace": 60,
+  "chinPoints": 3,
+  "innerSlack": 12,
+  "nose": {
+    "widthRatio": 3,
+    "heightRatio": 1,
+    "shapeWidth": 100,
+    "shapeHeight": 115,
+    "offsetX": 0,
+    "offsetY": 39,
+    "shape": "hawk",
+    "sideWidthRatio": 1,
+    "sideTipX": 100,
+    "sideTipY": 55,
+    "sideShape": "straight-bridge"
+  },
+  "brow": {
+    "shape": "arched",
+    "rotation": 7,
+    "thickness": 1.8
+  },
+  "eyes": {
+    "shape": "monolid",
+    "heightRatio": 1,
+    "flipRight": false,
+    "rotate180": true,
+    "scaleX": 100,
+    "scaleY": 100,
+    "offsetX": 0,
+    "offsetY": -16,
+    "ptsEnabled": false,
+    "ptCount": 8,
+    "curveMode": "smooth",
+    "ptScaleX": 100,
+    "ptScaleY": 100,
+    "ptOffsetX": 0,
+    "ptOffsetY": 0,
+    "customPoints": []
+  },
+  "ears": {
+    "shape": "round",
+    "width": 60,
+    "height": 86,
+    "vertPos": 82,
+    "horizPos": 13,
+    "rotation": -15,
+    "visible": true
+  },
+  "iris": {
+    "widthRatio": 3,
+    "layers": [
+      {
+        "id": 1,
+        "shape": "teardrop-down",
+        "sizeW": 185,
+        "sizeH": 100,
+        "posY": 50,
+        "posX": 50,
+        "rotate180": false,
+        "flipRight": false
+      }
+    ]
+  },
+  "mouth": {
+    "shape": "smile",
+    "offsetY": 21,
+    "widthPct": 60
+  },
+  "chin": {
+    "segShapes": [
+      "straight",
+      "curved",
+      "curved"
+    ],
+    "segCurvatures": [
+      100,
+      100,
+      100
+    ],
+    "handles": [
+      {
+        "label": "P2",
+        "nx": 0.073,
+        "ny": 0.7045
+      },
+      {
+        "label": "P3",
+        "nx": 0.252,
+        "ny": 0.9273
+      }
+    ]
+  }
+}
