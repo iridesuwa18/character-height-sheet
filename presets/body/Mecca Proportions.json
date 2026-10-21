@@ -1,0 +1,20 @@
+{
+  "heightCm": 165,
+  "gender": "female",
+  "shoulderWidthCm": 25,
+  "waistWidthCm": 35,
+  "visibility": {
+    "head": true,
+    "neck": true,
+    "torso": true,
+    "waistbox": true,
+    "arms": true,
+    "hands": true,
+    "legs": true,
+    "feet": true,
+    "lines": true,
+    "labels": true,
+    "grid": true
+  },
+  "armRotate": false
+}
