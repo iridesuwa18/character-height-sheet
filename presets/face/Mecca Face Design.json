@@ -1,0 +1,87 @@
+{
+  "prominentFace": 55,
+  "chinPoints": 2,
+  "innerSlack": 12,
+  "nose": {
+    "widthRatio": 3.5,
+    "heightRatio": 1,
+    "shapeWidth": 80,
+    "shapeHeight": 135,
+    "offsetX": 0,
+    "offsetY": 43,
+    "shape": "hawk",
+    "sideWidthRatio": 0.5,
+    "sideTipX": 90,
+    "sideTipY": 65,
+    "sideShape": "straight-bridge"
+  },
+  "brow": {
+    "shape": "thin",
+    "rotation": 15,
+    "thickness": 0.1
+  },
+  "eyes": {
+    "shape": "hooded",
+    "heightRatio": 0.9,
+    "flipRight": false,
+    "rotate180": true,
+    "scaleX": 100,
+    "scaleY": 60,
+    "offsetX": 0,
+    "offsetY": -15,
+    "ptsEnabled": false,
+    "ptCount": 8,
+    "curveMode": "smooth",
+    "ptScaleX": 100,
+    "ptScaleY": 100,
+    "ptOffsetX": 0,
+    "ptOffsetY": 0,
+    "customPoints": []
+  },
+  "ears": {
+    "shape": "round",
+    "width": 68,
+    "height": 84,
+    "vertPos": 93,
+    "horizPos": 39,
+    "rotation": -21,
+    "visible": true
+  },
+  "iris": {
+    "widthRatio": 3,
+    "layers": [
+      {
+        "id": 2,
+        "shape": "leaf",
+        "sizeW": 185,
+        "sizeH": 100,
+        "posY": 50,
+        "posX": 40,
+        "rotate180": false,
+        "flipRight": true
+      }
+    ]
+  },
+  "mouth": {
+    "shape": "smile",
+    "offsetY": 31,
+    "widthPct": 45
+  },
+  "chin": {
+    "segShapes": [
+      "curved",
+      "curved"
+    ],
+    "segCurvatures": [
+      100,
+      100
+    ],
+    "handles": [
+      {
+        "label": "P2",
+        "nx": 0.1824,
+        "ny": 0.8415
+      }
+    ]
+  }
+}
